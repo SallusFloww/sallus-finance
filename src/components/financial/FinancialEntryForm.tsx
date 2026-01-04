@@ -175,8 +175,10 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
     return BUSINESS_UNITS.map(unit => ({ value: unit.id, label: unit.name }));
   }, [settings?.units]);
 
-  // Reset dependents when type changes
+  // Reset dependents when type changes (skip in edit mode to preserve loaded data)
   useEffect(() => {
+    if (editingEntry) return;
+    
     // Reset category when type changes
     setCategoria("");
     setValidationError(null);
@@ -189,7 +191,7 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
       setDataRecebimento(undefined);
       setPaymentMethod("");
     }
-  }, [type]);
+  }, [type, editingEntry]);
 
   useEffect(() => {
     if (receiptType === "PARTICULAR") {
@@ -302,13 +304,13 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
 
       if (editingEntry) {
         await updateEntry(editingEntry.id, entryData);
+        onClose?.();
       } else {
         await addEntry(entryData);
+        resetForm();
+        setOpen(false);
+        onClose?.();
       }
-
-      resetForm();
-      setOpen(false);
-      onClose?.();
     } catch (error) {
       console.error("Erro ao salvar movimentação:", error);
       setValidationError("Não foi possível salvar. Tente novamente.");
