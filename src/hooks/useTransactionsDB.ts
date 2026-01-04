@@ -188,7 +188,9 @@ export function useTransactionsDB() {
     [transactions]
   );
 
-  // Get stats
+  // Get stats - SINGLE SOURCE OF TRUTH
+  // REGRA: Apenas movimentações com status REALIZADO impactam o saldo
+  // Cancelados NUNCA entram no saldo, Previstos são informativos
   const getStats = useCallback(
     (startDate?: Date, endDate?: Date): DashboardStats => {
       const start = startDate || new Date(new Date().getFullYear(), new Date().getMonth(), 1);
@@ -196,19 +198,63 @@ export function useTransactionsDB() {
 
       const filtered = filterTransactions({ startDate: start, endDate: end });
 
+      // Separar por tipo e status
       const allIncomes = filtered.filter((t) => t.type === "INCOME");
+      const allExpenses = filtered.filter((t) => t.type === "EXPENSE");
+      
       const pendingIncomes = allIncomes.filter((t) => t.status === "PENDENTE");
       const realizedIncomes = allIncomes.filter((t) => t.status === "REALIZADO");
       const cancelledIncomes = allIncomes.filter((t) => t.status === "CANCELADO");
 
-      const realizedTransactions = filtered.filter((t) => t.status === "REALIZADO");
+      // Apenas REALIZADOS impactam o saldo
+      const realizedExpenses = allExpenses.filter((t) => t.status === "REALIZADO");
 
       const totalIncome = realizedIncomes.reduce((sum, t) => sum + t.amount, 0);
-      const totalExpense = realizedTransactions
-        .filter((t) => t.type === "EXPENSE")
-        .reduce((sum, t) => sum + t.amount, 0);
+      const totalExpense = realizedExpenses.reduce((sum, t) => sum + t.amount, 0);
 
       const currentBalance = settings.initialBalance + totalIncome - totalExpense;
+
+      // Calcular breakdown de entradas por forma de pagamento (apenas REALIZADOS)
+      const incomeByPaymentMethod = {
+        dinheiro: realizedIncomes
+          .filter((t) => t.paymentMethodParticular === "DINHEIRO")
+          .reduce((sum, t) => sum + t.amount, 0),
+        pix: realizedIncomes
+          .filter((t) => t.paymentMethodParticular === "PIX")
+          .reduce((sum, t) => sum + t.amount, 0),
+        debito: realizedIncomes
+          .filter((t) => t.paymentMethodParticular === "CARTAO_DEBITO")
+          .reduce((sum, t) => sum + t.amount, 0),
+        creditoVista: realizedIncomes
+          .filter((t) => t.paymentMethodParticular === "CREDITO_VISTA")
+          .reduce((sum, t) => sum + t.amount, 0),
+        creditoParcelado: realizedIncomes
+          .filter((t) => t.paymentMethodParticular === "CREDITO_PARCELADO")
+          .reduce((sum, t) => sum + t.amount, 0),
+      };
+
+      // Calcular breakdown de entradas por operadora (apenas REALIZADOS)
+      const incomeByOperadora = {
+        ipasgo: realizedIncomes
+          .filter((t) => t.operadora === "IPASGO")
+          .reduce((sum, t) => sum + t.amount, 0),
+        unimed: realizedIncomes
+          .filter((t) => t.operadora === "UNIMED")
+          .reduce((sum, t) => sum + t.amount, 0),
+        bradesco: realizedIncomes
+          .filter((t) => t.operadora === "BRADESCO")
+          .reduce((sum, t) => sum + t.amount, 0),
+        geap: realizedIncomes
+          .filter((t) => t.operadora === "GEAP")
+          .reduce((sum, t) => sum + t.amount, 0),
+      };
+
+      // Calcular breakdown de saídas por categoria (apenas REALIZADAS)
+      const expenseByCategory: Record<string, number> = {};
+      realizedExpenses.forEach((t) => {
+        const cat = t.category || "Sem Categoria";
+        expenseByCategory[cat] = (expenseByCategory[cat] || 0) + t.amount;
+      });
 
       return {
         initialBalance: settings.initialBalance,
@@ -216,7 +262,7 @@ export function useTransactionsDB() {
         totalIncome,
         totalExpense,
         currentBalance,
-        transactionCount: realizedTransactions.length,
+        transactionCount: realizedIncomes.length + realizedExpenses.length,
         incomeByStatus: {
           previsto: pendingIncomes.reduce((sum, t) => sum + t.amount, 0),
           recebido: realizedIncomes.reduce((sum, t) => sum + t.amount, 0),
@@ -235,26 +281,16 @@ export function useTransactionsDB() {
             .filter((t) => t.receiptType === "CONVENIO")
             .reduce((sum, t) => sum + t.amount, 0),
         },
-        incomeByPaymentMethod: {
-          dinheiro: 0,
-          pix: 0,
-          debito: 0,
-          creditoVista: 0,
-          creditoParcelado: 0,
-        },
-        incomeByOperadora: {
-          ipasgo: 0,
-          unimed: 0,
-          bradesco: 0,
-          geap: 0,
-        },
-        expenseByCategory: {},
+        incomeByPaymentMethod,
+        incomeByOperadora,
+        expenseByCategory,
       };
     },
     [filterTransactions, settings.initialBalance, settings.initialBalanceLastUpdate]
   );
 
-  // Get unit stats
+  // Get unit stats - SINGLE SOURCE OF TRUTH
+  // REGRA: Apenas movimentações REALIZADAS impactam saldo por unidade
   const getUnitStats = useCallback(
     (startDate?: Date, endDate?: Date): UnitStats[] => {
       const filtered = filterTransactions({ startDate, endDate });
@@ -262,6 +298,8 @@ export function useTransactionsDB() {
 
       filtered.forEach((t) => {
         if (!t.unit) return;
+        // Apenas REALIZADOS impactam saldo
+        if (t.status !== "REALIZADO") return;
         
         const existing = unitMap.get(t.unit) || {
           unit: t.unit,
@@ -271,9 +309,9 @@ export function useTransactionsDB() {
           netBalance: 0,
         };
 
-        if (t.type === "INCOME" && t.status === "REALIZADO") {
+        if (t.type === "INCOME") {
           existing.income += t.amount;
-        } else if (t.type === "EXPENSE" && t.status === "REALIZADO") {
+        } else if (t.type === "EXPENSE") {
           existing.expense += t.amount;
         }
         existing.transactionCount++;

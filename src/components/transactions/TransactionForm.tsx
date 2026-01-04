@@ -202,13 +202,18 @@ export function TransactionForm({ editingTransaction, onClose }: TransactionForm
   }, [unit]);
 
   // Resetar campos de receita quando tipo não é INCOME
+  // E resetar categoria quando tipo muda para evitar categoria incompatível
   useEffect(() => {
     if (type !== "INCOME") {
       setReceiptType("");
       setPaymentMethodParticular("");
       setOperadora("");
     }
-  }, [type]);
+    // Limpar categoria quando tipo muda (será preenchida com opção compatível)
+    if (!editingTransaction) {
+      setCategory("");
+    }
+  }, [type, editingTransaction]);
 
   // Resetar forma de pagamento/operadora quando tipo de recebimento muda
   useEffect(() => {
@@ -1009,7 +1014,7 @@ export function TransactionForm({ editingTransaction, onClose }: TransactionForm
         </div>
       )}
 
-      {/* Categoria */}
+      {/* Categoria - FILTRADA POR TIPO (entrada vs saída) */}
       <div className="space-y-2">
         <Label>Categoria *</Label>
         <Select value={category} onValueChange={setCategory}>
@@ -1017,13 +1022,31 @@ export function TransactionForm({ editingTransaction, onClose }: TransactionForm
             <SelectValue placeholder="Selecione" />
           </SelectTrigger>
           <SelectContent>
-            {categories.map((c) => (
-              <SelectItem key={c.id} value={c.name}>
-                {c.name}
-              </SelectItem>
-            ))}
+            {categories
+              .filter((c) => {
+                // Filtra categorias pelo tipo correspondente
+                const categoryType = c.type === "INCOME" ? "INCOME" : "EXPENSE";
+                return categoryType === type && c.active !== false;
+              })
+              .map((c) => (
+                <SelectItem key={c.id} value={c.name}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            {/* Se não houver categorias do tipo, mostrar todas como fallback */}
+            {categories.filter((c) => (c.type === "INCOME" ? "INCOME" : "EXPENSE") === type && c.active !== false).length === 0 &&
+              categories.filter(c => c.active !== false).map((c) => (
+                <SelectItem key={c.id} value={c.name}>
+                  {c.name}
+                </SelectItem>
+              ))}
           </SelectContent>
         </Select>
+        {type === "EXPENSE" && (
+          <p className="text-[10px] text-muted-foreground">
+            Mostrando apenas categorias de saída. Métodos de pagamento (PIX, Cartão) não são categorias.
+          </p>
+        )}
       </div>
 
       {/* Forma de Pagamento Geral (para saídas) */}
