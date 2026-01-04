@@ -187,14 +187,16 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
       setReceiptType("");
       setOperadora("");
       setDataRecebimento(undefined);
+      setPaymentMethod("");
     }
   }, [type]);
 
   useEffect(() => {
-    // Only clear operadora when switching to PARTICULAR
-    // Do NOT clear paymentMethod when switching to CONVENIO (preserve data)
     if (receiptType === "PARTICULAR") {
       setOperadora("");
+    } else if (receiptType === "CONVENIO") {
+      // Clear paymentMethod when switching to CONVENIO (only valid for PARTICULAR)
+      setPaymentMethod("");
     }
   }, [receiptType]);
 
@@ -210,6 +212,17 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
       setValidationError(null);
     }
   }, [open, editingEntry]);
+
+  // Auto-fill dataRecebimento when status is "recebido" and empty; clear when "previsto"
+  useEffect(() => {
+    if (type === "entrada") {
+      if (status === "recebido" && !dataRecebimento) {
+        setDataRecebimento(dataPrevista);
+      } else if (status === "previsto") {
+        setDataRecebimento(undefined);
+      }
+    }
+  }, [type, status, dataPrevista, dataRecebimento]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -242,7 +255,9 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
         observacao: observacao || undefined,
         unit_id: unitId || undefined,
         receipt_type: type === "entrada" && receiptType ? receiptType : undefined,
-        payment_method: paymentMethod || undefined,
+        payment_method: type === "entrada" && receiptType === "PARTICULAR" && paymentMethod
+          ? paymentMethod
+          : undefined,
         operadora: type === "entrada" && receiptType === "CONVENIO" && operadora ? operadora : undefined,
       };
 
