@@ -812,11 +812,13 @@ export type Database = {
           effective_amount_cancelado: number | null
           effective_amount_previsto: number | null
           effective_amount_realizado: number | null
+          effective_amount_recebido: number | null
           id: string | null
           is_cancelado: boolean | null
           is_entrada: boolean | null
           is_previsto: boolean | null
           is_realizado: boolean | null
+          is_recebido: boolean | null
           is_saida: boolean | null
           observacao: string | null
           operadora: string | null
@@ -826,6 +828,7 @@ export type Database = {
           type: Database["public"]["Enums"]["financial_entry_type"] | null
           unit_id: string | null
           updated_at: string | null
+          updated_by: string | null
           valor: number | null
         }
         Insert: {
@@ -842,11 +845,13 @@ export type Database = {
           effective_amount_cancelado?: never
           effective_amount_previsto?: never
           effective_amount_realizado?: never
+          effective_amount_recebido?: never
           id?: string | null
           is_cancelado?: never
           is_entrada?: never
           is_previsto?: never
           is_realizado?: never
+          is_recebido?: never
           is_saida?: never
           observacao?: string | null
           operadora?: string | null
@@ -856,6 +861,7 @@ export type Database = {
           type?: Database["public"]["Enums"]["financial_entry_type"] | null
           unit_id?: string | null
           updated_at?: string | null
+          updated_by?: string | null
           valor?: number | null
         }
         Update: {
@@ -872,11 +878,13 @@ export type Database = {
           effective_amount_cancelado?: never
           effective_amount_previsto?: never
           effective_amount_realizado?: never
+          effective_amount_recebido?: never
           id?: string | null
           is_cancelado?: never
           is_entrada?: never
           is_previsto?: never
           is_realizado?: never
+          is_recebido?: never
           is_saida?: never
           observacao?: string | null
           operadora?: string | null
@@ -886,6 +894,7 @@ export type Database = {
           type?: Database["public"]["Enums"]["financial_entry_type"] | null
           unit_id?: string | null
           updated_at?: string | null
+          updated_by?: string | null
           valor?: number | null
         }
         Relationships: [
