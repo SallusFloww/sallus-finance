@@ -797,6 +797,114 @@ export type Database = {
         }
         Relationships: []
       }
+      movements_effective: {
+        Row: {
+          cancel_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          categoria: string | null
+          company_id: string | null
+          created_at: string | null
+          created_by: string | null
+          data_prevista: string | null
+          data_recebimento: string | null
+          descricao: string | null
+          effective_amount_cancelado: number | null
+          effective_amount_previsto: number | null
+          effective_amount_realizado: number | null
+          id: string | null
+          is_cancelado: boolean | null
+          is_entrada: boolean | null
+          is_previsto: boolean | null
+          is_realizado: boolean | null
+          is_saida: boolean | null
+          observacao: string | null
+          operadora: string | null
+          payment_method: string | null
+          receipt_type: string | null
+          status: Database["public"]["Enums"]["financial_entry_status"] | null
+          type: Database["public"]["Enums"]["financial_entry_type"] | null
+          unit_id: string | null
+          updated_at: string | null
+          valor: number | null
+        }
+        Insert: {
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          categoria?: string | null
+          company_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          data_prevista?: string | null
+          data_recebimento?: string | null
+          descricao?: string | null
+          effective_amount_cancelado?: never
+          effective_amount_previsto?: never
+          effective_amount_realizado?: never
+          id?: string | null
+          is_cancelado?: never
+          is_entrada?: never
+          is_previsto?: never
+          is_realizado?: never
+          is_saida?: never
+          observacao?: string | null
+          operadora?: string | null
+          payment_method?: string | null
+          receipt_type?: string | null
+          status?: Database["public"]["Enums"]["financial_entry_status"] | null
+          type?: Database["public"]["Enums"]["financial_entry_type"] | null
+          unit_id?: string | null
+          updated_at?: string | null
+          valor?: number | null
+        }
+        Update: {
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          categoria?: string | null
+          company_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          data_prevista?: string | null
+          data_recebimento?: string | null
+          descricao?: string | null
+          effective_amount_cancelado?: never
+          effective_amount_previsto?: never
+          effective_amount_realizado?: never
+          id?: string | null
+          is_cancelado?: never
+          is_entrada?: never
+          is_previsto?: never
+          is_realizado?: never
+          is_saida?: never
+          observacao?: string | null
+          operadora?: string | null
+          payment_method?: string | null
+          receipt_type?: string | null
+          status?: Database["public"]["Enums"]["financial_entry_status"] | null
+          type?: Database["public"]["Enums"]["financial_entry_type"] | null
+          unit_id?: string | null
+          updated_at?: string | null
+          valor?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_entries_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_entries_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles_safe: {
         Row: {
           avatar_url: string | null
@@ -854,6 +962,97 @@ export type Database = {
           id: string
           status: string
           updated_at: string
+        }[]
+      }
+      get_expense_by_category: {
+        Args: { p_company_id: string; p_date_end: string; p_date_start: string }
+        Returns: {
+          categoria: string
+          count: number
+          total: number
+        }[]
+      }
+      get_financial_summary: {
+        Args: {
+          p_company_id: string
+          p_date_end: string
+          p_date_start: string
+          p_unit_id?: string
+        }
+        Returns: {
+          count_cancelado: number
+          count_previsto: number
+          count_realizado: number
+          entradas_canceladas: number
+          entradas_previstas: number
+          entradas_realizadas: number
+          saidas_canceladas: number
+          saidas_previstas: number
+          saidas_realizadas: number
+          saldo_realizado: number
+        }[]
+      }
+      get_income_breakdown: {
+        Args: { p_company_id: string; p_date_end: string; p_date_start: string }
+        Returns: {
+          bradesco: number
+          convenio: number
+          credito_parcelado: number
+          credito_vista: number
+          debito: number
+          dinheiro: number
+          geap: number
+          ipasgo: number
+          particular: number
+          pix: number
+          unimed: number
+        }[]
+      }
+      get_latest_movements: {
+        Args: {
+          p_company_id: string
+          p_date_end?: string
+          p_date_start?: string
+          p_include_cancelled?: boolean
+          p_include_previsto?: boolean
+          p_limit?: number
+        }
+        Returns: {
+          cancel_reason: string
+          cancelled_at: string
+          categoria: string
+          created_at: string
+          data_prevista: string
+          data_recebimento: string
+          descricao: string
+          id: string
+          observacao: string
+          operadora: string
+          payment_method: string
+          receipt_type: string
+          status: string
+          type: string
+          unit_id: string
+          valor: number
+        }[]
+      }
+      get_summary_by_unit: {
+        Args: {
+          p_company_id: string
+          p_date_end: string
+          p_date_start: string
+          p_include_cancelled?: boolean
+          p_include_previsto?: boolean
+        }
+        Returns: {
+          cancelados_total: number
+          entradas_previstas: number
+          entradas_realizadas: number
+          mov_count_realizado: number
+          saidas_previstas: number
+          saidas_realizadas: number
+          saldo_realizado: number
+          unit_id: string
         }[]
       }
       get_user_companies: { Args: { _user_id: string }; Returns: string[] }

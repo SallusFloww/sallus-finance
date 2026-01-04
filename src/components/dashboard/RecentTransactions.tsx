@@ -1,11 +1,18 @@
 import { forwardRef } from "react";
-import { ArrowUpRight, ArrowDownRight, CheckCircle2 } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, CheckCircle2, Clock, Ban } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/utils/formatters";
 import { Transaction } from "@/types";
 import { UNIT_LABELS, SPECIALTY_LABELS } from "@/utils/constants";
+import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface RecentTransactionsProps {
   transactions: Transaction[];
@@ -20,6 +27,49 @@ function groupByDate(transactions: Transaction[]) {
     groups[dateKey].push(t);
   });
   return Object.entries(groups).sort(([a], [b]) => b.localeCompare(a));
+}
+
+// Status badge component
+function StatusBadge({ status, cancelReason }: { status: string; cancelReason?: string }) {
+  if (status === "REALIZADO") {
+    return (
+      <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 bg-success/10 text-success border-success/30">
+        <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+        Realizado
+      </Badge>
+    );
+  }
+  
+  if (status === "PENDENTE") {
+    return (
+      <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 bg-amber-500/10 text-amber-600 border-amber-500/30">
+        <Clock className="h-2.5 w-2.5 mr-0.5" />
+        Previsto
+      </Badge>
+    );
+  }
+  
+  if (status === "CANCELADO") {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 bg-muted text-muted-foreground border-muted-foreground/30">
+              <Ban className="h-2.5 w-2.5 mr-0.5" />
+              Cancelado
+            </Badge>
+          </TooltipTrigger>
+          {cancelReason && (
+            <TooltipContent side="top" className="max-w-xs">
+              <p className="text-xs"><strong>Motivo:</strong> {cancelReason}</p>
+            </TooltipContent>
+          )}
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+  
+  return null;
 }
 
 export const RecentTransactions = forwardRef<HTMLDivElement, RecentTransactionsProps>(
@@ -41,7 +91,7 @@ export const RecentTransactions = forwardRef<HTMLDivElement, RecentTransactionsP
   const groupedTransactions = groupByDate(transactions);
 
   return (
-    <div className="space-y-4">
+    <div ref={ref} className="space-y-4">
       {groupedTransactions.map(([dateKey, dayTransactions]) => (
         <div key={dateKey}>
           {/* Cabeçalho do dia */}
@@ -59,33 +109,58 @@ export const RecentTransactions = forwardRef<HTMLDivElement, RecentTransactionsP
           <div className="space-y-1">
             {dayTransactions.map((transaction) => {
               const isIncome = transaction.type === "INCOME";
+              const isCancelled = transaction.status === "CANCELADO";
 
               return (
                 <div
                   key={transaction.id}
-                  className="flex items-center justify-between rounded-lg bg-muted/30 hover:bg-muted/50 px-3 py-2.5 transition-colors"
+                  className={cn(
+                    "flex items-center justify-between rounded-lg px-3 py-2.5 transition-colors",
+                    isCancelled 
+                      ? "bg-muted/20 opacity-60" 
+                      : "bg-muted/30 hover:bg-muted/50"
+                  )}
                 >
                   <div className="flex items-center gap-3">
                     {/* Indicador de tipo - compacto */}
                     <div
                       className={cn(
                         "flex h-6 w-6 shrink-0 items-center justify-center rounded-full",
-                        isIncome ? "bg-success/10" : "bg-destructive/10"
+                        isCancelled 
+                          ? "bg-muted" 
+                          : isIncome 
+                            ? "bg-success/10" 
+                            : "bg-destructive/10"
                       )}
                     >
                       {isIncome ? (
-                        <ArrowUpRight className="h-3 w-3 text-success" />
+                        <ArrowUpRight className={cn(
+                          "h-3 w-3",
+                          isCancelled ? "text-muted-foreground" : "text-success"
+                        )} />
                       ) : (
-                        <ArrowDownRight className="h-3 w-3 text-destructive" />
+                        <ArrowDownRight className={cn(
+                          "h-3 w-3",
+                          isCancelled ? "text-muted-foreground" : "text-destructive"
+                        )} />
                       )}
                     </div>
 
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">
-                        {transaction.category}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className={cn(
+                          "text-sm font-medium truncate",
+                          isCancelled ? "text-muted-foreground line-through" : "text-foreground"
+                        )}>
+                          {transaction.category}
+                        </p>
+                        <StatusBadge 
+                          status={transaction.status} 
+                          cancelReason={transaction.cancelledReason}
+                        />
+                      </div>
                       <p className="text-[11px] text-muted-foreground truncate">
-                        {UNIT_LABELS[transaction.unit] || transaction.unit}
+                        {transaction.unit ? (UNIT_LABELS[transaction.unit] || transaction.unit) : "Sem unidade"}
                         {transaction.specialty && (
                           <span className="ml-1">• {SPECIALTY_LABELS[transaction.specialty]}</span>
                         )}
@@ -100,7 +175,11 @@ export const RecentTransactions = forwardRef<HTMLDivElement, RecentTransactionsP
                     <span
                       className={cn(
                         "text-sm font-semibold tabular-nums min-w-[80px] text-right",
-                        isIncome ? "text-success" : "text-destructive"
+                        isCancelled 
+                          ? "text-muted-foreground line-through" 
+                          : isIncome 
+                            ? "text-success" 
+                            : "text-destructive"
                       )}
                     >
                       {isIncome ? "+" : "−"}{formatCurrency(transaction.amount)}

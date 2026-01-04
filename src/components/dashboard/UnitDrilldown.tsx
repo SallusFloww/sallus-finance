@@ -21,6 +21,10 @@ interface UnitData {
   expense: number;
   netBalance: number;
   transactionCount: number;
+  // Previstos (para exibição informativa, não impacta saldo)
+  previstoIncome?: number;
+  previstoExpense?: number;
+  previstoCount?: number;
   specialties?: {
     id: Specialty;
     name: string;
@@ -53,21 +57,38 @@ export function UnitDrilldown({ transactions, dateRange }: UnitDrilldownProps) {
   const [expandedUnit, setExpandedUnit] = useState<string | null>(null);
 
   const unitData = useMemo(() => {
-    // Filtrar por data - todas as transações são REALIZADAS
+    // Filtrar por data E por status REALIZADO (única fonte de verdade)
     const filtered = transactions.filter((t) => {
       const transactionDate = new Date(t.date);
-      return (
-        transactionDate >= dateRange.start &&
-        transactionDate <= dateRange.end
-      );
+      const inDateRange = transactionDate >= dateRange.start && transactionDate <= dateRange.end;
+      // IMPORTANTE: Apenas movimentações REALIZADAS impactam o saldo
+      const isRealized = t.status === "REALIZADO";
+      return inDateRange && isRealized;
+    });
+
+    // Também contar previstos para exibir separadamente
+    const previstos = transactions.filter((t) => {
+      const transactionDate = new Date(t.date);
+      const inDateRange = transactionDate >= dateRange.start && transactionDate <= dateRange.end;
+      return inDateRange && t.status === "PENDENTE";
     });
 
     const units: UnitData[] = ["ONCOLOGIA", "PRONTO_SOCORRO", "CENTRO_CLINICO"].map((unitId) => {
+      // Apenas transações REALIZADAS para o cálculo principal
       const unitTransactions = filtered.filter((t) => t.unit === unitId);
       const income = unitTransactions
         .filter((t) => t.type === "INCOME")
         .reduce((sum, t) => sum + t.amount, 0);
       const expense = unitTransactions
+        .filter((t) => t.type === "EXPENSE")
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      // Previstos por unidade (para exibição informativa)
+      const unitPrevistos = previstos.filter((t) => t.unit === unitId);
+      const previstoIncome = unitPrevistos
+        .filter((t) => t.type === "INCOME")
+        .reduce((sum, t) => sum + t.amount, 0);
+      const previstoExpense = unitPrevistos
         .filter((t) => t.type === "EXPENSE")
         .reduce((sum, t) => sum + t.amount, 0);
 
@@ -83,9 +104,13 @@ export function UnitDrilldown({ transactions, dateRange }: UnitDrilldownProps) {
         expense,
         netBalance: income - expense,
         transactionCount: unitTransactions.length,
+        // Adiciona informação de previstos
+        previstoIncome,
+        previstoExpense,
+        previstoCount: unitPrevistos.length,
       };
 
-      // Adicionar especialidades para Centro Clínico
+      // Adicionar especialidades para Centro Clínico (apenas REALIZADAS)
       if (unitId === "CENTRO_CLINICO") {
         data.specialties = SPECIALTIES.map((spec) => {
           const specTransactions = unitTransactions.filter((t) => t.specialty === spec.id);
@@ -159,7 +184,10 @@ export function UnitDrilldown({ transactions, dateRange }: UnitDrilldownProps) {
                         )}
                       </div>
                       <p className="text-[11px] text-muted-foreground">
-                        {unit.transactionCount} mov.
+                        {unit.transactionCount} mov. (real.)
+                        {(unit.previstoCount || 0) > 0 && (
+                          <span className="ml-1 text-amber-600/70">• {unit.previstoCount} prev.</span>
+                        )}
                         {unit.id === "CENTRO_CLINICO" && hasSpecialties && !isExpanded && (
                           <span className="ml-1.5 text-primary/70">• Ver especialidades</span>
                         )}
