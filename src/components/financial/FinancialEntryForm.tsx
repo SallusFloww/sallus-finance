@@ -133,10 +133,10 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
     // Filter out payment method keywords using tokenization (exact match only)
     options = options.filter(opt => !isPaymentMethodCategory(opt.value));
 
-    // Dedupe (case-insensitive) and sort alphabetically
+    // Dedupe (case-insensitive + accent-insensitive) and sort alphabetically
     const seen = new Set<string>();
     const unique = options.filter(opt => {
-      const key = opt.value.toLowerCase();
+      const key = normalizeAccents(opt.value);
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
