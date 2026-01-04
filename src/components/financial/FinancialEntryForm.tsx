@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { format } from "date-fns";
 import { CalendarIcon, Plus, Clock, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Popover,
@@ -33,7 +34,8 @@ import {
   FinancialEntryStatus,
   useFinancialEntries 
 } from "@/hooks/useFinancialEntries";
-import { BUSINESS_UNITS, RECEIPT_TYPES, PAYMENT_METHODS_PARTICULAR, OPERADORAS } from "@/utils/constants";
+import { useCompanySettings } from "@/hooks/useCompanySettings";
+import { BUSINESS_UNITS, RECEIPT_TYPES, PAYMENT_METHODS_PARTICULAR, OPERADORAS, DEFAULT_CATEGORIES } from "@/utils/constants";
 import { parseMoneyBR, formatCurrency } from "@/utils/formatters";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
@@ -44,6 +46,7 @@ interface FinancialEntryFormProps {
 
 export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryFormProps) {
   const { addEntry, updateEntry } = useFinancialEntries();
+  const { settings } = useCompanySettings();
 
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -66,8 +69,27 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
   const [paymentMethod, setPaymentMethod] = useState(editingEntry?.payment_method || "");
   const [operadora, setOperadora] = useState(editingEntry?.operadora || "");
 
+  // Get filtered categories based on transaction type
+  const filteredCategories = useMemo(() => {
+    // First try to get categories from company settings
+    const settingsCategories = settings?.categories || [];
+    
+    // If settings has categories, filter by type (INCOME for entrada, EXPENSE for saida)
+    if (settingsCategories.length > 0) {
+      const targetType = type === "entrada" ? "INCOME" : "EXPENSE";
+      return settingsCategories.filter((cat: any) => cat.type === targetType);
+    }
+    
+    // Fallback to DEFAULT_CATEGORIES from constants
+    const targetType = type === "entrada" ? "INCOME" : "EXPENSE";
+    return DEFAULT_CATEGORIES.filter(cat => cat.type === targetType);
+  }, [settings?.categories, type]);
+
   // Reset dependents when type changes
   useEffect(() => {
+    // Reset category when type changes
+    setCategoria("");
+    
     if (type === "saida") {
       setReceiptType("");
       setOperadora("");
@@ -143,8 +165,8 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
     setOperadora("");
   };
 
-  const FormContent = (
-    <form onSubmit={handleSubmit} className="space-y-4">
+  const FormFields = (
+    <div className="space-y-4">
       {/* Tipo de Movimentação */}
       <div className="grid grid-cols-2 gap-2">
         <Button
@@ -237,13 +259,25 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
 
       {/* Categoria */}
       <div className="space-y-2">
-        <Label htmlFor="categoria">Categoria</Label>
-        <Input
-          id="categoria"
-          placeholder="Ex: Consulta, Material, etc."
-          value={categoria}
-          onChange={(e) => setCategoria(e.target.value)}
-        />
+        <Label>Categoria</Label>
+        <Select value={categoria} onValueChange={setCategoria}>
+          <SelectTrigger>
+            <SelectValue placeholder={`Selecione a categoria (${type === "entrada" ? "Entrada" : "Saída"})`} />
+          </SelectTrigger>
+          <SelectContent>
+            {filteredCategories.map((cat: any) => (
+              <SelectItem key={cat.id} value={cat.id}>
+                {cat.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          {type === "entrada" 
+            ? "Mostrando apenas categorias de entrada (receitas)."
+            : "Mostrando apenas categorias de saída. Métodos de pagamento (PIX, Cartão) não são categorias."
+          }
+        </p>
       </div>
 
       {/* Data Prevista */}
@@ -387,8 +421,13 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
           rows={2}
         />
       </div>
+    </div>
+  );
 
-      {/* Submit */}
+  const FormContent = (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {FormFields}
+      {/* Submit - for editing inline form */}
       <Button type="submit" className="w-full" disabled={loading}>
         {loading ? "Salvando..." : editingEntry ? "Atualizar" : "Registrar"}
       </Button>
@@ -407,11 +446,27 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
           Nova Movimentação
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-md max-h-[90vh] flex flex-col p-0">
+        <DialogHeader className="px-6 pt-6 pb-2">
           <DialogTitle>Registrar Movimentação</DialogTitle>
         </DialogHeader>
-        {FormContent}
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+          <div className="flex-1 overflow-y-auto px-6 py-2">
+            {FormFields}
+          </div>
+          <DialogFooter className="sticky bottom-0 border-t bg-background px-6 py-4 mt-auto">
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => { resetForm(); setOpen(false); }}
+            >
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={loading}>
+              {loading ? "Salvando..." : "Registrar"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );
