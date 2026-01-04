@@ -38,6 +38,13 @@ import { useCompanySettings } from "@/hooks/useCompanySettings";
 import { BUSINESS_UNITS, RECEIPT_TYPES, PAYMENT_METHODS_PARTICULAR, OPERADORAS, DEFAULT_CATEGORIES } from "@/utils/constants";
 import { parseMoneyBR, formatCurrency } from "@/utils/formatters";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertCircle } from "lucide-react";
+
+// Payment method keywords to filter out from categories
+const PAYMENT_METHOD_KEYWORDS = [
+  "pix", "dinheiro", "debito", "débito", "credito", "crédito", 
+  "cartao", "cartão", "transferencia", "transferência", "ted", "boleto"
+];
 
 interface FinancialEntryFormProps {
   editingEntry?: FinancialEntry;
@@ -50,6 +57,7 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
 
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
   
   // Form fields
   const [type, setType] = useState<FinancialEntryType>(editingEntry?.type || "entrada");
@@ -69,21 +77,81 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
   const [paymentMethod, setPaymentMethod] = useState(editingEntry?.payment_method || "");
   const [operadora, setOperadora] = useState(editingEntry?.operadora || "");
 
-  // Get filtered categories based on transaction type
-  const filteredCategories = useMemo(() => {
-    // First try to get categories from company settings
-    const settingsCategories = settings?.categories || [];
-    
-    // If settings has categories, filter by type (INCOME for entrada, EXPENSE for saida)
-    if (settingsCategories.length > 0) {
-      const targetType = type === "entrada" ? "INCOME" : "EXPENSE";
-      return settingsCategories.filter((cat: any) => cat.type === targetType);
+  // Normalize categories to always return { value: string, label: string }[]
+  // Handles: A) Array legacy [{id,name,type}], B) Object {entrada:[...], saida:[...]}, C) Fallback
+  const categoryOptions = useMemo((): Array<{ value: string; label: string }> => {
+    const raw = settings?.categories;
+    let options: Array<{ value: string; label: string }> = [];
+
+    // Case B: Object format { entrada: [...], saida: [...] }
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      const key = type === "entrada" ? "entrada" : "saida";
+      const list = (raw as Record<string, unknown>)[key];
+      if (Array.isArray(list)) {
+        options = list.map((item: unknown) => {
+          if (typeof item === 'string') {
+            return { value: item, label: item };
+          }
+          if (item && typeof item === 'object' && 'name' in item) {
+            return { value: String((item as any).name), label: String((item as any).name) };
+          }
+          return null;
+        }).filter(Boolean) as Array<{ value: string; label: string }>;
+      }
     }
-    
-    // Fallback to DEFAULT_CATEGORIES from constants
-    const targetType = type === "entrada" ? "INCOME" : "EXPENSE";
-    return DEFAULT_CATEGORIES.filter(cat => cat.type === targetType);
+    // Case A: Array legacy [{id, name, type}]
+    else if (Array.isArray(raw) && raw.length > 0) {
+      const targetType = type === "entrada" ? "INCOME" : "EXPENSE";
+      options = raw
+        .filter((cat: any) => cat.type === targetType)
+        .map((cat: any) => ({ value: String(cat.name), label: String(cat.name) }));
+    }
+
+    // Case C: Fallback to DEFAULT_CATEGORIES
+    if (options.length === 0) {
+      const targetType = type === "entrada" ? "INCOME" : "EXPENSE";
+      options = DEFAULT_CATEGORIES
+        .filter(cat => cat.type === targetType)
+        .map(cat => ({ value: cat.name, label: cat.name }));
+    }
+
+    // Filter out payment method keywords (case-insensitive)
+    options = options.filter(opt => {
+      const lower = opt.value.toLowerCase().trim();
+      return !PAYMENT_METHOD_KEYWORDS.some(kw => lower === kw || lower.includes(kw));
+    });
+
+    // Dedupe (case-insensitive) and sort alphabetically
+    const seen = new Set<string>();
+    const unique = options.filter(opt => {
+      const key = opt.value.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    return unique.sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
   }, [settings?.categories, type]);
+
+  // Normalize units: prefer settings.units, fallback to BUSINESS_UNITS
+  const unitOptions = useMemo((): Array<{ value: string; label: string }> => {
+    const raw = settings?.units;
+
+    if (Array.isArray(raw) && raw.length > 0) {
+      return raw.map((u: any) => {
+        if (typeof u === 'string') {
+          return { value: u, label: u };
+        }
+        if (u && typeof u === 'object') {
+          return { value: String(u.id || u.name), label: String(u.name || u.id) };
+        }
+        return null;
+      }).filter(Boolean) as Array<{ value: string; label: string }>;
+    }
+
+    // Fallback to BUSINESS_UNITS
+    return BUSINESS_UNITS.map(unit => ({ value: unit.id, label: unit.name }));
+  }, [settings?.units]);
 
   // Reset dependents when type changes
   useEffect(() => {
@@ -106,13 +174,16 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setValidationError(null);
     
     const parsedValor = parseMoneyBR(valor);
     if (!parsedValor || parsedValor <= 0) {
+      setValidationError("Informe um valor válido maior que zero.");
       return;
     }
 
     if (!descricao.trim()) {
+      setValidationError("Informe uma descrição para a movimentação.");
       return;
     }
 
@@ -167,6 +238,13 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
 
   const FormFields = (
     <div className="space-y-4">
+      {/* Validation Error Alert */}
+      {validationError && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{validationError}</AlertDescription>
+        </Alert>
+      )}
       {/* Tipo de Movimentação */}
       <div className="grid grid-cols-2 gap-2">
         <Button
@@ -265,9 +343,9 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
             <SelectValue placeholder={`Selecione a categoria (${type === "entrada" ? "Entrada" : "Saída"})`} />
           </SelectTrigger>
           <SelectContent>
-            {filteredCategories.map((cat: any) => (
-              <SelectItem key={cat.id} value={cat.id}>
-                {cat.name}
+            {categoryOptions.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
               </SelectItem>
             ))}
           </SelectContent>
@@ -344,9 +422,9 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
             <SelectValue placeholder="Selecione a unidade" />
           </SelectTrigger>
           <SelectContent>
-            {BUSINESS_UNITS.map((unit) => (
-              <SelectItem key={unit.id} value={unit.id}>
-                {unit.name}
+            {unitOptions.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
               </SelectItem>
             ))}
           </SelectContent>
