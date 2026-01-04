@@ -40,11 +40,14 @@ import { parseMoneyBR, formatCurrency } from "@/utils/formatters";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
 
-// Payment method keywords to filter out from categories
+// Payment method keywords to filter out from categories (lowercase, no accents)
 const PAYMENT_METHOD_KEYWORDS = [
-  "pix", "dinheiro", "debito", "débito", "credito", "crédito", 
-  "cartao", "cartão", "transferencia", "transferência", "ted", "boleto"
+  "pix", "dinheiro", "debito", "credito", "cartao", "transferencia", "ted", "boleto"
 ];
+
+// Helper: normalize string removing accents for comparison
+const normalizeAccents = (s: string): string =>
+  s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
 interface FinancialEntryFormProps {
   editingEntry?: FinancialEntry;
@@ -77,9 +80,9 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
   const [paymentMethod, setPaymentMethod] = useState(editingEntry?.payment_method || "");
   const [operadora, setOperadora] = useState(editingEntry?.operadora || "");
 
-  // Helper: tokenize string for exact keyword matching
+  // Helper: tokenize string for exact keyword matching (with accent normalization)
   const tokenize = (str: string): string[] => {
-    return str.toLowerCase().split(/[\s\-_\/\\.,;:]+/).filter(Boolean);
+    return normalizeAccents(str).split(/[\s\-_\/\\.,;:]+/).filter(Boolean);
   };
 
   // Helper: check if any token matches a payment keyword exactly
@@ -194,10 +197,18 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
     }
   }, [receiptType]);
 
-  // Clear validation error when key fields change
+  // Clear validation error when any relevant field changes
   useEffect(() => {
-    setValidationError(null);
-  }, [valor, descricao]);
+    if (validationError) setValidationError(null);
+  }, [valor, descricao, categoria, unitId, receiptType, paymentMethod, operadora, status, type]);
+
+  // Reset form when modal opens (only for new entries, not editing)
+  useEffect(() => {
+    if (open && !editingEntry) {
+      resetForm();
+      setValidationError(null);
+    }
+  }, [open, editingEntry]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
