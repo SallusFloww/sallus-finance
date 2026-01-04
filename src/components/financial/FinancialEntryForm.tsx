@@ -36,7 +36,7 @@ import {
 } from "@/hooks/useFinancialEntries";
 import { useCompanySettings } from "@/hooks/useCompanySettings";
 import { BUSINESS_UNITS, RECEIPT_TYPES, PAYMENT_METHODS_PARTICULAR, OPERADORAS, DEFAULT_CATEGORIES } from "@/utils/constants";
-import { parseMoneyBR, formatCurrency } from "@/utils/formatters";
+import { parseMoneyBR } from "@/utils/formatters";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
 
@@ -186,6 +186,7 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
       setStatus("recebido");
       setReceiptType("");
       setOperadora("");
+      setDataRecebimento(undefined);
     }
   }, [type]);
 
@@ -235,7 +236,7 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
         categoria: categoria || undefined,
         valor: parsedValor,
         data_prevista: format(dataPrevista, "yyyy-MM-dd"),
-        data_recebimento: status === "recebido" && dataRecebimento 
+        data_recebimento: type === "entrada" && status === "recebido" && dataRecebimento 
           ? format(dataRecebimento, "yyyy-MM-dd") 
           : undefined,
         observacao: observacao || undefined,
