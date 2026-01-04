@@ -213,6 +213,25 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
     }
   }, [open, editingEntry]);
 
+  // Sync form state when editingEntry changes (edit mode)
+  useEffect(() => {
+    if (editingEntry) {
+      setType(editingEntry.type || "entrada");
+      setStatus(editingEntry.status || "recebido");
+      setDescricao(editingEntry.descricao || "");
+      setCategoria(editingEntry.categoria || "");
+      setValor(editingEntry.valor?.toString() || "");
+      setDataPrevista(editingEntry.data_prevista ? new Date(editingEntry.data_prevista) : new Date());
+      setDataRecebimento(editingEntry.data_recebimento ? new Date(editingEntry.data_recebimento) : undefined);
+      setObservacao(editingEntry.observacao || "");
+      setUnitId(editingEntry.unit_id || "");
+      setReceiptType(editingEntry.receipt_type || "");
+      setPaymentMethod(editingEntry.payment_method || "");
+      setOperadora(editingEntry.operadora || "");
+      setValidationError(null);
+    }
+  }, [editingEntry]);
+
   // Auto-fill dataRecebimento when status is "recebido" and empty; clear when "previsto"
   useEffect(() => {
     if (type === "entrada") {
@@ -237,6 +256,26 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
     if (!descricao.trim()) {
       setValidationError("Informe uma descrição para a movimentação.");
       return;
+    }
+
+    // Conditional validations for "entrada"
+    if (type === "entrada") {
+      if (!receiptType) {
+        setValidationError("Selecione o tipo de recebimento (Particular ou Convênio).");
+        return;
+      }
+      if (receiptType === "PARTICULAR" && !paymentMethod) {
+        setValidationError("Selecione a forma de pagamento para recebimento Particular.");
+        return;
+      }
+      if (receiptType === "CONVENIO" && !operadora) {
+        setValidationError("Selecione a operadora para recebimento Convênio.");
+        return;
+      }
+      if (status === "recebido" && !dataRecebimento) {
+        setValidationError("Informe a data de recebimento para entradas recebidas.");
+        return;
+      }
     }
 
     setLoading(true);
@@ -270,6 +309,9 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
       resetForm();
       setOpen(false);
       onClose?.();
+    } catch (error) {
+      console.error("Erro ao salvar movimentação:", error);
+      setValidationError("Não foi possível salvar. Tente novamente.");
     } finally {
       setLoading(false);
     }
