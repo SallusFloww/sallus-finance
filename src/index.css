@@ -1,0 +1,320 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@layer base {
+  :root {
+    /* SallusFlow - Paleta Oficial */
+    /* Primária: #0F4C81 (azul petróleo) */
+    --primary: 207 80% 28%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secundária: #2FBF71 (verde saúde) */
+    --secondary: 150 60% 47%;
+    --secondary-foreground: 0 0% 100%;
+
+    /* Destaque: #4FA3D1 */
+    --accent: 200 55% 56%;
+    --accent-foreground: 0 0% 100%;
+
+    /* Fundo principal: #F6F8FA */
+    --background: 210 20% 98%;
+    --foreground: 207 30% 16%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 207 30% 16%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 207 30% 16%;
+
+    --muted: 210 20% 96%;
+    --muted-foreground: 207 15% 45%;
+
+    /* Verde para entradas/sucesso */
+    --success: 150 60% 47%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 80% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    /* Erros/alertas: #E5533D */
+    --destructive: 8 75% 57%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 210 20% 90%;
+    --input: 210 20% 90%;
+    --ring: 207 80% 28%;
+
+    --radius: 0.625rem;
+
+    --chart-income: 150 60% 47%;
+    --chart-expense: 8 75% 57%;
+    --chart-scheduled: 207 80% 28%;
+    --chart-pending: 38 80% 50%;
+
+    /* Role colors */
+    --role-admin: 207 80% 28%;
+    --role-admin-foreground: 0 0% 100%;
+    --role-gestor: 38 92% 50%;
+    --role-gestor-foreground: 0 0% 100%;
+    --role-operacional: 150 60% 47%;
+    --role-operacional-foreground: 0 0% 100%;
+    --role-financeiro: 200 55% 56%;
+    --role-financeiro-foreground: 0 0% 100%;
+    --role-leitura: 207 15% 50%;
+    --role-leitura-foreground: 0 0% 100%;
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 207 30% 25%;
+    --sidebar-primary: 207 80% 28%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 20% 97%;
+    --sidebar-accent-foreground: 207 80% 25%;
+    --sidebar-border: 210 20% 92%;
+    --sidebar-ring: 207 80% 28%;
+  }
+
+  .dark {
+    /* SallusFlow Dark Mode */
+    --background: 207 30% 8%;
+    --foreground: 210 40% 98%;
+
+    --card: 207 28% 11%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 207 28% 11%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 200 55% 56%;
+    --primary-foreground: 207 30% 8%;
+
+    --secondary: 150 60% 47%;
+    --secondary-foreground: 207 30% 8%;
+
+    --muted: 207 25% 18%;
+    --muted-foreground: 207 20% 65%;
+
+    --accent: 200 45% 25%;
+    --accent-foreground: 200 55% 70%;
+
+    --success: 150 60% 50%;
+    --success-foreground: 207 30% 8%;
+
+    --warning: 38 92% 55%;
+    --warning-foreground: 207 30% 8%;
+
+    --destructive: 8 70% 50%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 207 25% 20%;
+    --input: 207 25% 20%;
+    --ring: 200 55% 56%;
+
+    --sidebar-background: 207 28% 10%;
+    --sidebar-foreground: 210 40% 90%;
+    --sidebar-primary: 200 55% 56%;
+    --sidebar-primary-foreground: 207 30% 8%;
+    --sidebar-accent: 207 25% 16%;
+    --sidebar-accent-foreground: 200 55% 70%;
+    --sidebar-border: 207 25% 20%;
+    --sidebar-ring: 200 55% 56%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', sans-serif;
+  }
+
+  /* Safe area para mobile */
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+@layer components {
+  /* Cards padronizados - SaaS Premium */
+  .card-base {
+    @apply rounded-xl border border-border bg-card p-4 shadow-sm;
+  }
+
+  .card-compact {
+    @apply rounded-xl border border-border bg-card p-3;
+  }
+
+  .card-elevated {
+    @apply rounded-xl border border-border bg-card p-6 shadow-md;
+  }
+
+  /* Seções de página */
+  .page-header {
+    @apply mb-6;
+  }
+
+  .page-title {
+    @apply text-2xl font-semibold text-foreground tracking-tight;
+  }
+
+  .page-subtitle {
+    @apply text-sm text-muted-foreground mt-1;
+  }
+
+  /* Tabelas compactas */
+  .table-compact {
+    @apply text-sm;
+  }
+
+  .table-compact th,
+  .table-compact td {
+    @apply py-2.5 px-3;
+  }
+
+  /* Filtros sticky */
+  .filters-sticky {
+    @apply sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-3 -mx-4 px-4 border-b border-border/50;
+  }
+
+  /* Grid responsivo para stats */
+  .stats-grid {
+    @apply grid gap-4 sm:grid-cols-2 lg:grid-cols-4;
+  }
+
+  /* Valores monetários */
+  .value-positive {
+    @apply text-success font-medium;
+  }
+
+  .value-negative {
+    @apply text-destructive font-medium;
+  }
+
+  .value-neutral {
+    @apply text-foreground font-medium;
+  }
+
+  /* Status badges consistentes */
+  .status-badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  .status-active {
+    @apply bg-success/10 text-success border border-success/20;
+  }
+
+  .status-inactive {
+    @apply bg-muted text-muted-foreground;
+  }
+
+  .status-warning {
+    @apply bg-warning/10 text-warning border border-warning/20;
+  }
+
+  .status-error {
+    @apply bg-destructive/10 text-destructive border border-destructive/20;
+  }
+
+  .status-info {
+    @apply bg-primary/10 text-primary border border-primary/20;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-card/80 backdrop-blur-md;
+  }
+
+  .gradient-primary {
+    background: linear-gradient(135deg, hsl(207 80% 28%) 0%, hsl(150 60% 47%) 100%);
+  }
+
+  .gradient-success {
+    background: linear-gradient(135deg, hsl(var(--success)) 0%, hsl(160 65% 45%) 100%);
+  }
+
+  .gradient-warning {
+    background: linear-gradient(135deg, hsl(var(--warning)) 0%, hsl(25 95% 55%) 100%);
+  }
+
+  .gradient-destructive {
+    background: linear-gradient(135deg, hsl(var(--destructive)) 0%, hsl(350 80% 55%) 100%);
+  }
+
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background: linear-gradient(135deg, hsl(207 80% 28%) 0%, hsl(150 60% 47%) 100%);
+  }
+
+  .shadow-soft {
+    box-shadow: 0 4px 24px -6px hsl(207 80% 28% / 0.12);
+  }
+
+  .shadow-glow {
+    box-shadow: 0 0 40px -8px hsl(150 60% 47% / 0.35);
+  }
+
+  /* Animações */
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.4s ease-out;
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.3s ease-out;
+  }
+
+  /* Truncate com tooltip */
+  .truncate-tooltip {
+    @apply truncate;
+  }
+
+  /* Scroll suave */
+  .scroll-smooth {
+    scroll-behavior: smooth;
+  }
+
+  /* Hide scrollbar mas manter funcionalidade */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes slideUp {
+    from { 
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to { 
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes scaleIn {
+    from { 
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to { 
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+}

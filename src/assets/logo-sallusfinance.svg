@@ -1,0 +1,16 @@
+<svg width="360" height="80" viewBox="0 0 360 80" xmlns="http://www.w3.org/2000/svg">
+  <rect width="360" height="80" fill="none"/>
+
+  <!-- Ícone -->
+  <circle cx="40" cy="40" r="28" fill="#0F2A44"/>
+  <path d="M28 40c6-10 18-10 24 0" stroke="#1EC98C" stroke-width="4" fill="none" stroke-linecap="round"/>
+
+  <!-- Texto -->
+  <text x="80" y="48"
+        font-family="Inter, Arial, sans-serif"
+        font-size="32"
+        font-weight="600"
+        fill="#0F2A44">
+    Sallus<tspan fill="#1EC98C">Finance</tspan>
+  </text>
+</svg>

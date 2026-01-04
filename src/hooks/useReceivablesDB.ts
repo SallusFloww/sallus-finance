@@ -1,0 +1,619 @@
+import { useState, useCallback, useMemo, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { differenceInDays, parseISO } from "date-fns";
+import { 
+  Receivable, 
+  ReceivableStatus, 
+  GlossType, 
+  AppealStatus,
+  ReceivablesStats,
+  ReceivableHistoryEntry
+} from "@/types";
+import { toast } from "sonner";
+
+interface ReceivablesFilters {
+  startDate?: Date;
+  endDate?: Date;
+  unit?: string;
+  status?: ReceivableStatus;
+  source?: string;
+  search?: string;
+  competencia?: string;
+  appealStatus?: AppealStatus;
+}
+
+// Tipo do banco de dados
+interface DBReceivable {
+  id: string;
+  company_id: string;
+  billing_date: string;
+  competencia: string | null;
+  unit: string;
+  source: string;
+  description: string;
+  billed_amount: number;
+  received_amount: number;
+  glossed_amount: number;
+  status: string;
+  gloss_type: string | null;
+  gloss_reason: string | null;
+  appeal_status: string | null;
+  appeal_amount: number | null;
+  appeal_start_date: string | null;
+  appeal_resolved_date: string | null;
+  appeal_recovered_amount: number | null;
+  appeal_transaction_id: string | null;
+  expected_receipt_days: number | null;
+  actual_receipt_date: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  updated_by: string | null;
+  linked_transaction_id: string | null;
+  history: ReceivableHistoryEntry[];
+  edit_logs: Array<{
+    field: string;
+    previousValue: string;
+    newValue: string;
+    editedAt: string;
+    editedBy: string;
+  }>;
+}
+
+// Converter de DB para domínio
+function toReceivable(db: DBReceivable): Receivable {
+  return {
+    id: db.id,
+    billingDate: db.billing_date,
+    competencia: db.competencia || undefined,
+    unit: db.unit,
+    source: db.source,
+    description: db.description,
+    billedAmount: Number(db.billed_amount),
+    receivedAmount: Number(db.received_amount),
+    glossedAmount: Number(db.glossed_amount),
+    status: db.status as ReceivableStatus,
+    glossType: db.gloss_type as GlossType | undefined,
+    glossReason: db.gloss_reason || undefined,
+    appealStatus: (db.appeal_status || "NAO_INICIADO") as AppealStatus,
+    appealAmount: db.appeal_amount ? Number(db.appeal_amount) : undefined,
+    appealStartDate: db.appeal_start_date || undefined,
+    appealResolvedDate: db.appeal_resolved_date || undefined,
+    appealRecoveredAmount: db.appeal_recovered_amount ? Number(db.appeal_recovered_amount) : undefined,
+    appealTransactionId: db.appeal_transaction_id || undefined,
+    expectedReceiptDays: db.expected_receipt_days || undefined,
+    actualReceiptDate: db.actual_receipt_date || undefined,
+    notes: db.notes || undefined,
+    createdBy: db.created_by || "system",
+    createdAt: db.created_at,
+    updatedAt: db.updated_at,
+    linkedTransactionId: db.linked_transaction_id || undefined,
+    history: db.history || [],
+    editLogs: db.edit_logs || [],
+  };
+}
+
+// Criar entrada no histórico
+function createHistoryEntry(
+  action: ReceivableHistoryEntry["action"],
+  description: string,
+  userName: string,
+  amount?: number,
+  linkedTransactionId?: string
+): ReceivableHistoryEntry {
+  return {
+    id: crypto.randomUUID(),
+    action,
+    description,
+    timestamp: new Date().toISOString(),
+    userName,
+    amount,
+    linkedTransactionId,
+  };
+}
+
+export function useReceivablesDB() {
+  const { currentCompany, profile } = useAuth();
+  const [receivables, setReceivables] = useState<Receivable[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch receivables
+  const fetchReceivables = useCallback(async () => {
+    if (!currentCompany?.id) return;
+
+    try {
+      setLoading(true);
+      const { data, error: fetchError } = await supabase
+        .from("receivables")
+        .select("*")
+        .eq("company_id", currentCompany.id)
+        .order("billing_date", { ascending: false });
+
+      if (fetchError) throw fetchError;
+
+      setReceivables((data || []).map(d => toReceivable(d as unknown as DBReceivable)));
+      setError(null);
+    } catch (err) {
+      setError("Erro ao carregar recebíveis");
+    } finally {
+      setLoading(false);
+    }
+  }, [currentCompany?.id]);
+
+  // Initial fetch and realtime subscription
+  useEffect(() => {
+    fetchReceivables();
+
+    if (!currentCompany?.id) return;
+
+    const channel = supabase
+      .channel("receivables-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "receivables",
+          filter: `company_id=eq.${currentCompany.id}`,
+        },
+        () => {
+          fetchReceivables();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentCompany?.id, fetchReceivables]);
+
+  // Add receivable
+  const addReceivable = useCallback(async (
+    data: Omit<Receivable, "id" | "createdAt" | "receivedAmount" | "glossedAmount">
+  ) => {
+    if (!currentCompany?.id || !profile?.id) {
+      toast.error("Usuário não autenticado");
+      return null;
+    }
+
+    const history = [
+      createHistoryEntry(
+        "CRIADO",
+        `Faturamento registrado: R$ ${data.billedAmount.toFixed(2)}`,
+        profile.full_name || "system",
+        data.billedAmount
+      ),
+    ];
+
+    const { data: inserted, error: insertError } = await supabase
+      .from("receivables")
+      .insert([{
+        company_id: currentCompany.id,
+        billing_date: data.billingDate,
+        competencia: data.competencia || null,
+        unit: data.unit,
+        source: data.source,
+        description: data.description,
+        billed_amount: data.billedAmount,
+        received_amount: 0,
+        glossed_amount: 0,
+        status: "FATURADO",
+        expected_receipt_days: data.expectedReceiptDays || null,
+        notes: data.notes || null,
+        created_by: profile.id,
+        history: JSON.parse(JSON.stringify(history)),
+      }])
+      .select()
+      .single();
+
+    if (insertError) {
+      toast.error("Erro ao criar recebível");
+      return null;
+    }
+
+    toast.success("Recebível criado com sucesso");
+    return toReceivable(inserted as unknown as DBReceivable);
+  }, [currentCompany?.id, profile]);
+
+  // Update receivable
+  const updateReceivable = useCallback(async (
+    id: string,
+    data: Partial<Receivable>,
+    userName: string
+  ) => {
+    const receivable = receivables.find(r => r.id === id);
+    if (!receivable || receivable.status !== "FATURADO") {
+      toast.error("Apenas recebíveis com status FATURADO podem ser editados");
+      return;
+    }
+
+    const editLogs = [...(receivable.editLogs || [])];
+    const editedAt = new Date().toISOString();
+    
+    Object.keys(data).forEach((key) => {
+      const field = key as keyof Receivable;
+      const previousValue = String(receivable[field] || "");
+      const newValue = String(data[field] || "");
+      if (previousValue !== newValue) {
+        editLogs.push({
+          field,
+          previousValue,
+          newValue,
+          editedAt,
+          editedBy: userName,
+        });
+      }
+    });
+
+    const history = [...(receivable.history || [])];
+    history.push(createHistoryEntry("EDITADO", "Dados do faturamento editados", userName));
+
+    const updateData: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+      updated_by: profile?.id,
+      edit_logs: editLogs,
+      history: history,
+    };
+
+    if (data.description !== undefined) updateData.description = data.description;
+    if (data.billedAmount !== undefined) updateData.billed_amount = data.billedAmount;
+    if (data.notes !== undefined) updateData.notes = data.notes;
+    if (data.competencia !== undefined) updateData.competencia = data.competencia;
+
+    const { error: updateError } = await supabase
+      .from("receivables")
+      .update(updateData)
+      .eq("id", id);
+
+    if (updateError) {
+      toast.error("Erro ao atualizar recebível");
+      return;
+    }
+
+    toast.success("Recebível atualizado");
+  }, [receivables, profile]);
+
+  // Mark as received
+  const markAsReceived = useCallback(async (
+    id: string,
+    receivedAmount: number,
+    actualReceiptDate: string,
+    userName: string
+  ) => {
+    const receivable = receivables.find(r => r.id === id);
+    if (!receivable || receivable.status !== "FATURADO") {
+      toast.error("Apenas recebíveis FATURADO podem ser marcados como recebidos");
+      return null;
+    }
+
+    const history = [...(receivable.history || [])];
+    history.push(createHistoryEntry(
+      "RECEBIDO",
+      `Recebimento integral: R$ ${receivedAmount.toFixed(2)}`,
+      userName,
+      receivedAmount
+    ));
+
+    const { error: updateError } = await supabase
+      .from("receivables")
+      .update({
+        status: "RECEBIDO",
+        received_amount: receivedAmount,
+        glossed_amount: 0,
+        actual_receipt_date: actualReceiptDate,
+        updated_at: new Date().toISOString(),
+        history: JSON.parse(JSON.stringify(history)),
+      })
+      .eq("id", id);
+
+    if (updateError) {
+      toast.error("Erro ao marcar como recebido");
+      return null;
+    }
+
+    toast.success("Recebível marcado como recebido");
+    return { id };
+  }, [receivables]);
+
+  // Mark as glossed
+  const markAsGlossed = useCallback(async (
+    id: string,
+    glossType: GlossType,
+    glossReason: string,
+    glossAmount: number,
+    actualReceiptDate: string,
+    userName: string,
+    initiateAppeal: boolean = false
+  ) => {
+    const receivable = receivables.find(r => r.id === id);
+    if (!receivable || receivable.status !== "FATURADO") {
+      toast.error("Apenas recebíveis FATURADO podem ser glosados");
+      return null;
+    }
+
+    const now = new Date().toISOString();
+    const history = [...(receivable.history || [])];
+    
+    const netReceivedAmount = glossType === "PARCIAL" 
+      ? receivable.billedAmount - glossAmount 
+      : 0;
+
+    history.push(createHistoryEntry(
+      "GLOSA_REGISTRADA",
+      glossType === "PARCIAL"
+        ? `Glosa parcial: R$ ${glossAmount.toFixed(2)} - ${glossReason}. Valor líquido: R$ ${netReceivedAmount.toFixed(2)}`
+        : `Glosa total: R$ ${receivable.billedAmount.toFixed(2)} - ${glossReason}`,
+      userName,
+      glossAmount
+    ));
+
+    if (initiateAppeal) {
+      history.push(createHistoryEntry(
+        "RECURSO_INICIADO",
+        `Recurso iniciado para o valor de R$ ${glossAmount.toFixed(2)}`,
+        userName,
+        glossAmount
+      ));
+    }
+
+    const { error: updateError } = await supabase
+      .from("receivables")
+      .update({
+        status: glossType === "TOTAL" ? "GLOSADO" : "RECEBIDO_COM_GLOSA",
+        gloss_type: glossType,
+        gloss_reason: glossReason,
+        glossed_amount: glossType === "TOTAL" ? receivable.billedAmount : glossAmount,
+        received_amount: netReceivedAmount,
+        actual_receipt_date: actualReceiptDate,
+        appeal_status: initiateAppeal ? "EM_RECURSO" : "NAO_INICIADO",
+        appeal_amount: initiateAppeal ? glossAmount : null,
+        appeal_start_date: initiateAppeal ? now : null,
+        updated_at: now,
+        history: JSON.parse(JSON.stringify(history)),
+      })
+      .eq("id", id);
+
+    if (updateError) {
+      toast.error("Erro ao registrar glosa");
+      return null;
+    }
+
+    toast.success("Glosa registrada");
+    return { id };
+  }, [receivables]);
+
+  // Initiate appeal
+  const initiateAppeal = useCallback(async (
+    id: string,
+    appealAmount: number,
+    userName: string
+  ) => {
+    const receivable = receivables.find(r => r.id === id);
+    if (!receivable) return;
+    if (receivable.status !== "RECEBIDO_COM_GLOSA" && receivable.status !== "GLOSADO") return;
+    if (receivable.appealStatus === "EM_RECURSO" || receivable.appealStatus === "DEFERIDO") return;
+
+    const history = [...(receivable.history || [])];
+    history.push(createHistoryEntry(
+      "RECURSO_INICIADO",
+      `Recurso iniciado para o valor de R$ ${appealAmount.toFixed(2)}`,
+      userName,
+      appealAmount
+    ));
+
+    const { error: updateError } = await supabase
+      .from("receivables")
+      .update({
+        appeal_status: "EM_RECURSO",
+        appeal_amount: appealAmount,
+        appeal_start_date: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        history: JSON.parse(JSON.stringify(history)),
+      })
+      .eq("id", id);
+
+    if (updateError) {
+      toast.error("Erro ao iniciar recurso");
+      return;
+    }
+
+    toast.success("Recurso iniciado");
+  }, [receivables]);
+
+  // Approve appeal
+  const approveAppeal = useCallback(async (
+    id: string,
+    recoveredAmount: number,
+    receiptDate: string,
+    userName: string
+  ) => {
+    const receivable = receivables.find(r => r.id === id);
+    if (!receivable || receivable.appealStatus !== "EM_RECURSO") {
+      toast.error("Apenas recursos EM_RECURSO podem ser deferidos");
+      return null;
+    }
+
+    const newReceivedAmount = (receivable.receivedAmount || 0) + recoveredAmount;
+    const newGlossedAmount = Math.max(0, (receivable.glossedAmount || 0) - recoveredAmount);
+
+    const history = [...(receivable.history || [])];
+    history.push(createHistoryEntry(
+      "RECURSO_DEFERIDO",
+      `Recurso deferido: R$ ${recoveredAmount.toFixed(2)} recuperados`,
+      userName,
+      recoveredAmount
+    ));
+
+    const newStatus = newGlossedAmount <= 0 ? "RECEBIDO" : receivable.status;
+
+    const { error: updateError } = await supabase
+      .from("receivables")
+      .update({
+        status: newStatus,
+        received_amount: newReceivedAmount,
+        glossed_amount: newGlossedAmount,
+        appeal_status: "DEFERIDO",
+        appeal_recovered_amount: recoveredAmount,
+        appeal_resolved_date: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        history: JSON.parse(JSON.stringify(history)),
+      })
+      .eq("id", id);
+
+    if (updateError) {
+      toast.error("Erro ao deferir recurso");
+      return null;
+    }
+
+    toast.success("Recurso deferido");
+    return { id, recoveredAmount };
+  }, [receivables]);
+
+  // Reject appeal
+  const rejectAppeal = useCallback(async (
+    id: string,
+    userName: string
+  ) => {
+    const receivable = receivables.find(r => r.id === id);
+    if (!receivable || receivable.appealStatus !== "EM_RECURSO") return;
+
+    const history = [...(receivable.history || [])];
+    history.push(createHistoryEntry(
+      "RECURSO_INDEFERIDO",
+      `Recurso indeferido. Valor de R$ ${(receivable.appealAmount || receivable.glossedAmount).toFixed(2)} registrado como perda definitiva.`,
+      userName,
+      receivable.appealAmount || receivable.glossedAmount
+    ));
+
+    const { error: updateError } = await supabase
+      .from("receivables")
+      .update({
+        appeal_status: "INDEFERIDO",
+        appeal_resolved_date: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        history: JSON.parse(JSON.stringify(history)),
+      })
+      .eq("id", id);
+
+    if (updateError) {
+      toast.error("Erro ao indeferir recurso");
+      return;
+    }
+
+    toast.success("Recurso indeferido");
+  }, [receivables]);
+
+  // Filter receivables
+  const filterReceivables = useCallback((filters: ReceivablesFilters): Receivable[] => {
+    return receivables.filter((r) => {
+      const billingDate = parseISO(r.billingDate);
+      
+      if (filters.startDate && billingDate < filters.startDate) return false;
+      if (filters.endDate && billingDate > filters.endDate) return false;
+      if (filters.unit && filters.unit !== "all" && r.unit !== filters.unit) return false;
+      if (filters.status && filters.status !== r.status) return false;
+      if (filters.source && r.source !== filters.source) return false;
+      if (filters.competencia && r.competencia !== filters.competencia) return false;
+      if (filters.appealStatus && r.appealStatus !== filters.appealStatus) return false;
+      if (filters.search) {
+        const search = filters.search.toLowerCase();
+        if (
+          !r.description.toLowerCase().includes(search) &&
+          !r.source.toLowerCase().includes(search) &&
+          !(r.competencia && r.competencia.toLowerCase().includes(search))
+        ) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [receivables]);
+
+  // Get stats
+  const getStats = useCallback((startDate?: Date, endDate?: Date): ReceivablesStats => {
+    const filtered = filterReceivables({ startDate, endDate });
+    
+    const totalBilled = filtered.reduce((sum, r) => sum + r.billedAmount, 0);
+    const totalReceived = filtered.reduce((sum, r) => sum + (r.receivedAmount || 0), 0);
+    const totalOpen = filtered
+      .filter((r) => r.status === "FATURADO")
+      .reduce((sum, r) => sum + r.billedAmount, 0);
+    const totalGlossed = filtered
+      .filter((r) => r.status === "GLOSADO" || r.status === "RECEBIDO_COM_GLOSA")
+      .reduce((sum, r) => sum + (r.glossedAmount || 0), 0);
+    const totalInAppeal = filtered
+      .filter((r) => r.appealStatus === "EM_RECURSO")
+      .reduce((sum, r) => sum + (r.appealAmount || r.glossedAmount || 0), 0);
+    const totalRecovered = filtered
+      .filter((r) => r.appealStatus === "DEFERIDO")
+      .reduce((sum, r) => sum + (r.appealRecoveredAmount || 0), 0);
+    const totalDefinitiveLoss = filtered
+      .filter((r) => 
+        (r.status === "GLOSADO" || r.status === "RECEBIDO_COM_GLOSA") &&
+        (r.appealStatus === "INDEFERIDO" || r.appealStatus === "NAO_INICIADO" || !r.appealStatus)
+      )
+      .reduce((sum, r) => sum + (r.glossedAmount || 0), 0);
+
+    const receivedItems = filtered.filter(
+      (r) => (r.status === "RECEBIDO" || r.status === "RECEBIDO_COM_GLOSA") && r.actualReceiptDate
+    );
+    const totalDays = receivedItems.reduce((sum, r) => {
+      const days = differenceInDays(
+        parseISO(r.actualReceiptDate!),
+        parseISO(r.billingDate)
+      );
+      return sum + days;
+    }, 0);
+    const averageReceiptDays = receivedItems.length > 0 
+      ? Math.round(totalDays / receivedItems.length) 
+      : 0;
+
+    return {
+      totalBilled,
+      totalReceived,
+      totalOpen,
+      totalGlossed,
+      totalInAppeal,
+      totalRecovered,
+      totalDefinitiveLoss,
+      count: filtered.length,
+      averageReceiptDays,
+    };
+  }, [filterReceivables]);
+
+  // Derived state
+  const openReceivables = useMemo(() => 
+    receivables.filter((r) => r.status === "FATURADO"),
+  [receivables]);
+
+  const receivablesInAppeal = useMemo(() =>
+    receivables.filter((r) => r.appealStatus === "EM_RECURSO"),
+  [receivables]);
+
+  const uniqueSources = useMemo(() => 
+    [...new Set(receivables.map((r) => r.source))].filter(Boolean),
+  [receivables]);
+
+  return {
+    receivables,
+    loading,
+    error,
+    refetch: fetchReceivables,
+    addReceivable,
+    updateReceivable,
+    deleteReceivable: async () => { toast.error("Exclusão não permitida"); },
+    markAsReceived,
+    markAsGlossed,
+    initiateAppeal,
+    approveAppeal,
+    rejectAppeal,
+    filterReceivables,
+    getStats,
+    openReceivables,
+    receivablesInAppeal,
+    uniqueSources,
+  };
+}

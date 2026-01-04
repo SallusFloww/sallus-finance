@@ -1,0 +1,354 @@
+import { useCallback, useMemo } from "react";
+import { useFinancialEntries, FinancialEntry, FinancialEntryInsert } from "./useFinancialEntries";
+import { useCompanySettings } from "./useCompanySettings";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  Transaction,
+  DashboardStats,
+  UnitStats,
+  TransactionStatus,
+  Settings,
+  InitialBalanceAdjustment,
+  FinancialCategory,
+} from "@/types";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+
+interface TransactionFilters {
+  startDate?: Date;
+  endDate?: Date;
+  unit?: string;
+  status?: TransactionStatus;
+  type?: "INCOME" | "EXPENSE";
+  financialCategory?: FinancialCategory;
+  search?: string;
+  includeCancelled?: boolean;
+}
+
+// Convert DB entry to Transaction format
+function entryToTransaction(entry: FinancialEntry): Transaction {
+  return {
+    id: entry.id,
+    date: entry.data_prevista,
+    type: entry.type === "entrada" ? "INCOME" : "EXPENSE",
+    amount: entry.valor,
+    financialCategory: "OPERACIONAL" as FinancialCategory,
+    unit: entry.unit_id || "",
+    category: entry.categoria || "",
+    paymentMethod: (entry.payment_method as any) || "PIX",
+    status: entry.status === "recebido" 
+      ? "REALIZADO" 
+      : entry.status === "cancelado" 
+        ? "CANCELADO" 
+        : "PENDENTE",
+    receiptType: entry.receipt_type as any,
+    operadora: entry.operadora as any,
+    notes: entry.observacao || undefined,
+    createdBy: entry.created_by || "system",
+    createdAt: entry.created_at,
+    receivedAt: entry.data_recebimento || undefined,
+    cancelledAt: entry.cancelled_at || undefined,
+    cancelledBy: entry.cancelled_by || undefined,
+    cancelledReason: entry.cancel_reason || undefined,
+  };
+}
+
+// Convert Transaction to DB insert format
+function transactionToEntry(
+  t: Omit<Transaction, "id" | "createdAt">
+): FinancialEntryInsert {
+  return {
+    type: t.type === "INCOME" ? "entrada" : "saida",
+    status: t.status === "REALIZADO" 
+      ? "recebido" 
+      : t.status === "CANCELADO" 
+        ? "cancelado" 
+        : "previsto",
+    descricao: t.category || t.notes || "Movimentação",
+    categoria: t.category,
+    valor: t.amount,
+    data_prevista: t.date,
+    data_recebimento: t.receivedAt,
+    observacao: t.notes,
+    unit_id: t.unit || undefined,
+    payment_method: t.paymentMethod,
+    receipt_type: t.receiptType,
+    operadora: t.operadora,
+  };
+}
+
+export function useTransactionsDB() {
+  const { currentCompany, profile } = useAuth();
+  const {
+    entries,
+    loading,
+    addEntry,
+    updateEntry,
+    cancelEntry,
+    markAsReceived: markEntryAsReceived,
+    filterEntries: filterDbEntries,
+    getStats: getDbStats,
+    refetch,
+  } = useFinancialEntries();
+
+  // Get settings from database via useCompanySettings
+  const { 
+    settings, 
+    updateSettings: updateCompanySettings,
+    loading: settingsLoading 
+  } = useCompanySettings();
+
+  // Convert all entries to Transaction format
+  const transactions = useMemo(
+    () => entries.map(entryToTransaction),
+    [entries]
+  );
+
+  // Add transaction
+  const addTransaction = useCallback(
+    async (transaction: Omit<Transaction, "id" | "createdAt">) => {
+      const entry = transactionToEntry(transaction);
+      const result = await addEntry(entry);
+      if (result) {
+        return entryToTransaction(result);
+      }
+      return null;
+    },
+    [addEntry]
+  );
+
+  // Update transaction
+  const updateTransaction = useCallback(
+    async (id: string, updates: Partial<Transaction>, _editedBy: string = "system") => {
+      const dbUpdates: any = {};
+      
+      if (updates.status !== undefined) {
+        dbUpdates.status = updates.status === "REALIZADO" 
+          ? "recebido" 
+          : updates.status === "CANCELADO" 
+            ? "cancelado" 
+            : "previsto";
+      }
+      if (updates.amount !== undefined) dbUpdates.valor = updates.amount;
+      if (updates.date !== undefined) dbUpdates.data_prevista = updates.date;
+      if (updates.category !== undefined) dbUpdates.categoria = updates.category;
+      if (updates.notes !== undefined) dbUpdates.observacao = updates.notes;
+      if (updates.unit !== undefined) dbUpdates.unit_id = updates.unit;
+      if (updates.paymentMethod !== undefined) dbUpdates.payment_method = updates.paymentMethod;
+      if (updates.receiptType !== undefined) dbUpdates.receipt_type = updates.receiptType;
+      if (updates.operadora !== undefined) dbUpdates.operadora = updates.operadora;
+      if (updates.receivedAt !== undefined) dbUpdates.data_recebimento = updates.receivedAt;
+
+      return updateEntry(id, dbUpdates);
+    },
+    [updateEntry]
+  );
+
+  // Cancel transaction (soft delete)
+  const cancelTransaction = useCallback(
+    async (id: string, cancelledBy: string, reason?: string) => {
+      return cancelEntry(id, reason);
+    },
+    [cancelEntry]
+  );
+
+  // Delete transaction (not allowed - use cancel)
+  const deleteTransaction = useCallback(
+    (_id: string) => {
+      toast.error("Exclusão física não permitida. Use cancelamento.");
+    },
+    []
+  );
+
+  // Filter transactions
+  const filterTransactions = useCallback(
+    (filters: TransactionFilters): Transaction[] => {
+      return transactions.filter((t) => {
+        const transactionDate = new Date(t.date);
+
+        if (filters.startDate && transactionDate < filters.startDate) return false;
+        if (filters.endDate && transactionDate > filters.endDate) return false;
+        if (filters.unit && t.unit !== filters.unit) return false;
+        if (filters.type && t.type !== filters.type) return false;
+        if (filters.status && t.status !== filters.status) return false;
+        if (filters.financialCategory && t.financialCategory !== filters.financialCategory) return false;
+        
+        if (filters.search) {
+          const searchLower = filters.search.toLowerCase();
+          const matchesSearch =
+            t.category?.toLowerCase().includes(searchLower) ||
+            t.reference?.toLowerCase().includes(searchLower) ||
+            t.notes?.toLowerCase().includes(searchLower);
+          if (!matchesSearch) return false;
+        }
+
+        return true;
+      });
+    },
+    [transactions]
+  );
+
+  // Get stats
+  const getStats = useCallback(
+    (startDate?: Date, endDate?: Date): DashboardStats => {
+      const start = startDate || new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+      const end = endDate || new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0);
+
+      const filtered = filterTransactions({ startDate: start, endDate: end });
+
+      const allIncomes = filtered.filter((t) => t.type === "INCOME");
+      const pendingIncomes = allIncomes.filter((t) => t.status === "PENDENTE");
+      const realizedIncomes = allIncomes.filter((t) => t.status === "REALIZADO");
+      const cancelledIncomes = allIncomes.filter((t) => t.status === "CANCELADO");
+
+      const realizedTransactions = filtered.filter((t) => t.status === "REALIZADO");
+
+      const totalIncome = realizedIncomes.reduce((sum, t) => sum + t.amount, 0);
+      const totalExpense = realizedTransactions
+        .filter((t) => t.type === "EXPENSE")
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      const currentBalance = settings.initialBalance + totalIncome - totalExpense;
+
+      return {
+        initialBalance: settings.initialBalance,
+        initialBalanceLastUpdate: settings.initialBalanceLastUpdate,
+        totalIncome,
+        totalExpense,
+        currentBalance,
+        transactionCount: realizedTransactions.length,
+        incomeByStatus: {
+          previsto: pendingIncomes.reduce((sum, t) => sum + t.amount, 0),
+          recebido: realizedIncomes.reduce((sum, t) => sum + t.amount, 0),
+          cancelado: cancelledIncomes.reduce((sum, t) => sum + t.amount, 0),
+        },
+        incomeCountByStatus: {
+          previsto: pendingIncomes.length,
+          recebido: realizedIncomes.length,
+          cancelado: cancelledIncomes.length,
+        },
+        incomeByReceiptType: {
+          particular: realizedIncomes
+            .filter((t) => t.receiptType === "PARTICULAR")
+            .reduce((sum, t) => sum + t.amount, 0),
+          convenio: realizedIncomes
+            .filter((t) => t.receiptType === "CONVENIO")
+            .reduce((sum, t) => sum + t.amount, 0),
+        },
+        incomeByPaymentMethod: {
+          dinheiro: 0,
+          pix: 0,
+          debito: 0,
+          creditoVista: 0,
+          creditoParcelado: 0,
+        },
+        incomeByOperadora: {
+          ipasgo: 0,
+          unimed: 0,
+          bradesco: 0,
+          geap: 0,
+        },
+        expenseByCategory: {},
+      };
+    },
+    [filterTransactions, settings.initialBalance, settings.initialBalanceLastUpdate]
+  );
+
+  // Get unit stats
+  const getUnitStats = useCallback(
+    (startDate?: Date, endDate?: Date): UnitStats[] => {
+      const filtered = filterTransactions({ startDate, endDate });
+      const unitMap = new Map<string, UnitStats>();
+
+      filtered.forEach((t) => {
+        if (!t.unit) return;
+        
+        const existing = unitMap.get(t.unit) || {
+          unit: t.unit,
+          income: 0,
+          expense: 0,
+          transactionCount: 0,
+          netBalance: 0,
+        };
+
+        if (t.type === "INCOME" && t.status === "REALIZADO") {
+          existing.income += t.amount;
+        } else if (t.type === "EXPENSE" && t.status === "REALIZADO") {
+          existing.expense += t.amount;
+        }
+        existing.transactionCount++;
+        existing.netBalance = existing.income - existing.expense;
+
+        unitMap.set(t.unit, existing);
+      });
+
+      return Array.from(unitMap.values());
+    },
+    [filterTransactions]
+  );
+
+  // Update initial balance
+  const updateInitialBalance = useCallback(
+    async (newValue: number, adjustedBy: string, reason?: string) => {
+      // TODO: Update in company_financial_settings table
+      const adjustment: InitialBalanceAdjustment = {
+        id: crypto.randomUUID(),
+        previousValue: settings.initialBalance,
+        newValue,
+        adjustedBy,
+        adjustedAt: new Date().toISOString(),
+        reason,
+      };
+      
+      toast.success("Saldo inicial atualizado");
+      return adjustment;
+    },
+    [settings.initialBalance]
+  );
+
+  // Update settings (delegates to useCompanySettings)
+  const updateSettings = useCallback(
+    async (updates: Partial<Settings>) => {
+      return updateCompanySettings(updates);
+    },
+    [updateCompanySettings]
+  );
+
+  // Import transactions
+  const importTransactions = useCallback(
+    async (newTransactions: Omit<Transaction, "id" | "createdAt">[]) => {
+      let count = 0;
+      for (const t of newTransactions) {
+        const result = await addTransaction(t);
+        if (result) count++;
+      }
+      return count;
+    },
+    [addTransaction]
+  );
+
+  // Recent transactions
+  const recentTransactions = useMemo(() => {
+    return [...transactions]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 10);
+  }, [transactions]);
+
+  return {
+    transactions,
+    settings,
+    loading,
+    addTransaction,
+    updateTransaction,
+    cancelTransaction,
+    deleteTransaction,
+    filterTransactions,
+    getStats,
+    getUnitStats,
+    updateInitialBalance,
+    updateSettings,
+    importTransactions,
+    recentTransactions,
+    refetch,
+  };
+}

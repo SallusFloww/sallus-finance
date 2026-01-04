@@ -1,0 +1,791 @@
+import { useState, useEffect } from "react";
+import { format } from "date-fns";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { ProductionType, UnitConfig, BASE_PRODUCTION_TYPES } from "@/types";
+import { toast } from "sonner";
+import { Activity, Check, ChevronsUpDown, Plus, Calculator } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useCompanySettings } from "@/hooks/useCompanySettings";
+
+// Labels para tipos de produção OFICIAIS
+const PRODUCTION_TYPE_LABELS: Record<string, string> = {
+  "CONSULTA": "Consulta",
+  "EXAME": "Exame",
+  "QUIMIOTERAPIA": "Quimioterapia",
+  "BOX_PS": "Box / Atendimento PS",
+  "SESSAO_TERAPEUTICA": "Sessão Terapêutica",
+  "INTERNACAO": "Internação",
+  "OUTRO": "Outro",
+};
+
+// Função para obter label de tipo de produção
+const getProductionTypeLabel = (type: string): string => {
+  return PRODUCTION_TYPE_LABELS[type] || type;
+};
+
+const CONVENIOS = ["IPASGO", "UNIMED", "BRADESCO", "GEAP", "SUS"];
+
+// Sugestões padrão de exames
+const DEFAULT_EXAM_TYPES = [
+  "Ressonância Magnética",
+  "Tomografia Computadorizada",
+  "Raio-X",
+  "Ultrassonografia",
+  "Ecocardiograma",
+  "Endoscopia",
+  "Colonoscopia",
+  "Eletrocardiograma",
+  "Mamografia",
+  "Densitometria Óssea",
+];
+
+// Sugestões padrão de sessões terapêuticas (exceto Quimio que agora é tipo próprio)
+const DEFAULT_THERAPY_TYPES = [
+  "Radioterapia",
+  "Fisioterapia",
+  "Terapia Ocupacional",
+  "Hemodiálise",
+  "Fonoaudiologia",
+  "Psicoterapia",
+];
+
+interface ProductionFormProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (data: ProductionFormData) => void;
+  units: UnitConfig[];
+  userName: string;
+}
+
+export interface ProductionFormData {
+  productionDate: string;
+  competencia: string;
+  unit: string;
+  specialty?: string;
+  payerType: "CONVENIO" | "PARTICULAR";
+  convenio?: string;
+  productionType: ProductionType;
+  description: string;
+  procedureCode?: string;
+  quantity: number;
+  unitValue: number;
+  notes?: string;
+  createdBy: string;
+  // Campos dinâmicos
+  examType?: string;
+  therapySessionType?: string;
+}
+
+export function ProductionForm({ 
+  open, 
+  onOpenChange, 
+  onSubmit, 
+  units,
+  userName 
+}: ProductionFormProps) {
+  const currentMonth = format(new Date(), "MM/yyyy");
+  
+  // Use database-backed settings for suggestions
+  const { 
+    getSavedExamTypes, 
+    getSavedTherapyTypes, 
+    getSavedProductionTypes,
+    addExamType,
+    addTherapyType,
+    addProductionType 
+  } = useCompanySettings();
+  
+  // Combinar sugestões padrão com salvas do banco
+  const savedExamTypes = getSavedExamTypes();
+  const savedTherapyTypes = getSavedTherapyTypes();
+  const savedProductionTypes = getSavedProductionTypes();
+  
+  const examTypes = [...new Set([...DEFAULT_EXAM_TYPES, ...savedExamTypes])].sort();
+  const therapyTypes = [...new Set([...DEFAULT_THERAPY_TYPES, ...savedTherapyTypes])].sort();
+  const productionTypes = [...new Set([...BASE_PRODUCTION_TYPES, ...savedProductionTypes])];
+  
+  const [formData, setFormData] = useState({
+    productionDate: format(new Date(), "yyyy-MM-dd"),
+    competencia: currentMonth,
+    unit: "",
+    specialty: "",
+    payerType: "CONVENIO" as "CONVENIO" | "PARTICULAR",
+    convenio: "",
+    productionType: "CONSULTA" as ProductionType,
+    description: "",
+    procedureCode: "",
+    quantity: "1",
+    totalValue: "", // MODELO DEFINITIVO: Valor Total Estimado é o campo principal
+    notes: "",
+    // Campos dinâmicos
+    examType: "",
+    therapySessionType: "",
+  });
+
+  // Popovers state
+  const [examTypeOpen, setExamTypeOpen] = useState(false);
+  const [therapyTypeOpen, setTherapyTypeOpen] = useState(false);
+  const [productionTypeOpen, setProductionTypeOpen] = useState(false);
+  const [newExamType, setNewExamType] = useState("");
+  const [newTherapyType, setNewTherapyType] = useState("");
+  const [newProductionType, setNewProductionType] = useState("");
+
+  const activeUnits = units.filter((u) => u.active);
+  const selectedUnit = units.find((u) => u.id === formData.unit);
+  const isCentroClinico = selectedUnit?.id?.toLowerCase().includes("centroclinico") ||
+                          selectedUnit?.name?.toLowerCase().includes("centro clínico");
+  const specialties = isCentroClinico ? (selectedUnit?.specialties?.filter(s => s.active) || []) : [];
+
+  // Reset campos dinâmicos quando muda o tipo de produção
+  useEffect(() => {
+    setFormData(prev => ({
+      ...prev,
+      examType: "",
+      therapySessionType: "",
+      procedureCode: "",
+      description: getDefaultDescription(prev.productionType),
+    }));
+  }, [formData.productionType]);
+
+  // Descrição automática por tipo
+  const getDefaultDescription = (type: string): string => {
+    switch (type) {
+      case "CONSULTA": return "Consulta Médica";
+      case "QUIMIOTERAPIA": return "Sessão de Quimioterapia";
+      case "BOX_PS": return "Atendimento Box/PS";
+      case "INTERNACAO": return "Internação";
+      default: return "";
+    }
+  };
+
+  // Format competencia (MM/YYYY)
+  const formatCompetencia = (value: string): string => {
+    const numbers = value.replace(/\D/g, "");
+    const limited = numbers.slice(0, 6);
+    if (limited.length > 2) {
+      return `${limited.slice(0, 2)}/${limited.slice(2)}`;
+    }
+    return limited;
+  };
+
+  const validateCompetencia = (value: string): boolean => {
+    const regex = /^(0[1-9]|1[0-2])\/\d{4}$/;
+    if (!regex.test(value)) return false;
+    const [month, year] = value.split("/").map(Number);
+    return month >= 1 && month <= 12 && year >= 2000 && year <= 2100;
+  };
+
+  // Salvar nova sugestão (persisted to database)
+  const saveNewExamType = async () => {
+    if (newExamType.trim() && !examTypes.includes(newExamType.trim())) {
+      await addExamType(newExamType.trim());
+      setFormData({ ...formData, examType: newExamType.trim(), description: newExamType.trim() });
+      toast.success(`"${newExamType.trim()}" adicionado às sugestões`);
+    }
+    setNewExamType("");
+    setExamTypeOpen(false);
+  };
+
+  const saveNewTherapyType = async () => {
+    if (newTherapyType.trim() && !therapyTypes.includes(newTherapyType.trim())) {
+      await addTherapyType(newTherapyType.trim());
+      setFormData({ ...formData, therapySessionType: newTherapyType.trim(), description: newTherapyType.trim() });
+      toast.success(`"${newTherapyType.trim()}" adicionado às sugestões`);
+    }
+    setNewTherapyType("");
+    setTherapyTypeOpen(false);
+  };
+
+  const saveNewProductionType = async () => {
+    if (newProductionType.trim() && !productionTypes.includes(newProductionType.trim())) {
+      await addProductionType(newProductionType.trim());
+      setFormData({ ...formData, productionType: newProductionType.trim(), description: newProductionType.trim() });
+      toast.success(`"${newProductionType.trim()}" adicionado aos tipos de produção`);
+    }
+    setNewProductionType("");
+    setProductionTypeOpen(false);
+  };
+
+  const handleSubmit = () => {
+    if (!formData.unit || !formData.competencia) {
+      toast.error("Preencha todos os campos obrigatórios");
+      return;
+    }
+
+    if (!validateCompetencia(formData.competencia)) {
+      toast.error("Competência inválida. Use o formato MM/AAAA");
+      return;
+    }
+
+    if (formData.payerType === "CONVENIO" && !formData.convenio) {
+      toast.error("Selecione o convênio");
+      return;
+    }
+
+    const quantity = parseInt(formData.quantity) || 1;
+    const totalValue = parseFloat(formData.totalValue) || 0;
+
+    if (quantity <= 0) {
+      toast.error("Quantidade deve ser maior que zero");
+      return;
+    }
+
+    // Validar campos específicos por tipo
+    if (formData.productionType === "EXAME" && !formData.examType) {
+      toast.error("Selecione o tipo de exame");
+      return;
+    }
+
+    if (formData.productionType === "SESSAO_TERAPEUTICA" && !formData.therapySessionType) {
+      toast.error("Selecione o tipo de sessão");
+      return;
+    }
+
+    // Definir description baseado no tipo (AUTO-PREENCHIMENTO)
+    let description = formData.description;
+    
+    if (formData.productionType === "EXAME") {
+      description = formData.examType || formData.description;
+    } else if (formData.productionType === "SESSAO_TERAPEUTICA") {
+      description = formData.therapySessionType || formData.description;
+    }
+    
+    // FALLBACK: Se ainda não tem descrição, usar o próprio tipo de produção
+    if (!description) {
+      description = getProductionTypeLabel(formData.productionType) || formData.productionType;
+    }
+
+    // MODELO DEFINITIVO: Valor unitário calculado automaticamente como referência
+    const unitValue = quantity > 0 ? totalValue / quantity : 0;
+
+    onSubmit({
+      productionDate: formData.productionDate,
+      competencia: formData.competencia,
+      unit: formData.unit,
+      specialty: formData.specialty || undefined,
+      payerType: formData.payerType,
+      convenio: formData.payerType === "CONVENIO" ? formData.convenio : undefined,
+      productionType: formData.productionType,
+      description,
+      procedureCode: formData.procedureCode || undefined,
+      quantity,
+      unitValue, // Calculado automaticamente
+      notes: formData.notes || undefined,
+      createdBy: userName,
+      examType: formData.examType || undefined,
+      therapySessionType: formData.therapySessionType || undefined,
+    });
+
+    // Reset form
+    setFormData({
+      productionDate: format(new Date(), "yyyy-MM-dd"),
+      competencia: currentMonth,
+      unit: "",
+      specialty: "",
+      payerType: "CONVENIO",
+      convenio: "",
+      productionType: "CONSULTA",
+      description: "",
+      procedureCode: "",
+      quantity: "1",
+      totalValue: "",
+      notes: "",
+      examType: "",
+      therapySessionType: "",
+    });
+    onOpenChange(false);
+  };
+
+  // Valor unitário calculado (apenas referência)
+  const quantity = parseInt(formData.quantity) || 0;
+  const totalValue = parseFloat(formData.totalValue) || 0;
+  const calculatedUnitValue = quantity > 0 ? totalValue / quantity : 0;
+
+  // Renderizar campos dinâmicos por tipo
+  const renderDynamicFields = () => {
+    switch (formData.productionType) {
+      case "CONSULTA":
+        return (
+          <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+            <p className="text-sm text-emerald-600 font-medium">✓ Consulta Médica</p>
+            <p className="text-xs text-muted-foreground mt-1">Registro simples de consulta</p>
+          </div>
+        );
+
+      case "EXAME":
+        return (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Tipo de Exame *</Label>
+              <Popover open={examTypeOpen} onOpenChange={setExamTypeOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={examTypeOpen}
+                    className="w-full justify-between"
+                  >
+                    {formData.examType || "Selecione ou digite..."}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-full p-0" align="start">
+                  <Command>
+                    <CommandInput 
+                      placeholder="Buscar ou adicionar exame..." 
+                      value={newExamType}
+                      onValueChange={setNewExamType}
+                    />
+                    <CommandList>
+                      <CommandEmpty>
+                        <div className="p-2">
+                          <Button 
+                            variant="ghost" 
+                            className="w-full justify-start text-sm"
+                            onClick={saveNewExamType}
+                          >
+                            <Plus className="mr-2 h-4 w-4" />
+                            Adicionar "{newExamType}"
+                          </Button>
+                        </div>
+                      </CommandEmpty>
+                      <CommandGroup>
+                        {examTypes.map((type) => (
+                          <CommandItem
+                            key={type}
+                            value={type}
+                            onSelect={() => {
+                              setFormData({ ...formData, examType: type, description: type });
+                              setExamTypeOpen(false);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                formData.examType === type ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            {type}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Código do Exame (opcional)</Label>
+              <Input
+                placeholder="Ex: 40901033 (TUSS/AMB)"
+                value={formData.procedureCode}
+                onChange={(e) => setFormData({ ...formData, procedureCode: e.target.value })}
+              />
+            </div>
+          </div>
+        );
+
+      case "QUIMIOTERAPIA":
+        return (
+          <div className="p-4 rounded-lg bg-purple-500/10 border border-purple-500/20">
+            <p className="text-sm text-purple-600 font-medium">💊 Quimioterapia</p>
+            <p className="text-xs text-muted-foreground mt-1">Registre quantidade de sessões e valor total agregado</p>
+          </div>
+        );
+
+      case "BOX_PS":
+        return (
+          <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20">
+            <p className="text-sm text-red-600 font-medium">🚨 Box / Atendimento PS</p>
+            <p className="text-xs text-muted-foreground mt-1">Registre quantidade de atendimentos</p>
+          </div>
+        );
+
+      case "SESSAO_TERAPEUTICA":
+        return (
+          <div className="space-y-2">
+            <Label>Tipo da Sessão *</Label>
+            <Popover open={therapyTypeOpen} onOpenChange={setTherapyTypeOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={therapyTypeOpen}
+                  className="w-full justify-between"
+                >
+                  {formData.therapySessionType || "Selecione ou digite..."}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-full p-0" align="start">
+                <Command>
+                  <CommandInput 
+                    placeholder="Buscar ou adicionar tipo..." 
+                    value={newTherapyType}
+                    onValueChange={setNewTherapyType}
+                  />
+                  <CommandList>
+                    <CommandEmpty>
+                      <div className="p-2">
+                        <Button 
+                          variant="ghost" 
+                          className="w-full justify-start text-sm"
+                          onClick={saveNewTherapyType}
+                        >
+                          <Plus className="mr-2 h-4 w-4" />
+                          Adicionar "{newTherapyType}"
+                        </Button>
+                      </div>
+                    </CommandEmpty>
+                    <CommandGroup>
+                      {therapyTypes.map((type) => (
+                        <CommandItem
+                          key={type}
+                          value={type}
+                          onSelect={() => {
+                            setFormData({ ...formData, therapySessionType: type, description: type });
+                            setTherapyTypeOpen(false);
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              formData.therapySessionType === type ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                          {type}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+        );
+
+      case "INTERNACAO":
+        return (
+          <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
+            <p className="text-sm text-blue-600 font-medium">🏥 Internação</p>
+            <p className="text-xs text-muted-foreground mt-1">Registre quantidade de internações e valor total</p>
+          </div>
+        );
+
+      case "OUTRO":
+        return (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Descrição do Procedimento *</Label>
+              <Input
+                placeholder="Descreva o procedimento realizado"
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Código (opcional)</Label>
+              <Input
+                placeholder="Código TUSS/AMB ou interno"
+                value={formData.procedureCode}
+                onChange={(e) => setFormData({ ...formData, procedureCode: e.target.value })}
+              />
+            </div>
+          </div>
+        );
+
+      default:
+        // Para tipos dinâmicos (cadastrados pelo usuário)
+        return (
+          <div className="p-4 rounded-lg bg-muted/50 border">
+            <p className="text-sm font-medium">{getProductionTypeLabel(formData.productionType)}</p>
+            <p className="text-xs text-muted-foreground mt-1">Tipo de produção personalizado</p>
+          </div>
+        );
+    }
+  };
+
+  // Determinar label de quantidade por tipo
+  const getQuantityLabel = (): string => {
+    switch (formData.productionType) {
+      case "QUIMIOTERAPIA":
+      case "SESSAO_TERAPEUTICA":
+        return "Quantidade de Sessões *";
+      case "INTERNACAO":
+        return "Quantidade de Internações *";
+      case "CONSULTA":
+        return "Quantidade de Consultas *";
+      case "BOX_PS":
+        return "Quantidade de Atendimentos *";
+      default:
+        return "Quantidade *";
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Activity className="h-5 w-5 text-violet-500" />
+            Registrar Produção
+          </DialogTitle>
+          <DialogDescription>
+            Volume assistencial realizado. Não impacta Caixa, DRE ou Score.
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="space-y-4 py-4">
+          {/* Tipo de Produção - PRIMEIRO E EM DESTAQUE */}
+          <div className="p-4 rounded-lg bg-violet-500/10 border border-violet-500/20 space-y-3">
+            <Label className="text-violet-600 font-medium">Tipo de Produção *</Label>
+            <Popover open={productionTypeOpen} onOpenChange={setProductionTypeOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={productionTypeOpen}
+                  className="w-full justify-between bg-background"
+                >
+                  {formData.productionType ? getProductionTypeLabel(formData.productionType) : "Selecione..."}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-full p-0" align="start">
+                <Command>
+                  <CommandInput 
+                    placeholder="Buscar ou adicionar tipo..." 
+                    value={newProductionType}
+                    onValueChange={setNewProductionType}
+                  />
+                  <CommandList>
+                    <CommandEmpty>
+                      <div className="p-2">
+                        <Button 
+                          variant="ghost" 
+                          className="w-full justify-start text-sm"
+                          onClick={saveNewProductionType}
+                        >
+                          <Plus className="mr-2 h-4 w-4" />
+                          Adicionar "{newProductionType}"
+                        </Button>
+                      </div>
+                    </CommandEmpty>
+                    <CommandGroup>
+                      {productionTypes.map((type) => (
+                        <CommandItem
+                          key={type}
+                          value={type}
+                          onSelect={() => {
+                            setFormData({ ...formData, productionType: type });
+                            setProductionTypeOpen(false);
+                            setNewProductionType("");
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              formData.productionType === type ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                          {getProductionTypeLabel(type)}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          {/* Campos Dinâmicos por Tipo */}
+          {renderDynamicFields()}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Unidade *</Label>
+              <Select 
+                value={formData.unit} 
+                onValueChange={(v) => setFormData({ ...formData, unit: v, specialty: "" })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeUnits.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Competência *</Label>
+              <Input
+                placeholder="MM/AAAA"
+                value={formData.competencia}
+                onChange={(e) => setFormData({ ...formData, competencia: formatCompetencia(e.target.value) })}
+                maxLength={7}
+              />
+            </div>
+          </div>
+
+          {isCentroClinico && specialties.length > 0 && (
+            <div className="space-y-2">
+              <Label>Especialidade</Label>
+              <Select 
+                value={formData.specialty} 
+                onValueChange={(v) => setFormData({ ...formData, specialty: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione" />
+                </SelectTrigger>
+                <SelectContent>
+                  {specialties.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Pagador *</Label>
+              <Select 
+                value={formData.payerType} 
+                onValueChange={(v) => setFormData({ ...formData, payerType: v as "CONVENIO" | "PARTICULAR", convenio: "" })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CONVENIO">Convênio</SelectItem>
+                  <SelectItem value="PARTICULAR">Particular</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {formData.payerType === "CONVENIO" && (
+              <div className="space-y-2">
+                <Label>Convênio *</Label>
+                <Select 
+                  value={formData.convenio} 
+                  onValueChange={(v) => setFormData({ ...formData, convenio: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CONVENIOS.map((c) => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+
+          {/* MODELO PADRÃO ÚNICO: Quantidade + Valor Total Estimado */}
+          <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 space-y-4">
+            <div className="space-y-2">
+              <Label className="text-amber-700 font-medium flex items-center gap-2">
+                <Activity className="h-4 w-4" />
+                {getQuantityLabel()}
+              </Label>
+              <Input
+                type="number"
+                min="1"
+                value={formData.quantity}
+                onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                className="text-lg font-bold text-center h-12 bg-background"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label className="text-amber-700 font-medium">Valor Total Estimado (R$)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0,00"
+                value={formData.totalValue}
+                onChange={(e) => setFormData({ ...formData, totalValue: e.target.value })}
+                className="text-lg font-bold text-center h-12 bg-background"
+              />
+              <p className="text-xs text-muted-foreground">
+                Valor total para a quantidade informada (opcional para referência)
+              </p>
+            </div>
+
+            {/* Valor unitário calculado - apenas referência */}
+            {calculatedUnitValue > 0 && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground bg-background/50 p-2 rounded">
+                <Calculator className="h-3.5 w-3.5" />
+                <span>Valor unitário: {calculatedUnitValue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Data da Produção</Label>
+              <Input
+                type="date"
+                value={formData.productionDate}
+                onChange={(e) => setFormData({ ...formData, productionDate: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Observações</Label>
+            <Textarea
+              placeholder="Informações adicionais (opcional)..."
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              rows={2}
+            />
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button onClick={handleSubmit} className="gradient-primary">Registrar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
