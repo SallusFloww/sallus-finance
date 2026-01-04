@@ -77,8 +77,20 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
   const [paymentMethod, setPaymentMethod] = useState(editingEntry?.payment_method || "");
   const [operadora, setOperadora] = useState(editingEntry?.operadora || "");
 
+  // Helper: tokenize string for exact keyword matching
+  const tokenize = (str: string): string[] => {
+    return str.toLowerCase().split(/[\s\-_\/\\.,;:]+/).filter(Boolean);
+  };
+
+  // Helper: check if any token matches a payment keyword exactly
+  const isPaymentMethodCategory = (name: string): boolean => {
+    const tokens = tokenize(name);
+    return tokens.some(token => PAYMENT_METHOD_KEYWORDS.includes(token));
+  };
+
   // Normalize categories to always return { value: string, label: string }[]
   // Handles: A) Array legacy [{id,name,type}], B) Object {entrada:[...], saida:[...]}, C) Fallback
+  // Also ensures current editingEntry.categoria is always included
   const categoryOptions = useMemo((): Array<{ value: string; label: string }> => {
     const raw = settings?.categories;
     let options: Array<{ value: string; label: string }> = [];
@@ -115,11 +127,8 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
         .map(cat => ({ value: cat.name, label: cat.name }));
     }
 
-    // Filter out payment method keywords (case-insensitive)
-    options = options.filter(opt => {
-      const lower = opt.value.toLowerCase().trim();
-      return !PAYMENT_METHOD_KEYWORDS.some(kw => lower === kw || lower.includes(kw));
-    });
+    // Filter out payment method keywords using tokenization (exact match only)
+    options = options.filter(opt => !isPaymentMethodCategory(opt.value));
 
     // Dedupe (case-insensitive) and sort alphabetically
     const seen = new Set<string>();
@@ -130,8 +139,18 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
       return true;
     });
 
-    return unique.sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
-  }, [settings?.categories, type]);
+    // Sort alphabetically
+    const sorted = unique.sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
+
+    // Ensure current categoria from editingEntry is always included (even if not in settings)
+    const currentCat = editingEntry?.categoria;
+    if (currentCat && !sorted.some(opt => opt.value.toLowerCase() === currentCat.toLowerCase())) {
+      // Add current category at the top with "(atual)" suffix
+      sorted.unshift({ value: currentCat, label: `${currentCat} (atual)` });
+    }
+
+    return sorted;
+  }, [settings?.categories, type, editingEntry?.categoria]);
 
   // Normalize units: prefer settings.units, fallback to BUSINESS_UNITS
   const unitOptions = useMemo((): Array<{ value: string; label: string }> => {
@@ -157,20 +176,28 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
   useEffect(() => {
     // Reset category when type changes
     setCategoria("");
+    setValidationError(null);
     
     if (type === "saida") {
+      // Force status to "recebido" for saida (no "previsto" for expenses)
+      setStatus("recebido");
       setReceiptType("");
       setOperadora("");
     }
   }, [type]);
 
   useEffect(() => {
+    // Only clear operadora when switching to PARTICULAR
+    // Do NOT clear paymentMethod when switching to CONVENIO (preserve data)
     if (receiptType === "PARTICULAR") {
       setOperadora("");
-    } else if (receiptType === "CONVENIO") {
-      setPaymentMethod("");
     }
   }, [receiptType]);
+
+  // Clear validation error when key fields change
+  useEffect(() => {
+    setValidationError(null);
+  }, [valor, descricao]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
