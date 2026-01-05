@@ -62,10 +62,10 @@ export function ConciliationSettings({
     const slugPattern = /[A-Z_]{3,}/;
     const underscorePattern = /_/;
 
-    // Check for slugs in units
+    // Check for slugs in units (use unitLabel which should already be formatted)
     const unitsWithSlugs = conciliationItems
-      .filter(item => slugPattern.test(item.unit) || underscorePattern.test(item.unit))
-      .map(item => item.unit);
+      .filter(item => slugPattern.test(item.unitKey) || underscorePattern.test(item.unitKey))
+      .map(item => item.unitKey);
     
     const uniqueUnitsWithSlugs = [...new Set(unitsWithSlugs)];
     if (uniqueUnitsWithSlugs.length > 0) {
@@ -101,7 +101,7 @@ export function ConciliationSettings({
     const findings: AuditFinding[] = [];
 
     // Items without unit
-    const noUnit = conciliationItems.filter(i => !i.unit || i.unit.trim() === "");
+    const noUnit = conciliationItems.filter(i => !i.unitKey || i.unitKey.trim() === "");
     if (noUnit.length > 0) {
       findings.push({
         type: "integrity",

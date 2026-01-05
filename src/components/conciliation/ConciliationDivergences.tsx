@@ -93,8 +93,8 @@ export function ConciliationDivergences({ divergences }: ConciliationDivergences
       const search = searchTerm.toLowerCase();
       return (
         div.description.toLowerCase().includes(search) ||
-        div.item.source.toLowerCase().includes(search) ||
-        div.item.unit.toLowerCase().includes(search)
+        div.item.sourceLabel.toLowerCase().includes(search) ||
+        div.item.unitLabel.toLowerCase().includes(search)
       );
     }
     return true;
@@ -228,8 +228,8 @@ export function ConciliationDivergences({ divergences }: ConciliationDivergences
                           {div.severity}
                         </Badge>
                       </TableCell>
-                      <TableCell>{formatUnitDisplayName(div.item.unit)}</TableCell>
-                      <TableCell>{formatConvenioDisplayName(div.item.source)}</TableCell>
+                      <TableCell>{div.item.unitLabel}</TableCell>
+                      <TableCell>{div.item.sourceLabel}</TableCell>
                       <TableCell className="text-right font-medium">
                         {formatCurrency(div.item.billedAmount || div.item.receivedAmount)}
                       </TableCell>
@@ -304,11 +304,11 @@ export function ConciliationDivergences({ divergences }: ConciliationDivergences
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Unidade:</span>
-                    <span>{formatUnitDisplayName(selectedDivergence.item.unit)}</span>
+                    <span>{selectedDivergence.item.unitLabel}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Convênio:</span>
-                    <span>{formatConvenioDisplayName(selectedDivergence.item.source)}</span>
+                    <span>{selectedDivergence.item.sourceLabel}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Descrição:</span>

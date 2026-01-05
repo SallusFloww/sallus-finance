@@ -51,7 +51,7 @@ export function ConciliationFilters({
   const hasActiveFilters = 
     filters.startDate || 
     filters.endDate || 
-    filters.unit || 
+    filters.unitKey || 
     filters.source || 
     filters.status ||
     filters.search;
@@ -133,10 +133,10 @@ export function ConciliationFilters({
         <div className="space-y-2">
           <Label className="text-xs">Unidade</Label>
           <Select
-            value={filters.unit || "all"}
+            value={filters.unitKey || "all"}
             onValueChange={(value) => onFiltersChange({ 
               ...filters, 
-              unit: value === "all" ? undefined : value 
+              unitKey: value === "all" ? undefined : value 
             })}
           >
             <SelectTrigger>

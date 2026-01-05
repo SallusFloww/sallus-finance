@@ -67,12 +67,12 @@ export default function Conciliation() {
 
   // Get unique units and sources for filters
   const availableUnits = useMemo(() => {
-    const units = new Set(conciliationItems.map(i => i.unit).filter(Boolean));
+    const units = new Set(conciliationItems.map(i => i.unitKey).filter(Boolean));
     return Array.from(units).sort();
   }, [conciliationItems]);
 
   const availableSources = useMemo(() => {
-    const sources = new Set(conciliationItems.map(i => i.source).filter(Boolean));
+    const sources = new Set(conciliationItems.map(i => i.sourceKey).filter(Boolean));
     return Array.from(sources).sort();
   }, [conciliationItems]);
 

@@ -1,22 +1,32 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useReceivablesDB } from "./useReceivablesDB";
 import { useFinancialEntries, FinancialEntry } from "./useFinancialEntries";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCompanySettings } from "./useCompanySettings";
 import { supabase } from "@/integrations/supabase/client";
 import { Receivable } from "@/types";
 import { differenceInDays } from "date-fns";
-import { parseLocalDate } from "@/utils/formatters";
+import { 
+  parseLocalDate, 
+  formatUnitDisplayName,
+  formatConvenioDisplayName,
+  normalizeKey,
+  extractIdentifier 
+} from "@/utils/formatters";
 import { toast } from "sonner";
 
-// Conciliation operational status (does NOT alter source data)
+// ============================================
+// TYPES
+// ============================================
+
 export type ConciliationStatus = 
-  | "CONCILIADO"       // Fully matched
-  | "PARCIAL"          // Partial match
-  | "EM_ABERTO"        // Open/pending
-  | "GLOSADO"          // Glossed
-  | "DIVERGENTE"       // Value/date mismatch
-  | "SEM_VINCULO"      // Orphan - no match
-  | "EM_ANALISE";      // Under review (internal)
+  | "CONCILIADO"
+  | "PARCIAL"
+  | "EM_ABERTO"
+  | "GLOSADO"
+  | "DIVERGENTE"
+  | "SEM_VINCULO"
+  | "EM_ANALISE";
 
 export type DivergenceType = 
   | "VALOR_DIFERENTE"
@@ -33,10 +43,13 @@ export interface ConciliationItem {
   type: "receivable" | "financial_entry";
   sourceId: string;
   date: string;
-  unit: string;
-  source: string;          // convenio or origin
+  unitKey: string;           // Normalized key for matching/filtering
+  unitLabel: string;         // Display label (no underscores)
+  source: string;            // convenio or origin (raw)
+  sourceKey: string;         // Normalized source for matching
+  sourceLabel: string;       // Display label for source
   description: string;
-  identifier?: string;     // guia/NS/atendimento
+  identifier?: string;       // Extracted guia/NS/atendimento
   billedAmount: number;
   receivedAmount: number;
   openAmount: number;
@@ -69,7 +82,7 @@ export interface Divergence {
 export interface ConciliationFilters {
   startDate?: Date;
   endDate?: Date;
-  unit?: string;
+  unitKey?: string;
   source?: string;
   status?: ConciliationStatus;
   type?: "all" | "pending" | "divergent";
@@ -77,10 +90,10 @@ export interface ConciliationFilters {
 }
 
 export interface ConciliationSettings {
-  dateWindowDays: number;       // Default: 3
-  valueToleranceAmount: number; // Default: 1.00
-  valueTolerancePercent: number; // Default: 0.5%
-  conservativeMode: boolean;    // Only suggest high confidence
+  dateWindowDays: number;
+  valueToleranceAmount: number;
+  valueTolerancePercent: number;
+  conservativeMode: boolean;
 }
 
 const DEFAULT_SETTINGS: ConciliationSettings = {
@@ -127,10 +140,34 @@ interface DBConciliationNote {
   created_at: string;
 }
 
+// ============================================
+// LOCALSTORAGE QUEUE KEYS
+// ============================================
+const LS_KEY_STATUSES = "conciliation_offline_statuses";
+const LS_KEY_NOTES = "conciliation_offline_notes";
+
+interface OfflineStatus {
+  itemId: string;
+  status: ConciliationStatus;
+  itemType: string;
+  sourceId: string;
+  previousStatus: string | null;
+  timestamp: string;
+}
+
+interface OfflineNote extends ConciliationNote {
+  timestamp: string;
+}
+
+// ============================================
+// HOOK
+// ============================================
+
 export function useConciliation() {
   const { receivables, loading: loadingReceivables } = useReceivablesDB();
   const { entries: financialEntries, loading: loadingEntries } = useFinancialEntries();
   const { user, profile, currentCompany } = useAuth();
+  const { settings: companySettings } = useCompanySettings();
   const currentCompanyId = currentCompany?.id;
   
   const [settings, setSettings] = useState<ConciliationSettings>(DEFAULT_SETTINGS);
@@ -143,10 +180,28 @@ export function useConciliation() {
   const [localNotes, setLocalNotes] = useState<ConciliationNote[]>([]);
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const [loadingPersistence, setLoadingPersistence] = useState(true);
+  
+  // Prevent duplicate flush
+  const flushingRef = useRef(false);
 
   const loading = loadingReceivables || loadingEntries;
 
-  // Load persisted data on mount
+  // Build unit name map from company settings
+  const unitNameMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    if (companySettings?.units && Array.isArray(companySettings.units)) {
+      for (const unit of companySettings.units) {
+        if (unit && typeof unit === 'object' && 'id' in unit && 'name' in unit) {
+          map[(unit as any).id] = (unit as any).name;
+        }
+      }
+    }
+    return map;
+  }, [companySettings?.units]);
+
+  // ============================================
+  // LOAD PERSISTED DATA + FLUSH OFFLINE QUEUE
+  // ============================================
   useEffect(() => {
     if (!currentCompanyId) {
       setLoadingPersistence(false);
@@ -190,10 +245,16 @@ export function useConciliation() {
         }));
         setDbNotes(notes);
 
+        // DB is reachable - flush offline queue
         setIsOfflineMode(false);
+        await flushOfflineQueue(statusMap, notes);
+
       } catch (error) {
         console.error("Failed to load conciliation data, using local mode:", error);
         setIsOfflineMode(true);
+        
+        // Load from localStorage
+        loadFromLocalStorage();
       } finally {
         setLoadingPersistence(false);
       }
@@ -202,17 +263,187 @@ export function useConciliation() {
     loadPersistedData();
   }, [currentCompanyId]);
 
+  // Load offline data from localStorage
+  const loadFromLocalStorage = useCallback(() => {
+    try {
+      const storedStatuses = localStorage.getItem(LS_KEY_STATUSES);
+      const storedNotes = localStorage.getItem(LS_KEY_NOTES);
+      
+      if (storedStatuses) {
+        const parsed: OfflineStatus[] = JSON.parse(storedStatuses);
+        const statusMap: Record<string, ConciliationStatus> = {};
+        parsed.forEach(s => {
+          statusMap[s.itemId] = s.status;
+        });
+        setLocalStatuses(statusMap);
+      }
+      
+      if (storedNotes) {
+        const parsed: OfflineNote[] = JSON.parse(storedNotes);
+        setLocalNotes(parsed.map(n => ({
+          id: n.id,
+          itemId: n.itemId,
+          itemType: n.itemType,
+          sourceId: n.sourceId,
+          note: n.note,
+          createdAt: n.createdAt,
+          createdBy: n.createdBy,
+          createdByName: n.createdByName,
+        })));
+      }
+    } catch (e) {
+      console.error("Error loading from localStorage:", e);
+    }
+  }, []);
+
+  // Flush offline queue to DB
+  const flushOfflineQueue = useCallback(async (
+    existingStatuses: Record<string, ConciliationStatus>,
+    existingNotes: ConciliationNote[]
+  ) => {
+    if (flushingRef.current || !currentCompanyId) return;
+    flushingRef.current = true;
+
+    try {
+      const storedStatuses = localStorage.getItem(LS_KEY_STATUSES);
+      const storedNotes = localStorage.getItem(LS_KEY_NOTES);
+      
+      let statusesToFlush: OfflineStatus[] = [];
+      let notesToFlush: OfflineNote[] = [];
+      
+      if (storedStatuses) {
+        statusesToFlush = JSON.parse(storedStatuses);
+      }
+      if (storedNotes) {
+        notesToFlush = JSON.parse(storedNotes);
+      }
+
+      if (statusesToFlush.length === 0 && notesToFlush.length === 0) {
+        return;
+      }
+
+      let flushedCount = 0;
+
+      // Flush statuses
+      for (const s of statusesToFlush) {
+        try {
+          await supabase
+            .from("conciliation_status")
+            .upsert({
+              company_id: currentCompanyId,
+              item_id: s.itemId,
+              item_type: s.itemType,
+              source_id: s.sourceId,
+              status: s.status,
+              previous_status: s.previousStatus,
+              updated_by: user?.id,
+              updated_by_name: profile?.full_name || "Usuário",
+              updated_at: new Date().toISOString(),
+            }, {
+              onConflict: "company_id,item_type,item_id",
+            });
+          flushedCount++;
+        } catch (e) {
+          console.error("Error flushing status:", e);
+        }
+      }
+
+      // Flush notes (skip duplicates by id)
+      const existingNoteIds = new Set(existingNotes.map(n => n.id));
+      for (const n of notesToFlush) {
+        if (existingNoteIds.has(n.id)) continue;
+        try {
+          await supabase
+            .from("conciliation_notes")
+            .insert({
+              id: n.id,
+              company_id: currentCompanyId,
+              item_id: n.itemId,
+              item_type: n.itemType,
+              source_id: n.sourceId,
+              note: n.note,
+              created_by: n.createdBy || user?.id,
+              created_by_name: n.createdByName,
+            });
+          flushedCount++;
+        } catch (e) {
+          console.error("Error flushing note:", e);
+        }
+      }
+
+      // Clear localStorage queue
+      localStorage.removeItem(LS_KEY_STATUSES);
+      localStorage.removeItem(LS_KEY_NOTES);
+      setLocalStatuses({});
+      setLocalNotes([]);
+
+      if (flushedCount > 0) {
+        toast.success("Dados offline sincronizados", {
+          description: `${flushedCount} item(s) foram sincronizados com o servidor.`,
+        });
+      }
+
+    } catch (e) {
+      console.error("Error flushing offline queue:", e);
+    } finally {
+      flushingRef.current = false;
+    }
+  }, [currentCompanyId, user?.id, profile?.full_name]);
+
+  // Save to localStorage queue
+  const saveStatusToLocalStorage = useCallback((status: OfflineStatus) => {
+    try {
+      const stored = localStorage.getItem(LS_KEY_STATUSES);
+      let queue: OfflineStatus[] = stored ? JSON.parse(stored) : [];
+      
+      // Update or add
+      const idx = queue.findIndex(s => s.itemId === status.itemId);
+      if (idx >= 0) {
+        queue[idx] = status;
+      } else {
+        queue.push(status);
+      }
+      
+      localStorage.setItem(LS_KEY_STATUSES, JSON.stringify(queue));
+    } catch (e) {
+      console.error("Error saving status to localStorage:", e);
+    }
+  }, []);
+
+  const saveNoteToLocalStorage = useCallback((note: OfflineNote) => {
+    try {
+      const stored = localStorage.getItem(LS_KEY_NOTES);
+      let queue: OfflineNote[] = stored ? JSON.parse(stored) : [];
+      queue.push(note);
+      localStorage.setItem(LS_KEY_NOTES, JSON.stringify(queue));
+    } catch (e) {
+      console.error("Error saving note to localStorage:", e);
+    }
+  }, []);
+
   // Combined status (DB + local fallback)
   const combinedStatuses = useMemo(() => {
     return { ...dbStatuses, ...localStatuses };
   }, [dbStatuses, localStatuses]);
 
-  // Combined notes (DB + local)
+  // Combined notes (DB + local, deduplicated by id)
   const combinedNotes = useMemo(() => {
-    return [...dbNotes, ...localNotes];
+    const seen = new Set<string>();
+    const result: ConciliationNote[] = [];
+    for (const n of [...dbNotes, ...localNotes]) {
+      if (!seen.has(n.id)) {
+        seen.add(n.id);
+        result.push(n);
+      }
+    }
+    return result.sort((a, b) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
   }, [dbNotes, localNotes]);
 
-  // Convert receivables to conciliation items
+  // ============================================
+  // CONVERT RECEIVABLES TO CONCILIATION ITEMS
+  // ============================================
   const conciliationItems = useMemo((): ConciliationItem[] => {
     const today = new Date();
     
@@ -226,6 +457,17 @@ export function useConciliation() {
         const ageInDays = differenceInDays(today, billingDate);
         const openAmount = r.billedAmount - r.receivedAmount - r.glossedAmount;
         const itemId = `recv-${r.id}`;
+        
+        // Normalize unit: receivables use unit name directly
+        const unitKey = normalizeKey(r.unit);
+        const unitLabel = formatUnitDisplayName(r.unit);
+        
+        // Normalize source
+        const sourceKey = normalizeKey(r.source);
+        const sourceLabel = formatConvenioDisplayName(r.source);
+        
+        // Extract identifier from description
+        const identifier = extractIdentifier(r.description);
         
         // Determine conciliation status
         let status: ConciliationStatus = "EM_ABERTO";
@@ -246,10 +488,13 @@ export function useConciliation() {
           type: "receivable",
           sourceId: r.id,
           date: r.billingDate,
-          unit: r.unit,
+          unitKey,
+          unitLabel,
           source: r.source,
+          sourceKey,
+          sourceLabel,
           description: r.description,
-          identifier: r.description,
+          identifier,
           billedAmount: r.billedAmount,
           receivedAmount: r.receivedAmount,
           openAmount: Math.max(0, openAmount),
@@ -260,7 +505,7 @@ export function useConciliation() {
           originalData: r,
         };
       });
-  }, [receivables, combinedStatuses]);
+  }, [receivables, combinedStatuses, unitNameMap]);
 
   // Get income entries without link (potential orphans)
   const unlinkedIncomeEntries = useMemo(() => {
@@ -271,7 +516,9 @@ export function useConciliation() {
     );
   }, [financialEntries]);
 
-  // Filter items based on current filters
+  // ============================================
+  // FILTER ITEMS
+  // ============================================
   const filteredItems = useMemo(() => {
     return conciliationItems.filter(item => {
       if (filters.startDate) {
@@ -282,16 +529,17 @@ export function useConciliation() {
         const itemDate = parseLocalDate(item.date);
         if (itemDate > filters.endDate) return false;
       }
-      if (filters.unit && item.unit !== filters.unit) return false;
-      if (filters.source && item.source !== filters.source) return false;
+      // Use unitKey for filtering
+      if (filters.unitKey && item.unitKey !== filters.unitKey) return false;
+      if (filters.source && item.sourceKey !== normalizeKey(filters.source)) return false;
       if (filters.status && item.status !== filters.status) return false;
       if (filters.type === "pending" && item.status === "CONCILIADO") return false;
       if (filters.type === "divergent" && !["DIVERGENTE", "SEM_VINCULO", "PARCIAL", "GLOSADO"].includes(item.status)) return false;
       if (filters.search) {
         const search = filters.search.toLowerCase();
         if (!item.description.toLowerCase().includes(search) &&
-            !item.source.toLowerCase().includes(search) &&
-            !item.unit.toLowerCase().includes(search)) {
+            !item.sourceLabel.toLowerCase().includes(search) &&
+            !item.unitLabel.toLowerCase().includes(search)) {
           return false;
         }
       }
@@ -306,11 +554,13 @@ export function useConciliation() {
     ).sort((a, b) => b.ageInDays - a.ageInDays);
   }, [filteredItems]);
 
-  // Critical items (> 15 days, > 30 days)
+  // Critical items
   const criticalItems15 = useMemo(() => pendingItems.filter(i => i.ageInDays > 15), [pendingItems]);
   const criticalItems30 = useMemo(() => pendingItems.filter(i => i.ageInDays > 30), [pendingItems]);
 
-  // Detect divergences
+  // ============================================
+  // DIVERGENCES
+  // ============================================
   const divergences = useMemo((): Divergence[] => {
     const divs: Divergence[] = [];
     const today = new Date();
@@ -356,10 +606,14 @@ export function useConciliation() {
         });
       });
 
-    // Orphan income entries (received without billing)
+    // Orphan income entries
     unlinkedIncomeEntries.forEach(entry => {
       const entryDate = parseLocalDate(entry.data_prevista);
       const ageInDays = differenceInDays(today, entryDate);
+      
+      // Resolve unit for financial entry
+      const entryUnitKey = entry.unit_id ? normalizeKey(unitNameMap[entry.unit_id] || entry.unit_id) : "";
+      const entryUnitLabel = entry.unit_id ? formatUnitDisplayName(unitNameMap[entry.unit_id] || entry.unit_id) : "";
       
       divs.push({
         id: `div-orphan-entry-${entry.id}`,
@@ -370,9 +624,13 @@ export function useConciliation() {
           type: "financial_entry",
           sourceId: entry.id,
           date: entry.data_prevista,
-          unit: entry.unit_id || "",
+          unitKey: entryUnitKey,
+          unitLabel: entryUnitLabel,
           source: entry.operadora || entry.categoria || "",
+          sourceKey: normalizeKey(entry.operadora || entry.categoria || ""),
+          sourceLabel: formatConvenioDisplayName(entry.operadora || entry.categoria || ""),
           description: entry.descricao,
+          identifier: extractIdentifier(entry.descricao),
           billedAmount: 0,
           receivedAmount: entry.valor,
           openAmount: 0,
@@ -389,9 +647,11 @@ export function useConciliation() {
       const severityOrder = { ALTA: 0, MEDIA: 1, BAIXA: 2 };
       return severityOrder[a.severity] - severityOrder[b.severity];
     });
-  }, [conciliationItems, unlinkedIncomeEntries, settings.dateWindowDays]);
+  }, [conciliationItems, unlinkedIncomeEntries, settings.dateWindowDays, unitNameMap]);
 
-  // Match scoring engine (suggestion only, never auto-matches)
+  // ============================================
+  // MATCH SCORING ENGINE (IMPROVED)
+  // ============================================
   const suggestMatches = useCallback((item: ConciliationItem): MatchSuggestion[] => {
     if (item.linkedTransactionId || item.status === "CONCILIADO") {
       return [];
@@ -399,6 +659,7 @@ export function useConciliation() {
 
     const suggestions: MatchSuggestion[] = [];
     const itemDate = parseLocalDate(item.date);
+    const itemIdentifier = item.identifier;
 
     unlinkedIncomeEntries.forEach(entry => {
       let score = 0;
@@ -406,46 +667,59 @@ export function useConciliation() {
       const entryDate = parseLocalDate(entry.data_prevista);
       const dateDiff = Math.abs(differenceInDays(itemDate, entryDate));
       const valueDiff = Math.abs(item.billedAmount - entry.valor);
-      const valueDiffPercent = (valueDiff / item.billedAmount) * 100;
+      const valueDiffPercent = item.billedAmount > 0 ? (valueDiff / item.billedAmount) * 100 : 100;
 
-      // Same unit (+20)
-      if (entry.unit_id && entry.unit_id === item.unit) {
+      // Resolve entry unit key
+      const entryUnitKey = entry.unit_id 
+        ? normalizeKey(unitNameMap[entry.unit_id] || entry.unit_id)
+        : "";
+      
+      // Same unit (compare keys, NOT unit_id with label!)
+      if (entryUnitKey && entryUnitKey === item.unitKey) {
         score += 20;
         reasons.push("Mesma unidade");
       }
 
-      // Same source/convenio (+20)
-      if (entry.operadora && entry.operadora.toLowerCase() === item.source.toLowerCase()) {
+      // Same source/convenio (normalized comparison)
+      const entrySourceKey = normalizeKey(entry.operadora || "");
+      if (entrySourceKey && entrySourceKey === item.sourceKey) {
         score += 20;
         reasons.push("Mesmo convênio");
       }
 
-      // Date within window (+10)
+      // Date within window
       if (dateDiff <= settings.dateWindowDays) {
         score += 10;
         reasons.push(`Data dentro de ${settings.dateWindowDays} dias`);
       }
 
-      // Value within tolerance (+10)
+      // Value within tolerance
       if (valueDiff <= settings.valueToleranceAmount || valueDiffPercent <= settings.valueTolerancePercent) {
         score += 10;
         reasons.push("Valor dentro da tolerância");
       }
 
-      // Exact value match (+20)
+      // Exact value match
       if (valueDiff < 0.01) {
         score += 20;
         reasons.push("Valor exato");
       }
 
-      // Description match (+40 for identifier)
-      const descLower = item.description.toLowerCase();
-      const entryDescLower = entry.descricao.toLowerCase();
-      if (descLower === entryDescLower || 
-          descLower.includes(entryDescLower) || 
-          entryDescLower.includes(descLower)) {
+      // Identifier match (strong signal)
+      const entryIdentifier = extractIdentifier(entry.descricao);
+      if (itemIdentifier && entryIdentifier && itemIdentifier === entryIdentifier) {
         score += 40;
         reasons.push("Identificador compatível");
+      } else {
+        // Fallback: partial description match
+        const descLower = item.description.toLowerCase();
+        const entryDescLower = entry.descricao.toLowerCase();
+        if (descLower.length > 10 && entryDescLower.length > 10) {
+          if (descLower.includes(entryDescLower) || entryDescLower.includes(descLower)) {
+            score += 15;
+            reasons.push("Descrição similar");
+          }
+        }
       }
 
       // Only suggest if score > 20
@@ -470,9 +744,11 @@ export function useConciliation() {
     });
 
     return suggestions.sort((a, b) => b.score - a.score);
-  }, [unlinkedIncomeEntries, settings]);
+  }, [unlinkedIncomeEntries, settings, unitNameMap]);
 
-  // Stats for overview
+  // ============================================
+  // STATS
+  // ============================================
   const stats = useMemo(() => {
     const allItems = conciliationItems;
     const totalBilled = allItems.reduce((sum, i) => sum + i.billedAmount, 0);
@@ -507,7 +783,7 @@ export function useConciliation() {
     const byConvenio: Record<string, { openAmount: number; count: number }> = {};
     
     pendingItems.forEach(item => {
-      const key = item.source || "Não informado";
+      const key = item.sourceLabel || "Não informado";
       if (!byConvenio[key]) {
         byConvenio[key] = { openAmount: 0, count: 0 };
       }
@@ -521,7 +797,9 @@ export function useConciliation() {
       .slice(0, 10);
   }, [pendingItems]);
 
-  // Add note with persistence
+  // ============================================
+  // ADD NOTE (WITH PERSISTENCE)
+  // ============================================
   const addNote = useCallback(async (itemId: string, note: string, userName: string): Promise<ConciliationNote | null> => {
     const sourceId = itemId.replace(/^(recv-|entry-)/, "");
     const itemType = itemId.startsWith("entry-") ? "financial_entry" : "receivable";
@@ -560,27 +838,30 @@ export function useConciliation() {
       } catch (error) {
         console.error("Failed to persist note:", error);
         toast.warning("Modo offline para notas", {
-          description: "A nota foi salva localmente.",
+          description: "A nota foi salva localmente e será sincronizada.",
         });
         setIsOfflineMode(true);
       }
     }
 
-    // Fallback to local storage
+    // Save to localStorage queue
+    saveNoteToLocalStorage({ ...newNote, timestamp: new Date().toISOString() });
     setLocalNotes(prev => [newNote, ...prev]);
     return newNote;
-  }, [currentCompanyId, user?.id, profile?.full_name, isOfflineMode]);
+  }, [currentCompanyId, user?.id, profile?.full_name, isOfflineMode, saveNoteToLocalStorage]);
 
   // Get notes for item
   const getNotesForItem = useCallback((itemId: string) => {
     return combinedNotes.filter(n => n.itemId === itemId);
   }, [combinedNotes]);
 
-  // Set internal status with persistence
+  // ============================================
+  // SET ITEM STATUS (WITH PERSISTENCE)
+  // ============================================
   const setItemStatus = useCallback(async (itemId: string, status: ConciliationStatus) => {
     const sourceId = itemId.replace(/^(recv-|entry-)/, "");
     const itemType = itemId.startsWith("entry-") ? "financial_entry" : "receivable";
-    const previousStatus = combinedStatuses[itemId];
+    const previousStatus = combinedStatuses[itemId] || null;
 
     // Try to persist to DB
     if (currentCompanyId && !isOfflineMode) {
@@ -593,7 +874,7 @@ export function useConciliation() {
             item_type: itemType,
             source_id: sourceId,
             status,
-            previous_status: previousStatus || null,
+            previous_status: previousStatus,
             updated_by: user?.id,
             updated_by_name: profile?.full_name || "Usuário",
             updated_at: new Date().toISOString(),
@@ -608,15 +889,23 @@ export function useConciliation() {
       } catch (error) {
         console.error("Failed to persist status:", error);
         toast.warning("Modo offline para status", {
-          description: "O status foi salvo localmente.",
+          description: "O status foi salvo localmente e será sincronizado.",
         });
         setIsOfflineMode(true);
       }
     }
 
-    // Fallback to local storage
+    // Save to localStorage queue
+    saveStatusToLocalStorage({
+      itemId,
+      status,
+      itemType,
+      sourceId,
+      previousStatus,
+      timestamp: new Date().toISOString(),
+    });
     setLocalStatuses(prev => ({ ...prev, [itemId]: status }));
-  }, [currentCompanyId, combinedStatuses, user?.id, profile?.full_name, isOfflineMode]);
+  }, [currentCompanyId, combinedStatuses, user?.id, profile?.full_name, isOfflineMode, saveStatusToLocalStorage]);
 
   // Update settings
   const updateSettings = useCallback((updates: Partial<ConciliationSettings>) => {
