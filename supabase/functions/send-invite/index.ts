@@ -236,22 +236,26 @@ serve(async (req: Request): Promise<Response> => {
 
     /* =========================
        BUILD INVITE URL
+       GUARDRAIL: SEMPRE usar domínio de produção para evitar vazamento de lovableproject.com
     ========================== */
-    const fallbackUrl = (Deno.env.get("APP_URL") || "https://finance.sallusflow.com.br").replace(/\/$/, "");
-    const origin = req.headers.get("origin") || "";
-    let appUrl = (origin || fallbackUrl).replace(/\/$/, "");
-
-    // Blindagem: nunca permitir placeholder ou string inválida
-    if (
-      !appUrl ||
-      appUrl.includes("placeholder_value_to_be_replaced") ||
-      !appUrl.startsWith("http")
-    ) {
-      appUrl = fallbackUrl;
-    }
-
+    // Domínio de produção - NUNCA usar origin do request para links de convite
+    const PRODUCTION_DOMAIN = "https://finance.sallusflow.com.br";
+    
+    // APP_URL é apenas fallback, mas preferimos sempre o domínio de produção hardcoded
+    const envAppUrl = Deno.env.get("APP_URL") || "";
+    
+    // Validação: usar APP_URL apenas se for válido e não for preview/localhost
+    const isValidEnvUrl = 
+      envAppUrl && 
+      envAppUrl.startsWith("https://") &&
+      !envAppUrl.includes("lovable") &&
+      !envAppUrl.includes("localhost") &&
+      !envAppUrl.includes("placeholder");
+    
+    const appUrl = isValidEnvUrl ? envAppUrl.replace(/\/$/, "") : PRODUCTION_DOMAIN;
+    
     const inviteUrl = `${appUrl}/i/${invite.token}`;
-    console.log("Generated inviteUrl:", inviteUrl);
+    console.log("Generated inviteUrl (using production domain):", inviteUrl);
 
     /* =========================
        EMAIL (with fallback)
