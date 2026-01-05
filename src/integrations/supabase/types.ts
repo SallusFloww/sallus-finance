@@ -220,6 +220,7 @@ export type Database = {
           operadora: string | null
           payment_method: string | null
           receipt_type: string | null
+          specialty: string | null
           status: Database["public"]["Enums"]["financial_entry_status"]
           type: Database["public"]["Enums"]["financial_entry_type"]
           unit_id: string | null
@@ -243,6 +244,7 @@ export type Database = {
           operadora?: string | null
           payment_method?: string | null
           receipt_type?: string | null
+          specialty?: string | null
           status?: Database["public"]["Enums"]["financial_entry_status"]
           type: Database["public"]["Enums"]["financial_entry_type"]
           unit_id?: string | null
@@ -266,6 +268,7 @@ export type Database = {
           operadora?: string | null
           payment_method?: string | null
           receipt_type?: string | null
+          specialty?: string | null
           status?: Database["public"]["Enums"]["financial_entry_status"]
           type?: Database["public"]["Enums"]["financial_entry_type"]
           unit_id?: string | null

@@ -36,6 +36,7 @@ function entryToTransaction(entry: FinancialEntry): Transaction {
     amount: entry.valor,
     financialCategory: "OPERACIONAL" as FinancialCategory,
     unit: entry.unit_id || "",
+    specialty: entry.specialty || undefined,
     category: entry.categoria || "",
     paymentMethod: (entry.payment_method as any) || "PIX",
     status: entry.status === "recebido" 
@@ -73,6 +74,7 @@ function transactionToEntry(
     data_recebimento: t.receivedAt,
     observacao: t.notes,
     unit_id: t.unit || undefined,
+    specialty: t.specialty || undefined,
     payment_method: t.paymentMethod,
     receipt_type: t.receiptType,
     operadora: t.operadora,

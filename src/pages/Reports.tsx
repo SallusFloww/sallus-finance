@@ -176,7 +176,7 @@ export default function Reports() {
 
         // ESPECIALIDADES (apenas para Centro Clínico)
         let specialtiesAnalysis: Array<{
-          specialty: Specialty;
+          specialty: Specialty | "SEM_ESPECIALIDADE";
           name: string;
           totalIncome: number;
           totalExpense: number;
@@ -191,14 +191,28 @@ export default function Reports() {
         }> = [];
 
         if (unit.id === "CENTRO_CLINICO") {
-          // SEMPRE mostrar TODAS as 6 especialidades, mesmo sem movimentação
-          specialtiesAnalysis = SPECIALTIES.map((spec) => {
-            const specIncomeTransactions = unitIncomeTransactions.filter(
-              (t) => t.specialty === spec.id
-            );
-            const specExpenseTransactions = unitExpenseTransactions.filter(
-              (t) => t.specialty === spec.id
-            );
+          // Build specialty buckets including "Sem especialidade"
+          const allSpecialties: Array<{ id: string; name: string }> = [
+            ...SPECIALTIES,
+            { id: "SEM_ESPECIALIDADE", name: "Sem especialidade" },
+          ];
+
+          specialtiesAnalysis = allSpecialties.map((spec) => {
+            // For "SEM_ESPECIALIDADE", match transactions with empty/null/undefined specialty
+            const specIncomeTransactions = unitIncomeTransactions.filter((t) => {
+              const tSpecialty = (t.specialty || "").trim();
+              if (spec.id === "SEM_ESPECIALIDADE") {
+                return tSpecialty === "";
+              }
+              return tSpecialty.toUpperCase() === spec.id.toUpperCase();
+            });
+            const specExpenseTransactions = unitExpenseTransactions.filter((t) => {
+              const tSpecialty = (t.specialty || "").trim();
+              if (spec.id === "SEM_ESPECIALIDADE") {
+                return tSpecialty === "";
+              }
+              return tSpecialty.toUpperCase() === spec.id.toUpperCase();
+            });
             const specIncome = specIncomeTransactions.reduce((sum, t) => sum + t.amount, 0);
             const specExpense = specExpenseTransactions.reduce((sum, t) => sum + t.amount, 0);
             const specCount = specIncomeTransactions.length;
@@ -235,7 +249,7 @@ export default function Reports() {
               .reduce((sum, t) => sum + t.amount, 0);
 
             return {
-              specialty: spec.id as Specialty,
+              specialty: spec.id as Specialty | "SEM_ESPECIALIDADE",
               name: spec.name,
               totalIncome: specIncome,
               totalExpense: specExpense,
@@ -256,8 +270,11 @@ export default function Reports() {
             };
           }).sort((a, b) => {
             // Especialidades com movimentação primeiro, depois por receita
+            // Keep "Sem especialidade" last among those with movement
             if (a.hasMovement && !b.hasMovement) return -1;
             if (!a.hasMovement && b.hasMovement) return 1;
+            if (a.specialty === "SEM_ESPECIALIDADE" && b.specialty !== "SEM_ESPECIALIDADE") return 1;
+            if (a.specialty !== "SEM_ESPECIALIDADE" && b.specialty === "SEM_ESPECIALIDADE") return -1;
             return b.totalIncome - a.totalIncome;
           });
         }
