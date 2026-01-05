@@ -8,6 +8,7 @@ import {
   subMonths,
   parseISO
 } from "date-fns";
+import { isCancelled, isRealized } from "@/utils/statusHelpers";
 
 // ============================================
 // MASTER ELIGIBILITY RULES - SINGLE SOURCE OF TRUTH
@@ -210,16 +211,21 @@ export function useWeightedScore(
         const monthStart = startOfMonth(monthDate);
         const monthEnd = endOfMonth(monthDate);
 
+        // Excluir cancelados do cálculo de score
         const monthTransactions = unitTransactions.filter((t) => {
           const tDate = parseISO(t.date);
-          return tDate >= monthStart && tDate <= monthEnd;
+          const inPeriod = tDate >= monthStart && tDate <= monthEnd;
+          return inPeriod && !isCancelled(t.status);
         });
 
-        const mIncome = monthTransactions
+        // Apenas realizados impactam o cálculo
+        const realizedMonthTx = monthTransactions.filter(t => isRealized(t.status));
+
+        const mIncome = realizedMonthTx
           .filter((t) => t.type === "INCOME")
           .reduce((sum, t) => sum + t.amount, 0);
 
-        const mExpense = monthTransactions
+        const mExpense = realizedMonthTx
           .filter((t) => t.type === "EXPENSE")
           .reduce((sum, t) => sum + t.amount, 0);
 
@@ -255,20 +261,24 @@ export function useWeightedScore(
       return 0;
     };
 
-    // Calculate metrics for a set of transactions
+    // Calculate metrics for a set of transactions (excluindo cancelados)
     const calculateMetrics = (txns: Transaction[]) => {
-      const income = txns
+      // Filtrar cancelados antes de calcular métricas
+      const activeTxns = txns.filter(t => !isCancelled(t.status));
+      const realizedTxns = activeTxns.filter(t => isRealized(t.status));
+      
+      const income = realizedTxns
         .filter((t) => t.type === "INCOME")
         .reduce((sum, t) => sum + t.amount, 0);
 
       const daysActive = new Set(
-        txns.map((t) => format(parseISO(t.date), "yyyy-MM-dd"))
+        activeTxns.map((t) => format(parseISO(t.date), "yyyy-MM-dd"))
       ).size;
 
       const recurrenceIndex = totalDays > 0 ? (daysActive / totalDays) * 100 : 0;
 
       const dailyIncomes: Record<string, number> = {};
-      txns
+      realizedTxns
         .filter((t) => t.type === "INCOME")
         .forEach((t) => {
           const dayKey = format(parseISO(t.date), "yyyy-MM-dd");
@@ -278,7 +288,7 @@ export function useWeightedScore(
       const maxDayIncome = Math.max(0, ...Object.values(dailyIncomes));
       const concentrationPercentage = income > 0 ? (maxDayIncome / income) * 100 : 0;
 
-      const hasData = income > 0 || txns.some(t => t.type === "EXPENSE");
+      const hasData = income > 0 || realizedTxns.some(t => t.type === "EXPENSE");
       const meetsActivityCriteria = daysActive >= 5 || recurrenceIndex >= 20;
       const isEligible = hasData && meetsActivityCriteria;
 

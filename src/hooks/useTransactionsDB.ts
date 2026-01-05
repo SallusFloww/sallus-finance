@@ -13,6 +13,7 @@ import {
 } from "@/types";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { isCancelled, isRealized } from "@/utils/statusHelpers";
 
 interface TransactionFilters {
   startDate?: Date;
@@ -198,16 +199,16 @@ export function useTransactionsDB() {
 
       const filtered = filterTransactions({ startDate: start, endDate: end });
 
-      // Separar por tipo e status
+      // Separar por tipo e status (usando helpers robustos)
       const allIncomes = filtered.filter((t) => t.type === "INCOME");
       const allExpenses = filtered.filter((t) => t.type === "EXPENSE");
       
-      const pendingIncomes = allIncomes.filter((t) => t.status === "PENDENTE");
-      const realizedIncomes = allIncomes.filter((t) => t.status === "REALIZADO");
-      const cancelledIncomes = allIncomes.filter((t) => t.status === "CANCELADO");
+      const pendingIncomes = allIncomes.filter((t) => !isRealized(t.status) && !isCancelled(t.status));
+      const realizedIncomes = allIncomes.filter((t) => isRealized(t.status));
+      const cancelledIncomes = allIncomes.filter((t) => isCancelled(t.status));
 
-      // Apenas REALIZADOS impactam o saldo
-      const realizedExpenses = allExpenses.filter((t) => t.status === "REALIZADO");
+      // Apenas REALIZADOS impactam o saldo (cancelados NUNCA entram)
+      const realizedExpenses = allExpenses.filter((t) => isRealized(t.status));
 
       const totalIncome = realizedIncomes.reduce((sum, t) => sum + t.amount, 0);
       const totalExpense = realizedExpenses.reduce((sum, t) => sum + t.amount, 0);
@@ -298,8 +299,8 @@ export function useTransactionsDB() {
 
       filtered.forEach((t) => {
         if (!t.unit) return;
-        // Apenas REALIZADOS impactam saldo
-        if (t.status !== "REALIZADO") return;
+        // Apenas REALIZADOS impactam saldo (cancelados excluídos)
+        if (!isRealized(t.status) || isCancelled(t.status)) return;
         
         const existing = unitMap.get(t.unit) || {
           unit: t.unit,
