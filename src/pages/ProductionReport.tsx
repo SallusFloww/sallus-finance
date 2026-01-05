@@ -74,6 +74,7 @@ import {
 import { ptBR } from "date-fns/locale";
 import { LineChart as RechartsLine, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { Production } from "@/types";
+import { ProceduresDetailPanel } from "@/components/production/ProceduresDetailPanel";
 
 // Labels para tipos de produção OFICIAIS
 const PRODUCTION_TYPE_LABELS: Record<string, string> = {
@@ -1345,6 +1346,19 @@ export default function ProductionReport() {
         </section>
 
         {/* ══════════════════════════════════════════════════════════════════
+            5.5️⃣ NOVA SEÇÃO: DETALHAMENTO POR PROCEDIMENTOS (DRILLDOWN)
+        ══════════════════════════════════════════════════════════════════ */}
+        <section>
+          {filteredProductions.length > 0 ? (
+            <ProceduresDetailPanel
+              productions={filteredProductions}
+              startDate={startDate}
+              endDate={endDate}
+            />
+          ) : null}
+        </section>
+
+        {/* ══════════════════════════════════════════════════════════════════
             6️⃣ TOP PROCEDIMENTOS E MAPA DE CONCENTRAÇÃO (PARETO)
         ══════════════════════════════════════════════════════════════════ */}
         <section>
@@ -1747,6 +1761,13 @@ export default function ProductionReport() {
       {/* ══════════════════════════════════════════════════════════════════
           DRILLDOWN DRAWER
       ══════════════════════════════════════════════════════════════════ */}
+      {/* Footer disclaimer */}
+      <div className="mt-6 text-center">
+        <p className="text-xs text-muted-foreground">
+          Relatório gerencial de produção (assistencial). Não representa faturamento, caixa ou contas a receber.
+        </p>
+      </div>
+
       <Sheet open={drilldownOpen} onOpenChange={setDrilldownOpen}>
         <SheetContent className="w-full sm:max-w-lg">
           <SheetHeader>
