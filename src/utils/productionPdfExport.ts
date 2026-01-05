@@ -8,6 +8,7 @@ import autoTable from 'jspdf-autotable';
 import { format, differenceInDays, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { ProductionReportExportData } from '@/components/production/ProductionReportExport';
+import { formatUnitDisplayName, formatSpecialtyDisplayName, formatConvenioDisplayName, displayLabel } from '@/utils/formatters';
 
 interface ExportOptions {
   data: ProductionReportExportData;
@@ -16,16 +17,20 @@ interface ExportOptions {
   includeUnbilled: boolean;
 }
 
-// Format unit name
+// Format unit name (using centralized utility)
 function formatUnitName(unit: string): string {
-  const unitLabels: Record<string, string> = {
-    oncologia: "Oncologia",
-    "pronto-socorro": "Pronto Socorro",
-    "centro-clinico": "Centro Clínico",
-    centroclinico: "Centro Clínico",
-  };
-  const normalized = unit.toLowerCase().replace(/\s+/g, "-");
-  return unitLabels[normalized] || unit;
+  return formatUnitDisplayName(unit);
+}
+
+// Format specialty name (using centralized utility)
+function formatSpecialtyName(specialty: string | null | undefined): string {
+  if (!specialty || specialty.trim() === "") return "Sem especialidade";
+  return formatSpecialtyDisplayName(specialty);
+}
+
+// Format convenio name (using centralized utility)
+function formatConvenioName(convenio: string | null | undefined): string {
+  return formatConvenioDisplayName(convenio || "PARTICULAR");
 }
 
 // Format percentage
@@ -83,9 +88,11 @@ export async function generateProductionReportPDF({
   
   const filtersLine = [
     data.selectedUnit !== 'all' ? formatUnitName(data.selectedUnit) : null,
-    data.selectedConvenio !== 'all' ? data.selectedConvenio : null,
-    data.selectedType !== 'all' ? data.selectedType : null,
-    data.selectedSpecialty !== 'all' ? data.selectedSpecialty : null,
+    data.selectedConvenio !== 'all' ? formatConvenioName(data.selectedConvenio) : null,
+    data.selectedType !== 'all' ? displayLabel(data.selectedType) : null,
+    data.selectedSpecialty !== 'all' && data.selectedSpecialty !== '__SEM_ESPECIALIDADE__' 
+      ? formatSpecialtyName(data.selectedSpecialty) 
+      : data.selectedSpecialty === '__SEM_ESPECIALIDADE__' ? 'Sem especialidade' : null,
   ].filter(Boolean).join(' • ');
   
   const contextLine = filtersLine ? `${periodText} | ${filtersLine}` : periodText;
@@ -377,13 +384,16 @@ export async function generateProductionReportPDF({
     yPos += 5;
     
     // Limit to 20 rows
-    const consData = data.consolidatedTable.slice(0, 20).map(row => [
-      row.productionType,
-      formatUnitName(row.unit),
-      row.convenio.length > 20 ? row.convenio.substring(0, 17) + '...' : row.convenio,
-      row.quantity.toLocaleString('pt-BR'),
-      formatPercent(row.percentage),
-    ]);
+    const consData = data.consolidatedTable.slice(0, 20).map(row => {
+      const convName = formatConvenioName(row.convenio);
+      return [
+        displayLabel(row.productionType),
+        formatUnitName(row.unit),
+        convName.length > 20 ? convName.substring(0, 17) + '...' : convName,
+        row.quantity.toLocaleString('pt-BR'),
+        formatPercent(row.percentage),
+      ];
+    });
     
     autoTable(doc, {
       startY: yPos,
@@ -426,7 +436,7 @@ export async function generateProductionReportPDF({
     const unbilledData = sortedByAge.map(p => [
       format(parseISO(p.productionDate), "dd/MM/yyyy"),
       formatUnitName(p.unit),
-      p.convenio || 'PARTICULAR',
+      formatConvenioName(p.convenio),
       p.ageDays.toString(),
     ]);
     

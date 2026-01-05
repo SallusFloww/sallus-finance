@@ -77,6 +77,7 @@ import { Production } from "@/types";
 import { ProceduresDetailPanel } from "@/components/production/ProceduresDetailPanel";
 import { UnbilledItemsPanel } from "@/components/production/UnbilledItemsPanel";
 import { ProductionReportExport, ProductionReportExportData } from "@/components/production/ProductionReportExport";
+import { formatUnitDisplayName, formatSpecialtyDisplayName, formatConvenioDisplayName, displayLabel } from "@/utils/formatters";
 
 // Labels para tipos de produção OFICIAIS
 const PRODUCTION_TYPE_LABELS: Record<string, string> = {
@@ -108,16 +109,9 @@ function getProductionTypeIcon(type: string) {
   return PRODUCTION_TYPE_ICONS[type] || Activity;
 }
 
-// Formatação de nome de unidade para leitura humana
+// Formatação de nome de unidade para leitura humana (usa utilitário centralizado)
 function formatUnitName(unit: string): string {
-  const unitLabels: Record<string, string> = {
-    oncologia: "Oncologia",
-    "pronto-socorro": "Pronto Socorro",
-    "centro-clinico": "Centro Clínico",
-    centroclinico: "Centro Clínico",
-  };
-  const normalized = unit.toLowerCase().replace(/\s+/g, "-");
-  return unitLabels[normalized] || unit;
+  return formatUnitDisplayName(unit);
 }
 
 interface AggregatedRow {
@@ -212,14 +206,22 @@ export default function ProductionReport() {
     return Array.from(units).sort();
   }, [productions]);
 
-  // Especialidades únicas (usando specialty ou unit como proxy)
+  // Especialidades únicas (APENAS especialidades reais, sem fallback para unit)
   const uniqueSpecialties = useMemo(() => {
     const specialties = new Set<string>();
     productions.forEach((p) => {
-      const spec = p.specialty || p.unit;
-      specialties.add(spec);
+      // CORREÇÃO: Não usar unit como fallback - apenas especialidades reais
+      if (p.specialty && p.specialty.trim() !== "") {
+        specialties.add(p.specialty);
+      }
     });
-    return Array.from(specialties).sort();
+    // Adicionar "Sem especialidade" se houver produções sem specialty
+    const hasWithoutSpecialty = productions.some(p => !p.specialty || p.specialty.trim() === "");
+    const result = Array.from(specialties).sort();
+    if (hasWithoutSpecialty) {
+      result.push("__SEM_ESPECIALIDADE__");
+    }
+    return result;
   }, [productions]);
 
   // Dados filtrados
@@ -232,9 +234,13 @@ export default function ProductionReport() {
       productionType: selectedType !== "all" ? selectedType : undefined,
     });
     
-    // Filtro adicional por especialidade
+    // Filtro adicional por especialidade (CORREÇÃO: sem fallback para unit)
     if (selectedSpecialty !== "all") {
-      filtered = filtered.filter(p => (p.specialty || p.unit) === selectedSpecialty);
+      if (selectedSpecialty === "__SEM_ESPECIALIDADE__") {
+        filtered = filtered.filter(p => !p.specialty || p.specialty.trim() === "");
+      } else {
+        filtered = filtered.filter(p => p.specialty === selectedSpecialty);
+      }
     }
     
     return filtered;
@@ -261,8 +267,13 @@ export default function ProductionReport() {
       productionType: selectedType !== "all" ? selectedType : undefined,
     });
     
+    // CORREÇÃO: Filtro de especialidade sem fallback para unit
     if (selectedSpecialty !== "all") {
-      filtered = filtered.filter(p => (p.specialty || p.unit) === selectedSpecialty);
+      if (selectedSpecialty === "__SEM_ESPECIALIDADE__") {
+        filtered = filtered.filter(p => !p.specialty || p.specialty.trim() === "");
+      } else {
+        filtered = filtered.filter(p => p.specialty === selectedSpecialty);
+      }
     }
     
     return filtered;
@@ -364,24 +375,38 @@ export default function ProductionReport() {
       });
   }, [filteredProductions, totalQuantity, previousByUnit]);
 
-  // Ranking por especialidade (usando specialty ou unit como proxy)
+  // Ranking por especialidade (CORREÇÃO: apenas especialidades reais, sem fallback para unit)
   const specialtyRanking: SpecialtyRanking[] = useMemo(() => {
     const bySpecialty: Record<string, number> = {};
+    
     filteredProductions.forEach((p) => {
-      const spec = p.specialty || p.unit;
+      // CORREÇÃO: NÃO usar unit como fallback - agrupar em "Sem especialidade"
+      const spec = (p.specialty && p.specialty.trim() !== "") 
+        ? p.specialty 
+        : "__SEM_ESPECIALIDADE__";
       bySpecialty[spec] = (bySpecialty[spec] || 0) + p.quantity;
     });
 
     return Object.entries(bySpecialty)
-      .sort((a, b) => b[1] - a[1])
+      .sort((a, b) => {
+        // "Sem especialidade" sempre por último
+        if (a[0] === "__SEM_ESPECIALIDADE__") return 1;
+        if (b[0] === "__SEM_ESPECIALIDADE__") return -1;
+        return b[1] - a[1];
+      })
       .map(([specialty, qty]) => {
         const percentage = totalQuantity > 0 ? (qty / totalQuantity) * 100 : 0;
         let concentrationLevel: "alta" | "ok" | "baixa" = "ok";
         if (percentage > 70) concentrationLevel = "alta";
         else if (percentage < 10) concentrationLevel = "baixa";
         
+        // CORREÇÃO: usar formatSpecialtyDisplayName para labels bonitos
+        const displayName = specialty === "__SEM_ESPECIALIDADE__" 
+          ? "Sem especialidade"
+          : formatSpecialtyDisplayName(specialty);
+        
         return {
-          name: formatUnitName(specialty),
+          name: displayName,
           quantity: qty,
           percentage,
           concentrationLevel,
@@ -418,7 +443,7 @@ export default function ProductionReport() {
         }
 
         return {
-          name: convenio,
+          name: formatConvenioDisplayName(convenio),
           quantity: qty,
           percentage,
           riskLevel,
@@ -632,12 +657,13 @@ export default function ProductionReport() {
     return alerts;
   }, [convenioRanking, specialtyRanking, filteredProductions, variationData]);
 
-  // Tabela consolidada
+  // Tabela consolidada (CORREÇÃO: sem fallback unit→specialty)
   const consolidatedTable: AggregatedRow[] = useMemo(() => {
     const aggregation: Record<string, AggregatedRow> = {};
 
     filteredProductions.forEach((p) => {
-      const specialty = p.specialty || p.unit;
+      // CORREÇÃO: usar especialidade real ou vazio (sem fallback para unit)
+      const specialty = (p.specialty && p.specialty.trim() !== "") ? p.specialty : "";
       const key = `${p.productionType}|${p.unit}|${p.convenio || "PARTICULAR"}|${specialty}`;
 
       if (!aggregation[key]) {
@@ -691,12 +717,12 @@ export default function ProductionReport() {
   }, [selectedSpecialty]);
 
   const handleExportCSV = useCallback(() => {
-    const headers = ["Tipo", "Unidade", "Especialidade (proxy)", "Convênio", "Quantidade", "% do Total"];
+    const headers = ["Tipo", "Unidade", "Especialidade", "Convênio", "Quantidade", "% do Total"];
     const rows = consolidatedTable.map(row => [
       getProductionTypeLabel(row.productionType),
       formatUnitName(row.unit),
-      formatUnitName(row.specialty),
-      row.convenio,
+      row.specialty ? formatSpecialtyDisplayName(row.specialty) : "Sem especialidade",
+      formatConvenioDisplayName(row.convenio),
       row.quantity,
       row.percentage.toFixed(2)
     ]);
@@ -709,9 +735,9 @@ export default function ProductionReport() {
     link.click();
   }, [consolidatedTable]);
 
-  // Check if specialty field exists (proxy indicator)
+  // Check if specialty field exists (real specialties, not unit fallback)
   const hasRealSpecialty = useMemo(() => {
-    return productions.some(p => p.specialty && p.specialty !== p.unit);
+    return productions.some(p => p.specialty && p.specialty.trim() !== "");
   }, [productions]);
 
   // Top procedure for executive summary
@@ -868,7 +894,7 @@ export default function ProductionReport() {
                     <SelectItem value="all">Todos</SelectItem>
                     {uniqueConvenios.map((convenio) => (
                       <SelectItem key={convenio} value={convenio}>
-                        {convenio}
+                        {formatConvenioDisplayName(convenio)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -892,7 +918,7 @@ export default function ProductionReport() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium text-muted-foreground">
-                  Especialidade {!hasRealSpecialty && <span className="opacity-60">(proxy)</span>}
+                  Especialidade
                 </Label>
                 <Select value={selectedSpecialty} onValueChange={setSelectedSpecialty}>
                   <SelectTrigger className="h-9 text-sm bg-background">
@@ -902,7 +928,7 @@ export default function ProductionReport() {
                     <SelectItem value="all">Todas</SelectItem>
                     {uniqueSpecialties.map((spec) => (
                       <SelectItem key={spec} value={spec}>
-                        {formatUnitName(spec)}
+                        {spec === "__SEM_ESPECIALIDADE__" ? "Sem especialidade" : formatSpecialtyDisplayName(spec)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1368,17 +1394,20 @@ export default function ProductionReport() {
                           />
                         ))
                       ) : (
-                        uniqueSpecialties.slice(0, 5).map((spec, idx) => (
-                          <Line 
-                            key={spec}
-                            type="monotone" 
-                            dataKey={formatUnitName(spec)} 
-                            stroke={chartColors[idx % chartColors.length]}
-                            strokeWidth={2}
-                            dot={{ r: 2 }}
-                            name={formatUnitName(spec)}
-                          />
-                        ))
+                        uniqueSpecialties.filter(s => s !== "__SEM_ESPECIALIDADE__").slice(0, 5).map((spec, idx) => {
+                          const displayName = formatSpecialtyDisplayName(spec);
+                          return (
+                            <Line 
+                              key={spec}
+                              type="monotone" 
+                              dataKey={displayName} 
+                              stroke={chartColors[idx % chartColors.length]}
+                              strokeWidth={2}
+                              dot={{ r: 2 }}
+                              name={displayName}
+                            />
+                          );
+                        })
                       )}
                       {evolutionBreakdown !== "geral" && <Legend />}
                     </RechartsLine>
@@ -1457,41 +1486,43 @@ export default function ProductionReport() {
                 {specialtyRanking.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-4">Sem dados</p>
                 ) : (
-                  specialtyRanking.map((spec, idx) => (
-                    <div 
-                      key={spec.name} 
-                      className={`flex items-center justify-between py-1.5 px-2 rounded-md cursor-pointer transition-colors ${
-                        selectedSpecialty === (productions.find(p => formatUnitName(p.specialty || p.unit) === spec.name)?.specialty || productions.find(p => formatUnitName(p.unit) === spec.name)?.unit)
-                          ? "bg-primary/10 border border-primary/20"
-                          : "hover:bg-muted/50"
-                      }`}
-                      onClick={() => {
-                        const originalSpec = productions.find(p => formatUnitName(p.specialty || p.unit) === spec.name);
-                        if (originalSpec) {
-                          handleSpecialtyFilter(originalSpec.specialty || originalSpec.unit);
-                        }
-                      }}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-medium text-muted-foreground w-5">{idx + 1}.</span>
-                        <span className="text-sm font-medium truncate max-w-[140px]">{spec.name}</span>
+                  specialtyRanking.map((spec, idx) => {
+                    // Find the original specialty value to use for filtering
+                    const originalSpecValue = spec.name === "Sem especialidade" 
+                      ? "__SEM_ESPECIALIDADE__"
+                      : uniqueSpecialties.find(s => s !== "__SEM_ESPECIALIDADE__" && formatSpecialtyDisplayName(s) === spec.name) || "";
+                    
+                    return (
+                      <div 
+                        key={spec.name} 
+                        className={`flex items-center justify-between py-1.5 px-2 rounded-md cursor-pointer transition-colors ${
+                          selectedSpecialty === originalSpecValue
+                            ? "bg-primary/10 border border-primary/20"
+                            : "hover:bg-muted/50"
+                        }`}
+                        onClick={() => handleSpecialtyFilter(originalSpecValue)}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium text-muted-foreground w-5">{idx + 1}.</span>
+                          <span className="text-sm font-medium truncate max-w-[140px]">{spec.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="secondary" className="text-xs">
+                            {spec.quantity.toLocaleString("pt-BR")}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground w-10 text-right">
+                            {spec.percentage.toFixed(0)}%
+                          </span>
+                          <Badge 
+                            variant={spec.concentrationLevel === "alta" ? "destructive" : spec.concentrationLevel === "baixa" ? "outline" : "default"}
+                            className="text-xs w-12 justify-center"
+                          >
+                            {spec.concentrationLevel === "alta" ? "Alta" : spec.concentrationLevel === "baixa" ? "Baixa" : "OK"}
+                          </Badge>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary" className="text-xs">
-                          {spec.quantity.toLocaleString("pt-BR")}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground w-10 text-right">
-                          {spec.percentage.toFixed(0)}%
-                        </span>
-                        <Badge 
-                          variant={spec.concentrationLevel === "alta" ? "destructive" : spec.concentrationLevel === "baixa" ? "outline" : "default"}
-                          className="text-xs w-12 justify-center"
-                        >
-                          {spec.concentrationLevel === "alta" ? "Alta" : spec.concentrationLevel === "baixa" ? "Baixa" : "OK"}
-                        </Badge>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </CardContent>
             </Card>

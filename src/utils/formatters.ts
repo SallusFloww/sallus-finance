@@ -235,6 +235,103 @@ export function sumMoney(...values: number[]): number {
 }
 
 // ============================================
+// DISPLAY LABEL UTILITIES
+// ============================================
+// Converte slugs/códigos internos para labels bonitos
+// Usado para exibir unidades, especialidades, convênios, etc.
+// ============================================
+
+/**
+ * Converte uma string slug/código para label de exibição bonito.
+ * Regras:
+ * 1. Substitui underscores por espaços
+ * 2. Remove duplicidade de espaços
+ * 3. Aplica Title Case (primeira letra de cada palavra maiúscula)
+ * 4. NÃO aplica uppercase global
+ * 
+ * Exemplos:
+ * - "PRONTO_SOCORRO" → "Pronto Socorro"
+ * - "centro_clinico" → "Centro Clínico"
+ * - "OFTALMOLOGIA" → "Oftalmologia"
+ * - "   some__weird___string  " → "Some Weird String"
+ */
+export function displayLabel(value: string | null | undefined): string {
+  if (!value) return "";
+  
+  // Substitui underscores por espaços
+  let result = value.replace(/_/g, " ");
+  
+  // Remove múltiplos espaços e trim
+  result = result.replace(/\s+/g, " ").trim();
+  
+  // Aplica Title Case
+  result = result
+    .toLowerCase()
+    .split(" ")
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+  
+  return result;
+}
+
+/**
+ * Map de unidades com nomes customizados conhecidos.
+ * Usado para normalizar nomes de unidades comuns.
+ */
+const UNIT_DISPLAY_NAMES: Record<string, string> = {
+  oncologia: "Oncologia",
+  "pronto-socorro": "Pronto Socorro",
+  "pronto_socorro": "Pronto Socorro",
+  "centro-clinico": "Centro Clínico",
+  "centro_clinico": "Centro Clínico",
+  centroclinico: "Centro Clínico",
+  "centro clinico": "Centro Clínico",
+};
+
+/**
+ * Formata nome de unidade para exibição.
+ * Primeiro tenta um lookup em nomes conhecidos, depois aplica displayLabel como fallback.
+ */
+export function formatUnitDisplayName(unit: string | null | undefined): string {
+  if (!unit) return "";
+  
+  const normalizedKey = unit.toLowerCase().replace(/\s+/g, "-");
+  const knownName = UNIT_DISPLAY_NAMES[normalizedKey] || UNIT_DISPLAY_NAMES[unit.toLowerCase()];
+  
+  if (knownName) return knownName;
+  
+  // Fallback para displayLabel
+  return displayLabel(unit);
+}
+
+/**
+ * Formata nome de especialidade para exibição.
+ * Simplesmente aplica displayLabel pois especialidades seguem o padrão title case.
+ */
+export function formatSpecialtyDisplayName(specialty: string | null | undefined): string {
+  if (!specialty) return "Sem especialidade";
+  return displayLabel(specialty);
+}
+
+/**
+ * Formata nome de convênio para exibição.
+ * Preserva siglas conhecidas em maiúsculas.
+ */
+export function formatConvenioDisplayName(convenio: string | null | undefined): string {
+  if (!convenio) return "";
+  
+  // Siglas conhecidas que devem permanecer em maiúsculas
+  const SIGLAS = ["SUS", "UNIMED", "IPASGO", "GEAP", "BRADESCO", "AMIL", "HAPVIDA"];
+  
+  const upper = convenio.toUpperCase().trim();
+  if (SIGLAS.includes(upper)) {
+    return upper;
+  }
+  
+  return displayLabel(convenio);
+}
+
+// ============================================
 // TESTES RÁPIDOS (executar em console se necessário)
 // ============================================
 // console.log("Teste parseMoneyBR:");

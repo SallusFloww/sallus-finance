@@ -7,6 +7,7 @@ import * as XLSX from 'xlsx';
 import { format, differenceInDays, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { ProductionReportExportData } from '@/components/production/ProductionReportExport';
+import { formatUnitDisplayName, formatSpecialtyDisplayName, formatConvenioDisplayName, displayLabel } from '@/utils/formatters';
 
 interface ExportOptions {
   data: ProductionReportExportData;
@@ -20,16 +21,20 @@ function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`;
 }
 
-// Format unit name
+// Format unit name (using centralized utility)
 function formatUnitName(unit: string): string {
-  const unitLabels: Record<string, string> = {
-    oncologia: "Oncologia",
-    "pronto-socorro": "Pronto Socorro",
-    "centro-clinico": "Centro Clínico",
-    centroclinico: "Centro Clínico",
-  };
-  const normalized = unit.toLowerCase().replace(/\s+/g, "-");
-  return unitLabels[normalized] || unit;
+  return formatUnitDisplayName(unit);
+}
+
+// Format specialty name (using centralized utility)
+function formatSpecialtyName(specialty: string | null | undefined): string {
+  if (!specialty || specialty.trim() === "") return "Sem especialidade";
+  return formatSpecialtyDisplayName(specialty);
+}
+
+// Format convenio name (using centralized utility)
+function formatConvenioName(convenio: string | null | undefined): string {
+  return formatConvenioDisplayName(convenio || "PARTICULAR");
 }
 
 export function exportProductionReportToExcel({
@@ -126,9 +131,9 @@ export function exportProductionReportToExcel({
       baseData.push([
         null, // Date - not available in consolidated
         formatUnitName(row.unit),
-        row.convenio,
-        row.productionType,
-        row.specialty || '',
+        formatConvenioName(row.convenio),
+        displayLabel(row.productionType),
+        formatSpecialtyName(row.specialty),
         '', // Procedimento - not in consolidated
         row.quantity,
         row.percentage / 100, // Store as decimal for Excel percentage format
@@ -259,8 +264,8 @@ export function exportProductionReportToExcel({
       pendData.push([
         prodDate, // Date type
         formatUnitName(p.unit),
-        p.convenio || 'PARTICULAR',
-        p.productionType,
+        formatConvenioName(p.convenio),
+        displayLabel(p.productionType),
         p.quantity, // Number
         ageDays, // Number
         'Pendente',
