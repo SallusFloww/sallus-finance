@@ -152,10 +152,11 @@ serve(async (req: Request): Promise<Response> => {
     /* =========================
        EMAIL
     ========================== */
-    const appUrl =
-      Deno.env.get("APP_URL") || "https://finance.sallusfinance.com.br";
+    const appUrl = (
+      Deno.env.get("APP_URL") || "https://finance.sallusfinance.com.br"
+    ).replace(/\/$/, "");
 
-    const inviteUrl = `${appUrl}/auth?invite=${invite.token}`;
+    const inviteUrl = `${appUrl}/auth?invite_token=${invite.token}`;
 
     const smtpHost = Deno.env.get("SMTP_HOST");
     const smtpPort = Number(Deno.env.get("SMTP_PORT") || "587");

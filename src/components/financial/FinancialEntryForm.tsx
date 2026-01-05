@@ -347,6 +347,7 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
       <div className="grid grid-cols-2 gap-2">
         <Button
           type="button"
+          disabled={!!editingEntry}
           variant={type === "entrada" ? "default" : "outline"}
           onClick={() => setType("entrada")}
           className={cn(
@@ -357,6 +358,7 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
         </Button>
         <Button
           type="button"
+          disabled={!!editingEntry}
           variant={type === "saida" ? "default" : "outline"}
           onClick={() => setType("saida")}
           className={cn(

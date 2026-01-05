@@ -6,216 +6,173 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-interface AcceptInviteRequest {
-  inviteToken: string;
-  password: string;
-}
-
-const handler = async (req: Request): Promise<Response> => {
-  // Handle CORS preflight requests
+serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    const body: AcceptInviteRequest = await req.json();
-    const { inviteToken, password } = body;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    if (!supabaseUrl || !serviceRoleKey) {
+      throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY secrets");
+    }
 
-    console.log("Accepting invite with token:", inviteToken);
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
-    // Validate required fields
-    if (!inviteToken || !password) {
-      console.error("Missing required fields");
+    const { token, password } = await req.json();
+
+    if (!token || !password) {
       return new Response(
-        JSON.stringify({ error: "Token e senha são obrigatórios" }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        JSON.stringify({ error: "Token e senha são obrigatórios." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Validate password strength
-    if (password.length < 6) {
+    // 1) Validar token via RPC
+    const { data: invite, error: inviteError } = await supabaseAdmin.rpc("validate_invite_token", {
+      invite_token: token,
+    });
+
+    if (inviteError || !invite) {
+      console.error("Invite validation error:", inviteError);
       return new Response(
-        JSON.stringify({ error: "A senha deve ter pelo menos 6 caracteres" }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        JSON.stringify({ error: "Convite inválido ou expirado." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Create Supabase admin client for privileged operations
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-      { auth: { persistSession: false } }
-    );
+    // validate_invite_token returns an array, get the first row
+    const inviteRow = Array.isArray(invite) ? invite[0] : invite;
 
-    // 1. Validate invite token
-    const { data: inviteData, error: inviteError } = await supabaseAdmin
+    if (!inviteRow || !inviteRow.is_valid) {
+      return new Response(
+        JSON.stringify({ error: "Este convite já foi utilizado ou expirou." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const email = inviteRow.email as string;
+    const inviteId = inviteRow.id as string;
+
+    // Fetch full invite data to get company_id and role_id
+    const { data: fullInvite, error: fullInviteError } = await supabaseAdmin
       .from("user_invites")
-      .select(`
-        id,
-        email,
-        full_name,
-        company_id,
-        role_id,
-        status,
-        expires_at,
-        companies(name),
-        roles(name)
-      `)
-      .eq("token", inviteToken)
+      .select("company_id, role_id, full_name, status")
+      .eq("id", inviteId)
       .single();
 
-    if (inviteError || !inviteData) {
-      console.error("Invalid invite token:", inviteError);
+    if (fullInviteError || !fullInvite) {
+      console.error("Full invite fetch error:", fullInviteError);
       return new Response(
-        JSON.stringify({ error: "Convite não encontrado" }),
-        { status: 404, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        JSON.stringify({ error: "Erro ao buscar dados do convite." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Check if invite is still valid
-    if (inviteData.status !== "pending") {
-      console.error("Invite already used:", inviteData.status);
+    if (fullInvite.status !== "pending") {
       return new Response(
-        JSON.stringify({ error: "Este convite já foi utilizado" }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        JSON.stringify({ error: "Este convite já foi utilizado ou cancelado." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    if (new Date(inviteData.expires_at) < new Date()) {
-      console.error("Invite expired:", inviteData.expires_at);
+    const companyId = fullInvite.company_id as string;
+    const roleId = fullInvite.role_id as string;
+    const fullName = fullInvite.full_name as string;
+
+    if (!companyId || !roleId) {
       return new Response(
-        JSON.stringify({ error: "Este convite expirou. Solicite um novo convite ao administrador." }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        JSON.stringify({ error: "Convite inválido: company_id/role_id ausente." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const email = inviteData.email;
-    const fullName = inviteData.full_name;
-    const companyId = inviteData.company_id;
-    const roleId = inviteData.role_id;
+    console.log("Processing invite for:", email, "company:", companyId, "role:", roleId);
 
-    console.log("Creating user for:", email, "in company:", companyId);
+    // 2) Criar usuário
+    const { data: created, error: createUserError } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: {
+        full_name: fullName,
+      },
+    });
 
-    // 2. Check if user already exists in auth
-    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
-    const existingUser = existingUsers?.users?.find(
-      u => u.email?.toLowerCase() === email.toLowerCase()
-    );
-
-    let userId: string;
-
-    if (existingUser) {
-      console.log("User already exists, linking to company:", existingUser.id);
-      userId = existingUser.id;
-      
-      // Update the user's password
-      const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
-        userId,
-        { password }
+    if (createUserError || !created?.user) {
+      console.error("Create user error:", createUserError);
+      return new Response(
+        JSON.stringify({ error: createUserError?.message || "Erro ao criar usuário." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
-      
-      if (updateError) {
-        console.error("Error updating user password:", updateError);
-        return new Response(
-          JSON.stringify({ error: "Erro ao atualizar senha" }),
-          { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
-        );
-      }
-    } else {
-      // 3. Create new user in auth
-      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true, // Auto-confirm email
-        user_metadata: {
-          full_name: fullName,
-        },
-      });
-
-      if (createError) {
-        console.error("Error creating user:", createError);
-        return new Response(
-          JSON.stringify({ error: "Erro ao criar conta: " + createError.message }),
-          { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
-        );
-      }
-
-      userId = newUser.user.id;
-      console.log("New user created:", userId);
-
-      // 4. Create profile record (in case trigger didn't fire)
-      const { error: profileError } = await supabaseAdmin
-        .from("profiles")
-        .upsert({
-          id: userId,
-          email: email.toLowerCase(),
-          full_name: fullName,
-          status: "active",
-        }, { onConflict: "id" });
-
-      if (profileError) {
-        console.error("Error creating profile (non-fatal):", profileError);
-      }
     }
 
-    // 5. Create/update user_company_roles link
-    const { error: roleError } = await supabaseAdmin
+    const userId = created.user.id;
+    console.log("User created:", userId);
+
+    // 3) Criar profile (se der duplicate, ignora)
+    const { error: profileError } = await supabaseAdmin.from("profiles").insert({
+      id: userId,
+      email: email.toLowerCase(),
+      full_name: fullName,
+      status: "active",
+    });
+
+    if (profileError && !String(profileError.message).toLowerCase().includes("duplicate")) {
+      console.error("Erro ao criar profile:", profileError);
+    }
+
+    // 4) Inserir permissão na tabela CORRETA: user_company_roles
+    const { data: existingUCR } = await supabaseAdmin
       .from("user_company_roles")
-      .upsert({
+      .select("id")
+      .eq("user_id", userId)
+      .eq("company_id", companyId)
+      .maybeSingle();
+
+    if (!existingUCR?.id) {
+      const { error: ucrError } = await supabaseAdmin.from("user_company_roles").insert({
         user_id: userId,
         company_id: companyId,
         role_id: roleId,
-        is_active: true,
         is_primary: true,
-      }, { onConflict: "user_id,company_id" });
+        is_active: true,
+      });
 
-    if (roleError) {
-      console.error("Error linking user to company:", roleError);
-      return new Response(
-        JSON.stringify({ error: "Erro ao vincular usuário à empresa" }),
-        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+      if (ucrError) {
+        console.error("Erro ao inserir user_company_roles:", ucrError);
+        return new Response(
+          JSON.stringify({ error: "Erro ao atribuir permissão do usuário." }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      console.log("user_company_roles created for user:", userId);
+    } else {
+      console.log("user_company_roles already exists for user:", userId);
     }
 
-    console.log("User linked to company successfully");
-
-    // 6. Mark invite as accepted
-    const { error: updateError } = await supabaseAdmin
+    // 5) Marcar convite como aceito
+    const { error: updateInviteError } = await supabaseAdmin
       .from("user_invites")
-      .update({
-        status: "accepted",
-        accepted_at: new Date().toISOString(),
-      })
-      .eq("id", inviteData.id);
+      .update({ status: "accepted", accepted_at: new Date().toISOString() })
+      .eq("id", inviteId);
 
-    if (updateError) {
-      console.error("Error updating invite status (non-fatal):", updateError);
+    if (updateInviteError) {
+      console.error("Erro ao atualizar convite:", updateInviteError);
     }
 
     console.log("Invite accepted successfully for:", email);
 
-    // 7. Return success with user data for auto-login
-    return new Response(
-      JSON.stringify({
-        success: true,
-        userId,
-        email,
-        fullName,
-        companyId,
-        companyName: (inviteData.companies as any)?.name || "",
-        roleName: (inviteData.roles as any)?.name || "",
-        message: "Conta criada com sucesso!",
-      }),
-      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
-    );
-
-  } catch (error: any) {
-    console.error("Error in accept-invite function:", error);
-    return new Response(
-      JSON.stringify({ error: error.message || "Erro interno do servidor" }),
-      { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
-    );
+    return new Response(JSON.stringify({ success: true, userId, email }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("accept-invite error:", error);
+    return new Response(JSON.stringify({ error: "Erro interno ao processar convite." }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
-};
-
-serve(handler);
+});
