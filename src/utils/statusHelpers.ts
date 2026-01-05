@@ -4,12 +4,18 @@
  */
 
 /**
+ * Normalizes a status string for robust comparisons
+ */
+export function normalizeStatus(status: string | null | undefined): string {
+  return (status ?? "").trim().toUpperCase();
+}
+
+/**
  * Checks if a status represents a cancelled transaction
  * Handles multiple formats: CANCELADO, cancelado, CANCELLED, CANCELED
  */
 export function isCancelled(status: string | null | undefined): boolean {
-  if (!status) return false;
-  const normalized = status.trim().toUpperCase();
+  const normalized = normalizeStatus(status);
   return normalized === "CANCELADO" || normalized === "CANCELLED" || normalized === "CANCELED";
 }
 
@@ -18,8 +24,7 @@ export function isCancelled(status: string | null | undefined): boolean {
  * These are the only transactions that impact balances
  */
 export function isRealized(status: string | null | undefined): boolean {
-  if (!status) return false;
-  const normalized = status.trim().toUpperCase();
+  const normalized = normalizeStatus(status);
   return normalized === "REALIZADO" || normalized === "RECEBIDO";
 }
 
@@ -27,8 +32,7 @@ export function isRealized(status: string | null | undefined): boolean {
  * Checks if a status represents a pending/predicted transaction
  */
 export function isPending(status: string | null | undefined): boolean {
-  if (!status) return false;
-  const normalized = status.trim().toUpperCase();
+  const normalized = normalizeStatus(status);
   return normalized === "PENDENTE" || normalized === "PREVISTO";
 }
 

@@ -6,7 +6,7 @@ import { Trophy, AlertTriangle, TrendingDown, ArrowUp, ArrowDown, Minus, BarChar
 import { Transaction, SpecialtyConfig } from "@/types";
 import { format, startOfMonth, endOfMonth, parseISO, subMonths, eachMonthOfInterval } from "date-fns";
 import { ptBR } from "date-fns/locale";
-
+import { isRealized } from "@/utils/statusHelpers";
 interface SpecialtyRankingProps {
   transactions: Transaction[];
   specialties: SpecialtyConfig[];
@@ -33,8 +33,10 @@ export function SpecialtyRanking({ transactions, specialties }: SpecialtyRanking
     const currentMonthEnd = endOfMonth(now);
     const totalDays = currentMonthEnd.getDate();
 
-    // Filter only Centro Clínico transactions
-    const centroClinicoTransactions = transactions.filter(t => t.unit === "CENTRO_CLINICO");
+    // Filter only Centro Clínico transactions (apenas REALIZADOS; cancelados nunca entram)
+    const centroClinicoTransactions = transactions.filter(
+      (t) => t.unit === "CENTRO_CLINICO" && isRealized(t.status)
+    );
 
     // Calculate score for each active specialty
     const specialtyScores: SpecialtyScore[] = [];

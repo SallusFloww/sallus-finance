@@ -34,7 +34,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Transaction, ReceiptType, PaymentMethodParticular, Operadora, Specialty } from "@/types";
-
+import { excludeCancelled, isPending, isRealized } from "@/utils/statusHelpers";
 export default function Reports() {
   const { transactions, auditLog } = useApp();
   const { filterTransactions, getStats, settings } = transactions;
@@ -84,15 +84,35 @@ export default function Reports() {
     }
 
     return data;
-  }, [filterTransactions, dateRange, selectedUnit, selectedType, selectedReceiptType, selectedCategory, selectedOperadora]);
+  }, [
+    filterTransactions,
+    dateRange,
+    selectedUnit,
+    selectedType,
+    selectedReceiptType,
+    selectedCategory,
+    selectedOperadora,
+  ]);
+
+  // Base de cálculo do relatório:
+  // - Sempre exclui CANCELADOS
+  // - Por padrão soma apenas REALIZADOS
+  // - Em "Modo Diretor", inclui PENDENTES também (sem incluir CANCELADOS)
+  const reportTransactions = useMemo(() => {
+    const active = excludeCancelled(filteredTransactions);
+
+    return directorMode
+      ? active.filter((t) => isRealized(t.status) || isPending(t.status))
+      : active.filter((t) => isRealized(t.status));
+  }, [filteredTransactions, directorMode]);
 
   // ============= CÁLCULOS BASEADOS NOS FILTROS =============
   const filteredStats = useMemo(() => {
-    const totalIncome = filteredTransactions
+    const totalIncome = reportTransactions
       .filter((t) => t.type === "INCOME")
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const totalExpense = filteredTransactions
+    const totalExpense = reportTransactions
       .filter((t) => t.type === "EXPENSE")
       .reduce((sum, t) => sum + t.amount, 0);
 
@@ -103,159 +123,167 @@ export default function Reports() {
       totalIncome,
       totalExpense,
       currentBalance,
-      transactionCount: filteredTransactions.length,
+      transactionCount: reportTransactions.length,
     };
-  }, [filteredTransactions, settings.initialBalance]);
+  }, [reportTransactions, settings.initialBalance]);
 
   // ============= ANÁLISE POR UNIDADE (DETALHADA) COM ESPECIALIDADES =============
   const unitAnalysisDetailed = useMemo(() => {
-    const incomeTransactions = filteredTransactions.filter((t) => t.type === "INCOME");
-    
-    return activeUnits.map((unit) => {
-      const unitIncomeTransactions = incomeTransactions.filter((t) => t.unit === unit.id);
-      const totalValue = unitIncomeTransactions.reduce((sum, t) => sum + t.amount, 0);
-      const count = unitIncomeTransactions.length;
-      const avgTicket = count > 0 ? totalValue / count : 0;
+    const incomeTransactions = reportTransactions.filter((t) => t.type === "INCOME");
 
-      // Saídas da unidade
-      const unitExpenseTransactions = filteredTransactions.filter((t) => t.type === "EXPENSE" && t.unit === unit.id);
-      const unitExpense = unitExpenseTransactions.reduce((sum, t) => sum + t.amount, 0);
+    return activeUnits
+      .map((unit) => {
+        const unitIncomeTransactions = incomeTransactions.filter((t) => t.unit === unit.id);
+        const totalValue = unitIncomeTransactions.reduce((sum, t) => sum + t.amount, 0);
+        const count = unitIncomeTransactions.length;
+        const avgTicket = count > 0 ? totalValue / count : 0;
 
-      // Quebra por categoria
-      const categoryBreakdown: Record<string, { value: number; count: number }> = {};
-      unitIncomeTransactions.forEach((t) => {
-        const cat = t.category || "sem_categoria";
-        if (!categoryBreakdown[cat]) {
-          categoryBreakdown[cat] = { value: 0, count: 0 };
-        }
-        categoryBreakdown[cat].value += t.amount;
-        categoryBreakdown[cat].count += 1;
-      });
+        // Saídas da unidade
+        const unitExpenseTransactions = reportTransactions.filter(
+          (t) => t.type === "EXPENSE" && t.unit === unit.id
+        );
+        const unitExpense = unitExpenseTransactions.reduce((sum, t) => sum + t.amount, 0);
 
-      const categoriesAnalysis = Object.entries(categoryBreakdown)
-        .map(([cat, data]) => ({
-          category: cat,
-          categoryName: settings.categories.find((c) => c.id === cat)?.name || cat,
-          value: data.value,
-          count: data.count,
-          percentage: totalValue > 0 ? (data.value / totalValue) * 100 : 0,
-          avgTicket: data.count > 0 ? data.value / data.count : 0,
-        }))
-        .sort((a, b) => b.value - a.value);
-
-      // Particular x Convênios dentro da unidade
-      const particularValue = unitIncomeTransactions
-        .filter((t) => t.receiptType === "PARTICULAR")
-        .reduce((sum, t) => sum + t.amount, 0);
-      const convenioValue = unitIncomeTransactions
-        .filter((t) => t.receiptType === "CONVENIO")
-        .reduce((sum, t) => sum + t.amount, 0);
-
-      // ESPECIALIDADES (apenas para Centro Clínico)
-      let specialtiesAnalysis: Array<{
-        specialty: Specialty;
-        name: string;
-        totalIncome: number;
-        totalExpense: number;
-        netBalance: number;
-        count: number;
-        avgTicket: number;
-        percentage: number;
-        categories: typeof categoriesAnalysis;
-        particular: { value: number; percentage: number };
-        convenio: { value: number; percentage: number };
-        hasMovement: boolean;
-      }> = [];
-
-      if (unit.id === "CENTRO_CLINICO") {
-        // SEMPRE mostrar TODAS as 6 especialidades, mesmo sem movimentação
-        specialtiesAnalysis = SPECIALTIES.map((spec) => {
-          const specIncomeTransactions = unitIncomeTransactions.filter((t) => t.specialty === spec.id);
-          const specExpenseTransactions = unitExpenseTransactions.filter((t) => t.specialty === spec.id);
-          const specIncome = specIncomeTransactions.reduce((sum, t) => sum + t.amount, 0);
-          const specExpense = specExpenseTransactions.reduce((sum, t) => sum + t.amount, 0);
-          const specCount = specIncomeTransactions.length;
-          const hasMovement = specIncome > 0 || specExpense > 0;
-
-          // Categorias por especialidade
-          const specCategoryBreakdown: Record<string, { value: number; count: number }> = {};
-          specIncomeTransactions.forEach((t) => {
-            const cat = t.category || "sem_categoria";
-            if (!specCategoryBreakdown[cat]) {
-              specCategoryBreakdown[cat] = { value: 0, count: 0 };
-            }
-            specCategoryBreakdown[cat].value += t.amount;
-            specCategoryBreakdown[cat].count += 1;
-          });
-
-          const specCategories = Object.entries(specCategoryBreakdown)
-            .map(([cat, data]) => ({
-              category: cat,
-              categoryName: settings.categories.find((c) => c.id === cat)?.name || cat,
-              value: data.value,
-              count: data.count,
-              percentage: specIncome > 0 ? (data.value / specIncome) * 100 : 0,
-              avgTicket: data.count > 0 ? data.value / data.count : 0,
-            }))
-            .sort((a, b) => b.value - a.value);
-
-          // Particular x Convênios por especialidade
-          const specParticular = specIncomeTransactions
-            .filter((t) => t.receiptType === "PARTICULAR")
-            .reduce((sum, t) => sum + t.amount, 0);
-          const specConvenio = specIncomeTransactions
-            .filter((t) => t.receiptType === "CONVENIO")
-            .reduce((sum, t) => sum + t.amount, 0);
-
-          return {
-            specialty: spec.id as Specialty,
-            name: spec.name,
-            totalIncome: specIncome,
-            totalExpense: specExpense,
-            netBalance: specIncome - specExpense,
-            count: specCount,
-            avgTicket: specCount > 0 ? specIncome / specCount : 0,
-            percentage: totalValue > 0 ? (specIncome / totalValue) * 100 : 0,
-            categories: specCategories,
-            particular: {
-              value: specParticular,
-              percentage: specIncome > 0 ? (specParticular / specIncome) * 100 : 0,
-            },
-            convenio: {
-              value: specConvenio,
-              percentage: specIncome > 0 ? (specConvenio / specIncome) * 100 : 0,
-            },
-            hasMovement, // Flag para indicar se tem movimentação
-          };
-        }).sort((a, b) => {
-          // Especialidades com movimentação primeiro, depois por receita
-          if (a.hasMovement && !b.hasMovement) return -1;
-          if (!a.hasMovement && b.hasMovement) return 1;
-          return b.totalIncome - a.totalIncome;
+        // Quebra por categoria
+        const categoryBreakdown: Record<string, { value: number; count: number }> = {};
+        unitIncomeTransactions.forEach((t) => {
+          const cat = t.category || "sem_categoria";
+          if (!categoryBreakdown[cat]) {
+            categoryBreakdown[cat] = { value: 0, count: 0 };
+          }
+          categoryBreakdown[cat].value += t.amount;
+          categoryBreakdown[cat].count += 1;
         });
-      }
 
-      return {
-        unit: unit.id,
-        name: unit.name,
-        totalIncome: totalValue,
-        totalExpense: unitExpense,
-        netBalance: totalValue - unitExpense,
-        count,
-        avgTicket,
-        categories: categoriesAnalysis,
-        particular: {
-          value: particularValue,
-          percentage: totalValue > 0 ? (particularValue / totalValue) * 100 : 0,
-        },
-        convenio: {
-          value: convenioValue,
-          percentage: totalValue > 0 ? (convenioValue / totalValue) * 100 : 0,
-        },
-        specialties: specialtiesAnalysis,
-      };
-    }).sort((a, b) => b.totalIncome - a.totalIncome);
-  }, [filteredTransactions, activeUnits, settings.categories]);
+        const categoriesAnalysis = Object.entries(categoryBreakdown)
+          .map(([cat, data]) => ({
+            category: cat,
+            categoryName: settings.categories.find((c) => c.id === cat)?.name || cat,
+            value: data.value,
+            count: data.count,
+            percentage: totalValue > 0 ? (data.value / totalValue) * 100 : 0,
+            avgTicket: data.count > 0 ? data.value / data.count : 0,
+          }))
+          .sort((a, b) => b.value - a.value);
+
+        // Particular x Convênios dentro da unidade
+        const particularValue = unitIncomeTransactions
+          .filter((t) => t.receiptType === "PARTICULAR")
+          .reduce((sum, t) => sum + t.amount, 0);
+        const convenioValue = unitIncomeTransactions
+          .filter((t) => t.receiptType === "CONVENIO")
+          .reduce((sum, t) => sum + t.amount, 0);
+
+        // ESPECIALIDADES (apenas para Centro Clínico)
+        let specialtiesAnalysis: Array<{
+          specialty: Specialty;
+          name: string;
+          totalIncome: number;
+          totalExpense: number;
+          netBalance: number;
+          count: number;
+          avgTicket: number;
+          percentage: number;
+          categories: typeof categoriesAnalysis;
+          particular: { value: number; percentage: number };
+          convenio: { value: number; percentage: number };
+          hasMovement: boolean;
+        }> = [];
+
+        if (unit.id === "CENTRO_CLINICO") {
+          // SEMPRE mostrar TODAS as 6 especialidades, mesmo sem movimentação
+          specialtiesAnalysis = SPECIALTIES.map((spec) => {
+            const specIncomeTransactions = unitIncomeTransactions.filter(
+              (t) => t.specialty === spec.id
+            );
+            const specExpenseTransactions = unitExpenseTransactions.filter(
+              (t) => t.specialty === spec.id
+            );
+            const specIncome = specIncomeTransactions.reduce((sum, t) => sum + t.amount, 0);
+            const specExpense = specExpenseTransactions.reduce((sum, t) => sum + t.amount, 0);
+            const specCount = specIncomeTransactions.length;
+            const hasMovement = specIncome > 0 || specExpense > 0;
+
+            // Categorias por especialidade
+            const specCategoryBreakdown: Record<string, { value: number; count: number }> = {};
+            specIncomeTransactions.forEach((t) => {
+              const cat = t.category || "sem_categoria";
+              if (!specCategoryBreakdown[cat]) {
+                specCategoryBreakdown[cat] = { value: 0, count: 0 };
+              }
+              specCategoryBreakdown[cat].value += t.amount;
+              specCategoryBreakdown[cat].count += 1;
+            });
+
+            const specCategories = Object.entries(specCategoryBreakdown)
+              .map(([cat, data]) => ({
+                category: cat,
+                categoryName: settings.categories.find((c) => c.id === cat)?.name || cat,
+                value: data.value,
+                count: data.count,
+                percentage: specIncome > 0 ? (data.value / specIncome) * 100 : 0,
+                avgTicket: data.count > 0 ? data.value / data.count : 0,
+              }))
+              .sort((a, b) => b.value - a.value);
+
+            // Particular x Convênios por especialidade
+            const specParticular = specIncomeTransactions
+              .filter((t) => t.receiptType === "PARTICULAR")
+              .reduce((sum, t) => sum + t.amount, 0);
+            const specConvenio = specIncomeTransactions
+              .filter((t) => t.receiptType === "CONVENIO")
+              .reduce((sum, t) => sum + t.amount, 0);
+
+            return {
+              specialty: spec.id as Specialty,
+              name: spec.name,
+              totalIncome: specIncome,
+              totalExpense: specExpense,
+              netBalance: specIncome - specExpense,
+              count: specCount,
+              avgTicket: specCount > 0 ? specIncome / specCount : 0,
+              percentage: totalValue > 0 ? (specIncome / totalValue) * 100 : 0,
+              categories: specCategories,
+              particular: {
+                value: specParticular,
+                percentage: specIncome > 0 ? (specParticular / specIncome) * 100 : 0,
+              },
+              convenio: {
+                value: specConvenio,
+                percentage: specIncome > 0 ? (specConvenio / specIncome) * 100 : 0,
+              },
+              hasMovement, // Flag para indicar se tem movimentação
+            };
+          }).sort((a, b) => {
+            // Especialidades com movimentação primeiro, depois por receita
+            if (a.hasMovement && !b.hasMovement) return -1;
+            if (!a.hasMovement && b.hasMovement) return 1;
+            return b.totalIncome - a.totalIncome;
+          });
+        }
+
+        return {
+          unit: unit.id,
+          name: unit.name,
+          totalIncome: totalValue,
+          totalExpense: unitExpense,
+          netBalance: totalValue - unitExpense,
+          count,
+          avgTicket,
+          categories: categoriesAnalysis,
+          particular: {
+            value: particularValue,
+            percentage: totalValue > 0 ? (particularValue / totalValue) * 100 : 0,
+          },
+          convenio: {
+            value: convenioValue,
+            percentage: totalValue > 0 ? (convenioValue / totalValue) * 100 : 0,
+          },
+          specialties: specialtiesAnalysis,
+        };
+      })
+      .sort((a, b) => b.totalIncome - a.totalIncome);
+  }, [reportTransactions, activeUnits, settings.categories]);
 
   // Alias para compatibilidade
   const unitAnalysis = unitAnalysisDetailed;
@@ -272,15 +300,20 @@ export default function Reports() {
 
     // Para Centro Clínico, destacar especialidade líder
     if (unit.unit === "CENTRO_CLINICO" && unit.specialties && unit.specialties.length > 0) {
-      const activeSpecs = unit.specialties.filter(s => s.hasMovement);
+      const activeSpecs = unit.specialties.filter((s) => s.hasMovement);
       if (activeSpecs.length > 0) {
         const topSpec = activeSpecs[0];
         if (topSpec.percentage >= 50) {
-          parts.push(`Resultado sustentado majoritariamente pela especialidade ${topSpec.name} (${topSpec.percentage.toFixed(0)}% da receita do período).`);
+          parts.push(
+            `Resultado sustentado majoritariamente pela especialidade ${topSpec.name} (${topSpec.percentage.toFixed(0)}% da receita do período).`
+          );
         } else if (activeSpecs.length === 1) {
           parts.push(`Receita gerada exclusivamente por ${topSpec.name}.`);
         } else {
-          const topNames = activeSpecs.slice(0, 2).map(s => s.name).join(" e ");
+          const topNames = activeSpecs
+            .slice(0, 2)
+            .map((s) => s.name)
+            .join(" e ");
           parts.push(`Receita distribuída entre ${topNames}.`);
         }
       } else {
@@ -291,7 +324,9 @@ export default function Reports() {
       if (unit.categories.length > 0) {
         const topCat = unit.categories[0];
         if (topCat.percentage >= 50) {
-          parts.push(`Principal fonte: ${topCat.categoryName} (${topCat.percentage.toFixed(0)}% das entradas).`);
+          parts.push(
+            `Principal fonte: ${topCat.categoryName} (${topCat.percentage.toFixed(0)}% das entradas).`
+          );
         }
       }
     }
@@ -308,7 +343,7 @@ export default function Reports() {
 
   // ============= ANÁLISE POR CATEGORIA =============
   const categoryAnalysis = useMemo(() => {
-    const incomeTransactions = filteredTransactions.filter((t) => t.type === "INCOME");
+    const incomeTransactions = reportTransactions.filter((t) => t.type === "INCOME");
     const categoryMap: Record<string, { value: number; count: number }> = {};
 
     incomeTransactions.forEach((t) => {
@@ -331,12 +366,12 @@ export default function Reports() {
         percentage: totalValue > 0 ? (data.value / totalValue) * 100 : 0,
       }))
       .sort((a, b) => b.value - a.value);
-  }, [filteredTransactions, settings.categories]);
+  }, [reportTransactions, settings.categories]);
 
   // ============= PARTICULAR x CONVÊNIOS =============
   const receiptTypeAnalysis = useMemo(() => {
-    const incomeTransactions = filteredTransactions.filter((t) => t.type === "INCOME");
-    
+    const incomeTransactions = reportTransactions.filter((t) => t.type === "INCOME");
+
     const particular = incomeTransactions
       .filter((t) => t.receiptType === "PARTICULAR")
       .reduce((sum, t) => sum + t.amount, 0);
@@ -358,11 +393,11 @@ export default function Reports() {
       },
       total,
     };
-  }, [filteredTransactions]);
+  }, [reportTransactions]);
 
   // ============= ANÁLISE POR OPERADORA =============
   const operadoraAnalysis = useMemo(() => {
-    const convenioTransactions = filteredTransactions.filter(
+    const convenioTransactions = reportTransactions.filter(
       (t) => t.type === "INCOME" && t.receiptType === "CONVENIO"
     );
 
@@ -383,18 +418,20 @@ export default function Reports() {
     })
       .filter((op) => op.value > 0)
       .sort((a, b) => b.value - a.value);
-  }, [filteredTransactions, totalIncomeAllUnits]);
+  }, [reportTransactions, totalIncomeAllUnits]);
 
   // ============= ANÁLISE POR MEIO DE PAGAMENTO (PARTICULAR) COM QTD E TICKET MÉDIO =============
   const paymentMethodAnalysis = useMemo(() => {
-    const particularTransactions = filteredTransactions.filter(
+    const particularTransactions = reportTransactions.filter(
       (t) => t.type === "INCOME" && t.receiptType === "PARTICULAR"
     );
 
     const totalParticular = particularTransactions.reduce((sum, t) => sum + t.amount, 0);
 
     return PAYMENT_METHODS_PARTICULAR.map((pm) => {
-      const pmTransactions = particularTransactions.filter((t) => t.paymentMethodParticular === pm.id);
+      const pmTransactions = particularTransactions.filter(
+        (t) => t.paymentMethodParticular === pm.id
+      );
       const value = pmTransactions.reduce((sum, t) => sum + t.amount, 0);
       const count = pmTransactions.length;
 
@@ -409,20 +446,23 @@ export default function Reports() {
     })
       .filter((pm) => pm.value > 0)
       .sort((a, b) => b.value - a.value);
-  }, [filteredTransactions]);
+  }, [reportTransactions]);
 
   // ============= MAPA DE RECEITA (TOP 3 CATEGORIAS POR UNIDADE) =============
   const revenueMap = useMemo(() => {
-    const incomeTransactions = filteredTransactions.filter((t) => t.type === "INCOME");
+    const incomeTransactions = reportTransactions.filter((t) => t.type === "INCOME");
     const totalIncome = incomeTransactions.reduce((sum, t) => sum + t.amount, 0);
-    
-    const categoryUnitMap: Record<string, { unit: string; unitName: string; category: string; categoryName: string; value: number }> = {};
+
+    const categoryUnitMap: Record<
+      string,
+      { unit: string; unitName: string; category: string; categoryName: string; value: number }
+    > = {};
 
     incomeTransactions.forEach((t) => {
       const key = `${t.unit}_${t.category}`;
       const unitConfig = settings.units.find((u) => u.id === t.unit);
       const categoryConfig = settings.categories.find((c) => c.id === t.category);
-      
+
       if (!categoryUnitMap[key]) {
         categoryUnitMap[key] = {
           unit: t.unit,
@@ -443,7 +483,7 @@ export default function Reports() {
         rank: index + 1,
         percentage: totalIncome > 0 ? (item.value / totalIncome) * 100 : 0,
       }));
-  }, [filteredTransactions, settings.units, settings.categories]);
+  }, [reportTransactions, settings.units, settings.categories]);
 
   // ============= ALERTAS GERENCIAIS COM TIPOS DE RISCO =============
   const managementAlerts = useMemo(() => {

@@ -5,6 +5,7 @@ import { formatCurrency } from "@/utils/formatters";
 import { Transaction, Specialty } from "@/types";
 import { UNIT_LABELS, SPECIALTY_LABELS, SPECIALTIES } from "@/utils/constants";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { isPending, isRealized } from "@/utils/statusHelpers";
 
 interface UnitDrilldownProps {
   transactions: Transaction[];
@@ -62,15 +63,14 @@ export function UnitDrilldown({ transactions, dateRange }: UnitDrilldownProps) {
       const transactionDate = new Date(t.date);
       const inDateRange = transactionDate >= dateRange.start && transactionDate <= dateRange.end;
       // IMPORTANTE: Apenas movimentações REALIZADAS impactam o saldo
-      const isRealized = t.status === "REALIZADO";
-      return inDateRange && isRealized;
+      return inDateRange && isRealized(t.status);
     });
 
     // Também contar previstos para exibir separadamente
     const previstos = transactions.filter((t) => {
       const transactionDate = new Date(t.date);
       const inDateRange = transactionDate >= dateRange.start && transactionDate <= dateRange.end;
-      return inDateRange && t.status === "PENDENTE";
+      return inDateRange && isPending(t.status);
     });
 
     const units: UnitData[] = ["ONCOLOGIA", "PRONTO_SOCORRO", "CENTRO_CLINICO"].map((unitId) => {
