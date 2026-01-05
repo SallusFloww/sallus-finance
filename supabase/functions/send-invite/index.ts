@@ -28,10 +28,18 @@ serve(async (req: Request): Promise<Response> => {
     /* =========================
        AUTH
     ========================== */
-    const authHeader = req.headers.get("Authorization");
+    // Accept different header variations (case-insensitive)
+    const authHeader =
+      req.headers.get("Authorization") ||
+      req.headers.get("authorization") ||
+      req.headers.get("x-supabase-authorization");
+    
     if (!authHeader) {
       return new Response(
-        JSON.stringify({ error: "Não autorizado" }),
+        JSON.stringify({ 
+          error: "Não autorizado",
+          details: "Header Authorization não encontrado" 
+        }),
         { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
@@ -54,8 +62,12 @@ serve(async (req: Request): Promise<Response> => {
       await supabaseAnon.auth.getUser(jwt);
 
     if (authError || !authData?.user) {
+      console.error("Auth error:", authError?.message);
       return new Response(
-        JSON.stringify({ error: "Usuário não autenticado" }),
+        JSON.stringify({ 
+          error: "Usuário não autenticado",
+          details: authError?.message ?? "JWT inválido ou expirado" 
+        }),
         { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
