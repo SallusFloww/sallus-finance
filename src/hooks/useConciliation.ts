@@ -1,9 +1,12 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useReceivablesDB } from "./useReceivablesDB";
 import { useFinancialEntries, FinancialEntry } from "./useFinancialEntries";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { Receivable } from "@/types";
-import { differenceInDays, parseISO } from "date-fns";
+import { differenceInDays } from "date-fns";
 import { parseLocalDate } from "@/utils/formatters";
+import { toast } from "sonner";
 
 // Conciliation operational status (does NOT alter source data)
 export type ConciliationStatus = 
@@ -87,25 +90,127 @@ const DEFAULT_SETTINGS: ConciliationSettings = {
   conservativeMode: true,
 };
 
-// Notes stored locally (could be persisted later)
 export interface ConciliationNote {
   id: string;
   itemId: string;
+  itemType: string;
+  sourceId: string;
   note: string;
   createdAt: string;
   createdBy: string;
+  createdByName: string;
+}
+
+interface DBConciliationStatus {
+  id: string;
+  company_id: string;
+  item_id: string;
+  item_type: string;
+  source_id: string;
+  status: string;
+  previous_status: string | null;
+  updated_by: string | null;
+  updated_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface DBConciliationNote {
+  id: string;
+  company_id: string;
+  item_id: string;
+  item_type: string;
+  source_id: string;
+  note: string;
+  created_by: string | null;
+  created_by_name: string | null;
+  created_at: string;
 }
 
 export function useConciliation() {
   const { receivables, loading: loadingReceivables } = useReceivablesDB();
   const { entries: financialEntries, loading: loadingEntries } = useFinancialEntries();
+  const { user, profile, currentCompany } = useAuth();
+  const currentCompanyId = currentCompany?.id;
   
   const [settings, setSettings] = useState<ConciliationSettings>(DEFAULT_SETTINGS);
-  const [localNotes, setLocalNotes] = useState<ConciliationNote[]>([]);
-  const [localStatus, setLocalStatus] = useState<Record<string, ConciliationStatus>>({});
   const [filters, setFilters] = useState<ConciliationFilters>({});
+  
+  // Persistence state
+  const [dbStatuses, setDbStatuses] = useState<Record<string, ConciliationStatus>>({});
+  const [dbNotes, setDbNotes] = useState<ConciliationNote[]>([]);
+  const [localStatuses, setLocalStatuses] = useState<Record<string, ConciliationStatus>>({});
+  const [localNotes, setLocalNotes] = useState<ConciliationNote[]>([]);
+  const [isOfflineMode, setIsOfflineMode] = useState(false);
+  const [loadingPersistence, setLoadingPersistence] = useState(true);
 
   const loading = loadingReceivables || loadingEntries;
+
+  // Load persisted data on mount
+  useEffect(() => {
+    if (!currentCompanyId) {
+      setLoadingPersistence(false);
+      return;
+    }
+
+    const loadPersistedData = async () => {
+      try {
+        // Load statuses
+        const { data: statusData, error: statusError } = await supabase
+          .from("conciliation_status")
+          .select("*")
+          .eq("company_id", currentCompanyId);
+
+        if (statusError) throw statusError;
+
+        const statusMap: Record<string, ConciliationStatus> = {};
+        (statusData as DBConciliationStatus[] || []).forEach(s => {
+          statusMap[s.item_id] = s.status as ConciliationStatus;
+        });
+        setDbStatuses(statusMap);
+
+        // Load notes
+        const { data: notesData, error: notesError } = await supabase
+          .from("conciliation_notes")
+          .select("*")
+          .eq("company_id", currentCompanyId)
+          .order("created_at", { ascending: false });
+
+        if (notesError) throw notesError;
+
+        const notes: ConciliationNote[] = (notesData as DBConciliationNote[] || []).map(n => ({
+          id: n.id,
+          itemId: n.item_id,
+          itemType: n.item_type,
+          sourceId: n.source_id,
+          note: n.note,
+          createdAt: n.created_at,
+          createdBy: n.created_by || "",
+          createdByName: n.created_by_name || "Usuário",
+        }));
+        setDbNotes(notes);
+
+        setIsOfflineMode(false);
+      } catch (error) {
+        console.error("Failed to load conciliation data, using local mode:", error);
+        setIsOfflineMode(true);
+      } finally {
+        setLoadingPersistence(false);
+      }
+    };
+
+    loadPersistedData();
+  }, [currentCompanyId]);
+
+  // Combined status (DB + local fallback)
+  const combinedStatuses = useMemo(() => {
+    return { ...dbStatuses, ...localStatuses };
+  }, [dbStatuses, localStatuses]);
+
+  // Combined notes (DB + local)
+  const combinedNotes = useMemo(() => {
+    return [...dbNotes, ...localNotes];
+  }, [dbNotes, localNotes]);
 
   // Convert receivables to conciliation items
   const conciliationItems = useMemo((): ConciliationItem[] => {
@@ -120,11 +225,12 @@ export function useConciliation() {
         const billingDate = parseLocalDate(r.billingDate);
         const ageInDays = differenceInDays(today, billingDate);
         const openAmount = r.billedAmount - r.receivedAmount - r.glossedAmount;
+        const itemId = `recv-${r.id}`;
         
         // Determine conciliation status
         let status: ConciliationStatus = "EM_ABERTO";
-        if (localStatus[r.id]) {
-          status = localStatus[r.id];
+        if (combinedStatuses[itemId]) {
+          status = combinedStatuses[itemId];
         } else if (r.status === "RECEBIDO" && openAmount <= 0.01) {
           status = "CONCILIADO";
         } else if (r.status === "RECEBIDO_COM_GLOSA") {
@@ -136,14 +242,14 @@ export function useConciliation() {
         }
 
         return {
-          id: `recv-${r.id}`,
+          id: itemId,
           type: "receivable",
           sourceId: r.id,
           date: r.billingDate,
           unit: r.unit,
           source: r.source,
           description: r.description,
-          identifier: r.description, // Use description as identifier for now
+          identifier: r.description,
           billedAmount: r.billedAmount,
           receivedAmount: r.receivedAmount,
           openAmount: Math.max(0, openAmount),
@@ -154,7 +260,7 @@ export function useConciliation() {
           originalData: r,
         };
       });
-  }, [receivables, localStatus]);
+  }, [receivables, combinedStatuses]);
 
   // Get income entries without link (potential orphans)
   const unlinkedIncomeEntries = useMemo(() => {
@@ -415,28 +521,102 @@ export function useConciliation() {
       .slice(0, 10);
   }, [pendingItems]);
 
-  // Add local note
-  const addNote = useCallback((itemId: string, note: string, userName: string) => {
+  // Add note with persistence
+  const addNote = useCallback(async (itemId: string, note: string, userName: string): Promise<ConciliationNote | null> => {
+    const sourceId = itemId.replace(/^(recv-|entry-)/, "");
+    const itemType = itemId.startsWith("entry-") ? "financial_entry" : "receivable";
+    
     const newNote: ConciliationNote = {
       id: crypto.randomUUID(),
       itemId,
+      itemType,
+      sourceId,
       note,
       createdAt: new Date().toISOString(),
-      createdBy: userName,
+      createdBy: user?.id || "",
+      createdByName: userName || profile?.full_name || "Usuário",
     };
-    setLocalNotes(prev => [...prev, newNote]);
+
+    // Try to persist to DB
+    if (currentCompanyId && !isOfflineMode) {
+      try {
+        const { error } = await supabase
+          .from("conciliation_notes")
+          .insert({
+            id: newNote.id,
+            company_id: currentCompanyId,
+            item_id: itemId,
+            item_type: itemType,
+            source_id: sourceId,
+            note,
+            created_by: user?.id,
+            created_by_name: newNote.createdByName,
+          });
+
+        if (error) throw error;
+
+        setDbNotes(prev => [newNote, ...prev]);
+        return newNote;
+      } catch (error) {
+        console.error("Failed to persist note:", error);
+        toast.warning("Modo offline para notas", {
+          description: "A nota foi salva localmente.",
+        });
+        setIsOfflineMode(true);
+      }
+    }
+
+    // Fallback to local storage
+    setLocalNotes(prev => [newNote, ...prev]);
     return newNote;
-  }, []);
+  }, [currentCompanyId, user?.id, profile?.full_name, isOfflineMode]);
 
   // Get notes for item
   const getNotesForItem = useCallback((itemId: string) => {
-    return localNotes.filter(n => n.itemId === itemId);
-  }, [localNotes]);
+    return combinedNotes.filter(n => n.itemId === itemId);
+  }, [combinedNotes]);
 
-  // Set internal status
-  const setItemStatus = useCallback((itemId: string, status: ConciliationStatus) => {
-    setLocalStatus(prev => ({ ...prev, [itemId]: status }));
-  }, []);
+  // Set internal status with persistence
+  const setItemStatus = useCallback(async (itemId: string, status: ConciliationStatus) => {
+    const sourceId = itemId.replace(/^(recv-|entry-)/, "");
+    const itemType = itemId.startsWith("entry-") ? "financial_entry" : "receivable";
+    const previousStatus = combinedStatuses[itemId];
+
+    // Try to persist to DB
+    if (currentCompanyId && !isOfflineMode) {
+      try {
+        const { error } = await supabase
+          .from("conciliation_status")
+          .upsert({
+            company_id: currentCompanyId,
+            item_id: itemId,
+            item_type: itemType,
+            source_id: sourceId,
+            status,
+            previous_status: previousStatus || null,
+            updated_by: user?.id,
+            updated_by_name: profile?.full_name || "Usuário",
+            updated_at: new Date().toISOString(),
+          }, {
+            onConflict: "company_id,item_type,item_id",
+          });
+
+        if (error) throw error;
+
+        setDbStatuses(prev => ({ ...prev, [itemId]: status }));
+        return;
+      } catch (error) {
+        console.error("Failed to persist status:", error);
+        toast.warning("Modo offline para status", {
+          description: "O status foi salvo localmente.",
+        });
+        setIsOfflineMode(true);
+      }
+    }
+
+    // Fallback to local storage
+    setLocalStatuses(prev => ({ ...prev, [itemId]: status }));
+  }, [currentCompanyId, combinedStatuses, user?.id, profile?.full_name, isOfflineMode]);
 
   // Update settings
   const updateSettings = useCallback((updates: Partial<ConciliationSettings>) => {
@@ -460,11 +640,11 @@ export function useConciliation() {
     // Matching
     suggestMatches,
     
-    // Local state management
+    // Note & status management
     addNote,
     getNotesForItem,
     setItemStatus,
-    localNotes,
+    localNotes: combinedNotes,
     
     // Settings
     settings,
@@ -475,6 +655,7 @@ export function useConciliation() {
     setFilters,
     
     // State
-    loading,
+    loading: loading || loadingPersistence,
+    isOfflineMode,
   };
 }
