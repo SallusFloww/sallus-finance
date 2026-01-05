@@ -131,12 +131,61 @@ export default function Reports() {
   const unitAnalysisDetailed = useMemo(() => {
     const incomeTransactions = reportTransactions.filter((t) => t.type === "INCOME");
 
+    // [AUDIT_FIN_REPORT] Log all transactions for debugging
+    console.log("[AUDIT_FIN_REPORT] records_count =", reportTransactions.length);
+    if (reportTransactions.length > 0) {
+      console.log("[AUDIT_FIN_REPORT] sample_record =", {
+        unit: reportTransactions[0]?.unit,
+        specialty: reportTransactions[0]?.specialty,
+        category: reportTransactions[0]?.category,
+        type: reportTransactions[0]?.type,
+        status: reportTransactions[0]?.status,
+        amount: reportTransactions[0]?.amount,
+        date: reportTransactions[0]?.date,
+        receivedAt: reportTransactions[0]?.receivedAt,
+      });
+    }
+
     return activeUnits
       .map((unit) => {
         const unitIncomeTransactions = incomeTransactions.filter((t) => t.unit === unit.id);
         const totalValue = unitIncomeTransactions.reduce((sum, t) => sum + t.amount, 0);
         const count = unitIncomeTransactions.length;
         const avgTicket = count > 0 ? totalValue / count : 0;
+
+        // [AUDIT_FIN_REPORT] Log unit totals
+        if (unit.id === "CENTRO_CLINICO") {
+          console.log("[AUDIT_FIN_REPORT] totals_by_unit =", {
+            unit: unit.id,
+            incomeCount: count,
+            totalIncome: totalValue,
+          });
+          
+          // Log specialty distribution for Centro Clinico
+          const specialtyMap: Record<string, number> = {};
+          let nullEmptyCount = 0;
+          unitIncomeTransactions.forEach((t) => {
+            const spec = (t.specialty || "").trim();
+            if (spec === "") {
+              nullEmptyCount++;
+              specialtyMap["SEM_ESPECIALIDADE"] = (specialtyMap["SEM_ESPECIALIDADE"] || 0) + t.amount;
+            } else {
+              specialtyMap[spec] = (specialtyMap[spec] || 0) + t.amount;
+            }
+          });
+          console.log("[AUDIT_FIN_REPORT] specialty_null_empty_count =", nullEmptyCount);
+          console.log("[AUDIT_FIN_REPORT] totals_by_specialty_for_unit('CENTRO_CLINICO') =", specialtyMap);
+          
+          // Log all transactions with their specialty for debug
+          console.log("[AUDIT_FIN_REPORT] all_centro_clinico_transactions =", 
+            unitIncomeTransactions.map(t => ({
+              id: t.id?.substring(0, 8),
+              specialty: t.specialty,
+              amount: t.amount,
+              status: t.status,
+            }))
+          );
+        }
 
         // Saídas da unidade
         const unitExpenseTransactions = reportTransactions.filter(
