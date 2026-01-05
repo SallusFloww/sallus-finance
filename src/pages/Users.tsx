@@ -282,12 +282,20 @@ export default function Users() {
       
       // Check if email was sent or not
       if (data?.emailSent === false && data?.inviteUrl) {
+        // Sanitize URL - fallback to window.location.origin if invalid
+        const safeInviteUrl =
+          data.inviteUrl && 
+          data.inviteUrl.startsWith("http") && 
+          !data.inviteUrl.includes("placeholder_value_to_be_replaced")
+            ? data.inviteUrl
+            : `${window.location.origin}/auth?invite=${data.inviteUrl?.split("invite=")[1] || ""}`;
+        
         toast("Convite criado. Copie o link abaixo e envie no WhatsApp.", {
           description: "O e-mail não foi enviado pois o SMTP não está configurado.",
           action: {
             label: "Copiar link",
             onClick: async () => {
-              await navigator.clipboard.writeText(data.inviteUrl);
+              await navigator.clipboard.writeText(safeInviteUrl);
               toast.success("Link copiado!");
             },
           },
@@ -361,12 +369,20 @@ export default function Users() {
       
       // Check if email was sent or not
       if (data?.emailSent === false && data?.inviteUrl) {
+        // Sanitize URL - fallback to window.location.origin if invalid
+        const safeInviteUrl =
+          data.inviteUrl && 
+          data.inviteUrl.startsWith("http") && 
+          !data.inviteUrl.includes("placeholder_value_to_be_replaced")
+            ? data.inviteUrl
+            : `${window.location.origin}/auth?invite=${data.inviteUrl?.split("invite=")[1] || ""}`;
+        
         toast("Convite reenviado. Copie o link abaixo e envie no WhatsApp.", {
           description: "O e-mail não foi enviado pois o SMTP não está configurado.",
           action: {
             label: "Copiar link",
             onClick: async () => {
-              await navigator.clipboard.writeText(data.inviteUrl);
+              await navigator.clipboard.writeText(safeInviteUrl);
               toast.success("Link copiado!");
             },
           },
