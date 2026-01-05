@@ -9,7 +9,7 @@ import { format } from "date-fns";
 
 /**
  * Parse seguro de string de data para Date local (Brasil)
- * - Se dateString for "YYYY-MM-DD", interpreta como data local (meio-dia para evitar DST)
+ * - Se dateString for "YYYY-MM-DD", interpreta como data local (00:00)
  * - Caso contrário, usa new Date() padrão
  */
 export function parseLocalDate(dateString: string): Date {
@@ -19,8 +19,10 @@ export function parseLocalDate(dateString: string): Date {
   const isoDateOnly = /^\d{4}-\d{2}-\d{2}$/;
   if (isoDateOnly.test(dateString)) {
     const [year, month, day] = dateString.split("-").map(Number);
-    // Retorna data local às 12:00 para evitar edge cases de DST
-    return new Date(year, month - 1, day, 12, 0, 0, 0);
+    // Retorna data local às 00:00 para comparações corretas
+    const d = new Date(year, month - 1, day);
+    d.setHours(0, 0, 0, 0);
+    return d;
   }
   
   // Para outros formatos (ISO completo, etc), usa parse padrão
@@ -28,11 +30,22 @@ export function parseLocalDate(dateString: string): Date {
 }
 
 /**
+ * Normaliza uma data para início do dia (00:00:00.000)
+ * Usado para comparações date-only
+ */
+export function toStartOfDay(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+/**
  * Formata Date para string "yyyy-MM-dd" usando date-fns (evita UTC shift)
  * NÃO usar toISOString().split("T")[0] pois isso converte para UTC primeiro
+ * Usa toStartOfDay para garantir consistência
  */
 export function formatLocalISODate(date: Date): string {
-  return format(date, "yyyy-MM-dd");
+  return format(toStartOfDay(date), "yyyy-MM-dd");
 }
 
 export function formatCurrency(value: number): string {
@@ -88,19 +101,14 @@ export function parseAmount(value: string): number {
 }
 
 export function isToday(dateString: string): boolean {
-  const date = parseLocalDate(dateString);
-  const today = new Date();
-  return (
-    date.getDate() === today.getDate() &&
-    date.getMonth() === today.getMonth() &&
-    date.getFullYear() === today.getFullYear()
-  );
+  const date = toStartOfDay(parseLocalDate(dateString));
+  const today = toStartOfDay(new Date());
+  return date.getTime() === today.getTime();
 }
 
 export function isFutureDate(dateString: string): boolean {
-  const date = parseLocalDate(dateString);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const date = toStartOfDay(parseLocalDate(dateString));
+  const today = toStartOfDay(new Date());
   return date > today;
 }
 
