@@ -127,6 +127,45 @@ export default function Reports() {
     };
   }, [reportTransactions, settings.initialBalance]);
 
+  // ============= HELPER: NORMALIZAÇÃO DE CHAVES =============
+  // Remove acentos, converte para uppercase, remove espaços/underscores extras
+  const normalizeKey = (str: string | null | undefined): string => {
+    if (!str) return "";
+    return str
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // remove accents
+      .toUpperCase()
+      .replace(/[\s_-]+/g, "") // remove spaces, underscores, hyphens
+      .trim();
+  };
+
+  // Resolve specialty value (ID or label) to canonical ID
+  const resolveSpecialtyId = (value: string | null | undefined): string => {
+    if (!value || value.trim() === "") return "SEM_ESPECIALIDADE";
+    
+    const normalized = normalizeKey(value);
+    
+    // Try matching by ID first
+    const byId = SPECIALTIES.find(s => normalizeKey(s.id) === normalized);
+    if (byId) return byId.id;
+    
+    // Try matching by name/label
+    const byName = SPECIALTIES.find(s => normalizeKey(s.name) === normalized);
+    if (byName) return byName.id;
+    
+    // Try partial match (for edge cases like "Hiperbarica" vs "HIPERBARICA")
+    const partial = SPECIALTIES.find(s => 
+      normalized.includes(normalizeKey(s.id)) || 
+      normalizeKey(s.id).includes(normalized) ||
+      normalized.includes(normalizeKey(s.name)) ||
+      normalizeKey(s.name).includes(normalized)
+    );
+    if (partial) return partial.id;
+    
+    // Fallback: return normalized value or SEM_ESPECIALIDADE
+    return normalized || "SEM_ESPECIALIDADE";
+  };
+
   // ============= ANÁLISE POR UNIDADE (DETALHADA) COM ESPECIALIDADES =============
   const unitAnalysisDetailed = useMemo(() => {
     const incomeTransactions = reportTransactions.filter((t) => t.type === "INCOME");
@@ -137,12 +176,11 @@ export default function Reports() {
       console.log("[AUDIT_FIN_REPORT] sample_record =", {
         unit: reportTransactions[0]?.unit,
         specialty: reportTransactions[0]?.specialty,
+        specialty_resolved: resolveSpecialtyId(reportTransactions[0]?.specialty),
         category: reportTransactions[0]?.category,
         type: reportTransactions[0]?.type,
         status: reportTransactions[0]?.status,
         amount: reportTransactions[0]?.amount,
-        date: reportTransactions[0]?.date,
-        receivedAt: reportTransactions[0]?.receivedAt,
       });
     }
 
@@ -161,26 +199,33 @@ export default function Reports() {
             totalIncome: totalValue,
           });
           
-          // Log specialty distribution for Centro Clinico
+          // Log specialty distribution for Centro Clinico using resolved IDs
           const specialtyMap: Record<string, number> = {};
           let nullEmptyCount = 0;
           unitIncomeTransactions.forEach((t) => {
-            const spec = (t.specialty || "").trim();
-            if (spec === "") {
+            const resolvedId = resolveSpecialtyId(t.specialty);
+            if (resolvedId === "SEM_ESPECIALIDADE") {
               nullEmptyCount++;
-              specialtyMap["SEM_ESPECIALIDADE"] = (specialtyMap["SEM_ESPECIALIDADE"] || 0) + t.amount;
-            } else {
-              specialtyMap[spec] = (specialtyMap[spec] || 0) + t.amount;
             }
+            specialtyMap[resolvedId] = (specialtyMap[resolvedId] || 0) + t.amount;
           });
           console.log("[AUDIT_FIN_REPORT] specialty_null_empty_count =", nullEmptyCount);
           console.log("[AUDIT_FIN_REPORT] totals_by_specialty_for_unit('CENTRO_CLINICO') =", specialtyMap);
+          
+          // Validate: sum of specialties should match unit total
+          const specialtySum = Object.values(specialtyMap).reduce((a, b) => a + b, 0);
+          console.log("[AUDIT_FIN_REPORT] validation =", {
+            unitTotal: totalValue,
+            specialtySum,
+            match: Math.abs(totalValue - specialtySum) < 0.01,
+          });
           
           // Log all transactions with their specialty for debug
           console.log("[AUDIT_FIN_REPORT] all_centro_clinico_transactions =", 
             unitIncomeTransactions.map(t => ({
               id: t.id?.substring(0, 8),
-              specialty: t.specialty,
+              specialty_raw: t.specialty,
+              specialty_resolved: resolveSpecialtyId(t.specialty),
               amount: t.amount,
               status: t.status,
             }))
@@ -247,20 +292,14 @@ export default function Reports() {
           ];
 
           specialtiesAnalysis = allSpecialties.map((spec) => {
-            // For "SEM_ESPECIALIDADE", match transactions with empty/null/undefined specialty
+            // Use resolveSpecialtyId for robust matching
             const specIncomeTransactions = unitIncomeTransactions.filter((t) => {
-              const tSpecialty = (t.specialty || "").trim();
-              if (spec.id === "SEM_ESPECIALIDADE") {
-                return tSpecialty === "";
-              }
-              return tSpecialty.toUpperCase() === spec.id.toUpperCase();
+              const resolvedId = resolveSpecialtyId(t.specialty);
+              return resolvedId === spec.id;
             });
             const specExpenseTransactions = unitExpenseTransactions.filter((t) => {
-              const tSpecialty = (t.specialty || "").trim();
-              if (spec.id === "SEM_ESPECIALIDADE") {
-                return tSpecialty === "";
-              }
-              return tSpecialty.toUpperCase() === spec.id.toUpperCase();
+              const resolvedId = resolveSpecialtyId(t.specialty);
+              return resolvedId === spec.id;
             });
             const specIncome = specIncomeTransactions.reduce((sum, t) => sum + t.amount, 0);
             const specExpense = specExpenseTransactions.reduce((sum, t) => sum + t.amount, 0);
