@@ -1,3 +1,40 @@
+import { format } from "date-fns";
+
+// ============================================
+// HELPER SEGURO PARA PARSE DE DATAS (HOTFIX TIMEZONE P0)
+// ============================================
+// Strings "YYYY-MM-DD" são interpretadas como UTC pelo new Date(),
+// causando shift de 1 dia em UTC-3 (Brasil). Este helper força parse local.
+// ============================================
+
+/**
+ * Parse seguro de string de data para Date local (Brasil)
+ * - Se dateString for "YYYY-MM-DD", interpreta como data local (meio-dia para evitar DST)
+ * - Caso contrário, usa new Date() padrão
+ */
+export function parseLocalDate(dateString: string): Date {
+  if (!dateString) return new Date();
+  
+  // Verifica se é formato ISO date-only: YYYY-MM-DD
+  const isoDateOnly = /^\d{4}-\d{2}-\d{2}$/;
+  if (isoDateOnly.test(dateString)) {
+    const [year, month, day] = dateString.split("-").map(Number);
+    // Retorna data local às 12:00 para evitar edge cases de DST
+    return new Date(year, month - 1, day, 12, 0, 0, 0);
+  }
+  
+  // Para outros formatos (ISO completo, etc), usa parse padrão
+  return new Date(dateString);
+}
+
+/**
+ * Formata Date para string "yyyy-MM-dd" usando date-fns (evita UTC shift)
+ * NÃO usar toISOString().split("T")[0] pois isso converte para UTC primeiro
+ */
+export function formatLocalISODate(date: Date): string {
+  return format(date, "yyyy-MM-dd");
+}
+
 export function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -6,7 +43,7 @@ export function formatCurrency(value: number): string {
 }
 
 export function formatDate(dateString: string): string {
-  const date = new Date(dateString);
+  const date = parseLocalDate(dateString);
   return new Intl.DateTimeFormat("pt-BR", {
     day: "2-digit",
     month: "2-digit",
@@ -15,7 +52,7 @@ export function formatDate(dateString: string): string {
 }
 
 export function formatDateTime(dateString: string): string {
-  const date = new Date(dateString);
+  const date = parseLocalDate(dateString);
   return new Intl.DateTimeFormat("pt-BR", {
     day: "2-digit",
     month: "2-digit",
@@ -26,7 +63,7 @@ export function formatDateTime(dateString: string): string {
 }
 
 export function formatTime(dateString: string): string {
-  const date = new Date(dateString);
+  const date = parseLocalDate(dateString);
   return new Intl.DateTimeFormat("pt-BR", {
     hour: "2-digit",
     minute: "2-digit",
@@ -34,7 +71,7 @@ export function formatTime(dateString: string): string {
 }
 
 export function formatShortDate(dateString: string): string {
-  const date = new Date(dateString);
+  const date = parseLocalDate(dateString);
   return new Intl.DateTimeFormat("pt-BR", {
     day: "2-digit",
     month: "short",
@@ -51,7 +88,7 @@ export function parseAmount(value: string): number {
 }
 
 export function isToday(dateString: string): boolean {
-  const date = new Date(dateString);
+  const date = parseLocalDate(dateString);
   const today = new Date();
   return (
     date.getDate() === today.getDate() &&
@@ -61,7 +98,7 @@ export function isToday(dateString: string): boolean {
 }
 
 export function isFutureDate(dateString: string): boolean {
-  const date = new Date(dateString);
+  const date = parseLocalDate(dateString);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   return date > today;
