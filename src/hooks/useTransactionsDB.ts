@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useFinancialEntries, FinancialEntry, FinancialEntryInsert } from "./useFinancialEntries";
 import { useCompanySettings } from "./useCompanySettings";
 import { useAuth } from "@/contexts/AuthContext";
+import { parseLocalDate, toStartOfDay } from "@/utils/formatters";
 import {
   Transaction,
   DashboardStats,
@@ -165,10 +166,11 @@ export function useTransactionsDB() {
   const filterTransactions = useCallback(
     (filters: TransactionFilters): Transaction[] => {
       return transactions.filter((t) => {
-        const transactionDate = new Date(t.date);
+        // HOTFIX P0: usa parseLocalDate para YYYY-MM-DD (evita UTC shift)
+        const transactionDate = toStartOfDay(parseLocalDate(t.date));
 
-        if (filters.startDate && transactionDate < filters.startDate) return false;
-        if (filters.endDate && transactionDate > filters.endDate) return false;
+        if (filters.startDate && transactionDate < toStartOfDay(filters.startDate)) return false;
+        if (filters.endDate && transactionDate > toStartOfDay(filters.endDate)) return false;
         if (filters.unit && t.unit !== filters.unit) return false;
         if (filters.type && t.type !== filters.type) return false;
         if (filters.status && t.status !== filters.status) return false;
@@ -369,7 +371,8 @@ export function useTransactionsDB() {
   // Recent transactions
   const recentTransactions = useMemo(() => {
     return [...transactions]
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      // createdAt é timestamp ISO completo, parseLocalDate lida corretamente
+      .sort((a, b) => parseLocalDate(b.createdAt).getTime() - parseLocalDate(a.createdAt).getTime())
       .slice(0, 10);
   }, [transactions]);
 

@@ -11,6 +11,7 @@ import {
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { isCancelled, isRealized } from '@/utils/statusHelpers';
+import { parseLocalDate } from '@/utils/formatters';
 
 interface ExportOptions {
   transactions: Transaction[];
@@ -73,7 +74,8 @@ function transactionToRow(tx: Transaction, categories: Map<string, string>): Rec
   const amount = Math.abs(tx.amount);
   
   return {
-    'Data da Movimentação': new Date(tx.date),
+    // HOTFIX P0: usa parseLocalDate para YYYY-MM-DD (evita UTC shift)
+    'Data da Movimentação': parseLocalDate(tx.date),
     'Tipo': isIncome ? 'Entrada' : 'Saída',
     'Descrição': tx.reference || tx.notes || categories.get(tx.category) || tx.category,
     'Classificação Principal': getFinancialCategoryLabel(tx.financialCategory),
@@ -263,7 +265,8 @@ export function exportWithExecutiveSummary({
   }
   
   // Calculate period from transactions if not provided
-  const dates = transactions.map(t => new Date(t.date).getTime());
+  // HOTFIX P0: usa parseLocalDate para YYYY-MM-DD (evita UTC shift)
+  const dates = transactions.map(t => parseLocalDate(t.date).getTime());
   const startDate = periodStart || new Date(Math.min(...dates));
   const endDate = periodEnd || new Date(Math.max(...dates));
   
