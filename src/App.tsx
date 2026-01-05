@@ -33,6 +33,7 @@ import BI from "./pages/BI";
 import Users from "./pages/Users";
 import AdminDiagnostics from "./pages/AdminDiagnostics";
 import Financial from "./pages/Financial";
+import QA from "./pages/QA";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -72,6 +73,7 @@ function AppRoutes() {
       <Route path="/settings" element={<AdminRoute><Settings /></AdminRoute>} />
       <Route path="/users" element={<AdminRoute><Users /></AdminRoute>} />
       <Route path="/admin/diagnostics" element={<AdminRoute><AdminDiagnostics /></AdminRoute>} />
+      <Route path="/qa" element={<AdminRoute><QA /></AdminRoute>} />
       
       {/* Catch all */}
       <Route path="*" element={<NotFound />} />
