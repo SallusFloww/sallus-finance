@@ -154,7 +154,7 @@ export default function Production() {
     return Array.from(types).sort();
   }, [productions]);
 
-  // Dados filtrados
+  // Dados filtrados - IMPORTANT: include 'productions' in deps to react to realtime updates
   const filteredProductions = useMemo(() => {
     return filterProductions({
       startDate: startDate ? parseISO(startDate) : undefined,
@@ -165,7 +165,7 @@ export default function Production() {
       status: productionStatusFilter !== "all" ? (productionStatusFilter as ProductionStatus) : undefined,
       search: productionSearchQuery,
     });
-  }, [filterProductions, startDate, endDate, selectedUnit, selectedConvenio, selectedType, productionStatusFilter, productionSearchQuery]);
+  }, [productions, filterProductions, startDate, endDate, selectedUnit, selectedConvenio, selectedType, productionStatusFilter, productionSearchQuery]);
 
   // Stats de produção
   const productionStats = useMemo(() => {
