@@ -33,6 +33,7 @@ import BI from "./pages/BI";
 import Users from "./pages/Users";
 import AdminDiagnostics from "./pages/AdminDiagnostics";
 import Financial from "./pages/Financial";
+import Conciliation from "./pages/Conciliation";
 import QA from "./pages/QA";
 import NotFound from "./pages/NotFound";
 import InviteRedirect from "./pages/InviteRedirect";
@@ -69,6 +70,7 @@ function AppRoutes() {
       <Route path="/executive-report" element={<ProtectedRoute requiredPermission="VIEW_REPORTS"><ExecutiveReport /></ProtectedRoute>} />
       <Route path="/monthly-report" element={<ProtectedRoute requiredPermission="VIEW_REPORTS"><MonthlyReport /></ProtectedRoute>} />
       <Route path="/bi" element={<ProtectedRoute requiredPermission="VIEW_BI"><BI /></ProtectedRoute>} />
+      <Route path="/conciliation" element={<ProtectedRoute requiredPermission="VIEW_RECEIVABLES"><Conciliation /></ProtectedRoute>} />
       {/* Redirect: /financial removed from menu, redirect to Caixa */}
       <Route path="/financial" element={<Navigate to="/" replace />} />
       
