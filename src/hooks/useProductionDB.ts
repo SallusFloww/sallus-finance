@@ -141,17 +141,50 @@ export function useProductionDB() {
     if (!currentCompany?.id) return;
 
     const channel = supabase
-      .channel("productions-changes")
+      .channel(`productions-${currentCompany.id}`)
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "INSERT",
           schema: "public",
           table: "productions",
           filter: `company_id=eq.${currentCompany.id}`,
         },
-        () => {
-          fetchProductions();
+        (payload) => {
+          const newProd = toProduction(payload.new as unknown as DBProduction);
+          setProductions(prev => {
+            // Avoid duplicates (optimistic update may have added it already)
+            if (prev.some(p => p.id === newProd.id)) {
+              return prev.map(p => p.id === newProd.id ? newProd : p);
+            }
+            return [newProd, ...prev];
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "productions",
+          filter: `company_id=eq.${currentCompany.id}`,
+        },
+        (payload) => {
+          const updated = toProduction(payload.new as unknown as DBProduction);
+          setProductions(prev => prev.map(p => p.id === updated.id ? updated : p));
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "productions",
+          filter: `company_id=eq.${currentCompany.id}`,
+        },
+        (payload) => {
+          const deletedId = (payload.old as { id: string }).id;
+          setProductions(prev => prev.filter(p => p.id !== deletedId));
         }
       )
       .subscribe();
@@ -161,10 +194,10 @@ export function useProductionDB() {
     };
   }, [currentCompany?.id, fetchProductions]);
 
-  // Add production
+  // Add production with optimistic update
   const addProduction = useCallback(async (
     data: Omit<Production, "id" | "createdAt" | "status" | "history">
-  ) => {
+  ): Promise<Production | null> => {
     if (!currentCompany?.id || !profile?.id) {
       toast.error("Usuário não autenticado");
       return null;
@@ -179,6 +212,35 @@ export function useProductionDB() {
         totalValue
       ),
     ];
+
+    // Create optimistic production for immediate UI update
+    const optimisticId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const optimisticProduction: Production = {
+      id: optimisticId,
+      productionDate: data.productionDate,
+      competencia: data.competencia,
+      unit: data.unit,
+      specialty: data.specialty,
+      payerType: data.payerType,
+      convenio: data.convenio,
+      productionType: data.productionType,
+      description: data.description,
+      procedureCode: data.procedureCode,
+      quantity: data.quantity,
+      unitValue: data.unitValue,
+      estimatedValue: totalValue,
+      status: "PRODUZIDO",
+      linkedReceivableIds: [],
+      createdBy: profile.id,
+      createdAt: now,
+      updatedAt: now,
+      history: history,
+      editLogs: [],
+    };
+
+    // Optimistic update - add to state immediately
+    setProductions(prev => [optimisticProduction, ...prev]);
 
     const { data: inserted, error: insertError } = await supabase
       .from("productions")
@@ -204,12 +266,26 @@ export function useProductionDB() {
       .single();
 
     if (insertError) {
+      // Rollback optimistic update on error
+      setProductions(prev => prev.filter(p => p.id !== optimisticId));
       toast.error("Erro ao criar produção");
       return null;
     }
 
+    // Replace optimistic entry with real data (avoid duplicates from realtime)
+    const realProduction = toProduction(inserted as unknown as DBProduction);
+    setProductions(prev => {
+      // Remove optimistic entry and add real one if not already present
+      const withoutOptimistic = prev.filter(p => p.id !== optimisticId);
+      const alreadyExists = withoutOptimistic.some(p => p.id === realProduction.id);
+      if (alreadyExists) {
+        return withoutOptimistic.map(p => p.id === realProduction.id ? realProduction : p);
+      }
+      return [realProduction, ...withoutOptimistic];
+    });
+
     toast.success("Produção registrada com sucesso");
-    return toProduction(inserted as unknown as DBProduction);
+    return realProduction;
   }, [currentCompany?.id, profile]);
 
   // Update production
