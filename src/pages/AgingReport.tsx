@@ -134,9 +134,12 @@ export default function AgingReport() {
     return Array.from(units).sort();
   }, [receivables]);
 
-  // Apenas recebíveis em aberto (FATURADO) com filtros aplicados
+  // Apenas recebíveis em aberto (FATURADO) com filtros aplicados - PATCH P1-02: Excluir cancelados
   const openReceivables = useMemo(() => {
     return receivables.filter((r) => {
+      // Excluir cancelados explicitamente
+      const statusUpper = r.status?.toUpperCase() || "";
+      if (statusUpper === "CANCELADO" || statusUpper === "CANCELLED") return false;
       if (r.status !== "FATURADO") return false;
       if (selectedUnit !== "all" && r.unit !== selectedUnit) return false;
       if (selectedConvenio !== "all" && r.source !== selectedConvenio) return false;

@@ -135,6 +135,7 @@ export function ProductionList({
   }
 
   // Calculate totals (quantity-focused)
+  // Nota: ProductionStatus não tem "CANCELADO" - todos os status são válidos para contagem
   const totals = productions.reduce(
     (acc, p) => ({
       quantity: acc.quantity + p.quantity,
