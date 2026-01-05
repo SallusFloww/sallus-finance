@@ -207,28 +207,46 @@ export function exportProductionReportToExcel({
   }
   
   // ===== SHEET 9: PENDÊNCIAS OPERACIONAIS (Unbilled) =====
+  // Produção pendente de fechamento (encaminhamento administrativo)
   if (includeUnbilled && data.unbilledProductions.length > 0) {
     const now = new Date();
-    const unbilledRows = data.unbilledProductions.map(p => {
+    
+    // Create raw data array for proper typing
+    const unbilledData: (string | number | Date)[][] = [];
+    
+    // Header row
+    unbilledData.push(['Data', 'Unidade', 'Convênio', 'Tipo', 'Qtd', 'Idade (dias)', 'Status']);
+    
+    // Data rows with proper types
+    data.unbilledProductions.forEach(p => {
       const prodDate = parseISO(p.productionDate);
       const ageDays = differenceInDays(now, prodDate);
       
-      return {
-        'Data': format(prodDate, "dd/MM/yyyy"),
-        'Unidade': formatUnitName(p.unit),
-        'Convênio': p.convenio || 'PARTICULAR',
-        'Tipo': p.productionType,
-        'Descrição': p.description,
-        'Quantidade': p.quantity,
-        'Idade (dias)': ageDays,
-        'Status': 'Pendente de encaminhamento',
-      };
+      unbilledData.push([
+        prodDate, // Date type for Excel
+        formatUnitName(p.unit),
+        p.convenio || 'PARTICULAR',
+        p.productionType,
+        p.quantity, // Number type
+        ageDays, // Number type
+        'Pendente',
+      ]);
     });
     
-    const wsUnbilled = XLSX.utils.json_to_sheet(unbilledRows);
-    applyProfessionalStyling(wsUnbilled, [
-      { wch: 12 }, { wch: 18 }, { wch: 25 }, { wch: 18 }, { wch: 35 }, { wch: 12 }, { wch: 12 }, { wch: 25 }
-    ]);
+    const wsUnbilled = XLSX.utils.aoa_to_sheet(unbilledData);
+    
+    // Column widths
+    wsUnbilled['!cols'] = [
+      { wch: 12 }, { wch: 18 }, { wch: 25 }, { wch: 18 }, { wch: 10 }, { wch: 14 }, { wch: 12 }
+    ];
+    
+    // Freeze header row
+    wsUnbilled['!freeze'] = { xSplit: 0, ySplit: 1 };
+    
+    // Apply autofilter to the data range
+    const lastRow = unbilledData.length;
+    wsUnbilled['!autofilter'] = { ref: `A1:G${lastRow}` };
+    
     XLSX.utils.book_append_sheet(wb, wsUnbilled, 'Pendencias_Operacionais');
   }
   

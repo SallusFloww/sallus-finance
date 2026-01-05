@@ -216,12 +216,39 @@ export async function generateProductionReportPDF({
     yPos = (doc as any).lastAutoTable.finalY + 8;
   }
   
-  // 3.2 Mix Assistencial
+  // 3.2 Produção por Especialidade
+  if (data.specialtyRanking && data.specialtyRanking.length > 0) {
+    checkPageBreak(50);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('3.2 Produção por Especialidade', margin, yPos);
+    yPos += 5;
+    
+    const specData = data.specialtyRanking.slice(0, 10).map(row => [
+      row.name,
+      row.quantity.toLocaleString('pt-BR'),
+      formatPercent(row.percentage),
+    ]);
+    
+    autoTable(doc, {
+      startY: yPos,
+      head: [['Especialidade', 'Qtd', '%']],
+      body: specData,
+      margin: { left: margin, right: margin },
+      styles: { fontSize: 9, cellPadding: 2 },
+      headStyles: { fillColor: [70, 130, 180], textColor: 255 },
+      tableWidth: contentWidth * 0.5,
+    });
+    
+    yPos = (doc as any).lastAutoTable.finalY + 8;
+  }
+  
+  // 3.3 Mix Assistencial
   if (data.typeBreakdown.length > 0) {
     checkPageBreak(50);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.text('3.2 Mix Assistencial', margin, yPos);
+    doc.text('3.3 Mix Assistencial', margin, yPos);
     yPos += 5;
     
     const mixData = data.typeBreakdown.map(row => [
@@ -243,12 +270,12 @@ export async function generateProductionReportPDF({
     yPos = (doc as any).lastAutoTable.finalY + 8;
   }
   
-  // 3.3 Concentração por Convênio
+  // 3.4 Concentração por Convênio
   if (data.convenioRanking.length > 0) {
     checkPageBreak(50);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.text('3.3 Concentração por Convênio', margin, yPos);
+    doc.text('3.4 Concentração por Convênio', margin, yPos);
     yPos += 5;
     
     const convData = data.convenioRanking.slice(0, 10).map(row => [
@@ -308,31 +335,40 @@ export async function generateProductionReportPDF({
     doc.text('5. Evolução no Tempo', margin, yPos);
     yPos += 7;
     
-    // Show as table (chart would require additional complexity)
-    const evoData = data.evolutionData.map(row => [
+    // Filter only days with production > 0
+    const evoWithProduction = data.evolutionData.filter(row => row.total > 0);
+    const daysWithProduction = evoWithProduction.length;
+    const daysWithoutProduction = data.evolutionData.length - daysWithProduction;
+    
+    // Find peak day
+    const peakDay = evoWithProduction.reduce((max, row) => 
+      row.total > max.total ? row : max, 
+      { dateLabel: '-', total: 0 }
+    );
+    
+    // Summary line
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(60);
+    const summaryText = `Dias com produção: ${daysWithProduction} | Dias sem produção: ${daysWithoutProduction} | Pico do período: ${peakDay.dateLabel} (${peakDay.total.toLocaleString('pt-BR')})`;
+    doc.text(summaryText, margin, yPos);
+    yPos += 6;
+    
+    // Show only days with production
+    const evoData = evoWithProduction.map(row => [
       row.dateLabel,
       row.total.toLocaleString('pt-BR'),
     ]);
     
-    // Limit to 30 rows for PDF
-    const evoDataLimited = evoData.slice(0, 30);
-    
     autoTable(doc, {
       startY: yPos,
       head: [['Data', 'Quantidade']],
-      body: evoDataLimited,
+      body: evoData,
       margin: { left: margin, right: margin },
       styles: { fontSize: 8, cellPadding: 2 },
       headStyles: { fillColor: [60, 60, 60], textColor: 255 },
       tableWidth: contentWidth * 0.4,
     });
-    
-    if (data.evolutionData.length > 30) {
-      yPos = (doc as any).lastAutoTable.finalY + 3;
-      doc.setFontSize(8);
-      doc.setTextColor(120);
-      doc.text(`Exibindo 30 de ${data.evolutionData.length} registros. Veja o Excel para dados completos.`, margin, yPos);
-    }
     
     yPos = (doc as any).lastAutoTable.finalY + 10;
   }
@@ -386,7 +422,7 @@ export async function generateProductionReportPDF({
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(80);
-    doc.text('Produção pendente de encaminhamento para faturamento', margin, yPos);
+    doc.text('Produção pendente de fechamento (encaminhamento administrativo)', margin, yPos);
     yPos += 6;
     
     const now = new Date();
@@ -397,14 +433,16 @@ export async function generateProductionReportPDF({
         format(prodDate, "dd/MM/yyyy"),
         formatUnitName(p.unit),
         p.convenio || 'PARTICULAR',
+        p.productionType,
         p.quantity.toString(),
         ageDays.toString(),
+        'Pendente',
       ];
     });
     
     autoTable(doc, {
       startY: yPos,
-      head: [['Data', 'Unidade', 'Convênio', 'Qtd', 'Idade (dias)']],
+      head: [['Data', 'Unidade', 'Convênio', 'Tipo', 'Qtd', 'Idade (dias)', 'Status']],
       body: unbilledData,
       margin: { left: margin, right: margin },
       styles: { fontSize: 8, cellPadding: 2 },
