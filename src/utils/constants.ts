@@ -44,11 +44,11 @@ export const FINANCIAL_CATEGORIES: { id: FinancialCategory; name: string; icon: 
 ];
 
 // ============= CRITÉRIOS DE RATEIO (informativo) =============
-export const APPORTIONMENT_CRITERIA: { id: ApportionmentCriteria; name: string; description: string }[] = [
-  { id: "FIXO", name: "Fixo", description: "Valor fixo dividido igualmente" },
-  { id: "M2", name: "Por m²", description: "Proporcional à metragem" },
-  { id: "PERCENTUAL", name: "Percentual", description: "Proporcional ao faturamento" },
-  { id: "MANUAL", name: "Manual", description: "Rateio definido manualmente" },
+export const APPORTIONMENT_CRITERIA: { id: ApportionmentCriteria; name: string; description: string; auto?: boolean }[] = [
+  { id: "IGUAL", name: "Igual entre unidades", description: "Divide igualmente entre todas as unidades", auto: true },
+  { id: "MANUAL", name: "Manual", description: "Você define os percentuais para cada unidade", auto: false },
+  { id: "FATURAMENTO", name: "Por Faturamento", description: "Proporcional ao faturamento de cada unidade", auto: true },
+  { id: "PRODUCAO", name: "Por Produção", description: "Proporcional à produção de cada unidade", auto: true },
 ];
 
 // ============= CATEGORIAS QUE SÃO COMPARTILHADAS POR PADRÃO =============
