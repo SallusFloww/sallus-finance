@@ -2,6 +2,7 @@ import { useMemo, useCallback } from "react";
 import { Transaction } from "@/types";
 import { useApp } from "@/contexts/AppContext";
 import { getStartOfMonth, getEndOfMonth } from "@/utils/formatters";
+import { isCancelled } from "@/utils/statusHelpers";
 
 export interface DRELineItem {
   label: string;
@@ -97,7 +98,7 @@ export function useDRE() {
         const inPeriod = txDate >= start && txDate <= end;
         
         // Excluir cancelados a menos que explicitamente solicitado
-        if (!includeCancelled && t.status === "CANCELADO") {
+        if (!includeCancelled && isCancelled(t.status)) {
           return false;
         }
         

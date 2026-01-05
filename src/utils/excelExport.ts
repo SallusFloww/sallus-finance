@@ -10,6 +10,7 @@ import {
 } from '@/utils/constants';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { isCancelled, isRealized } from '@/utils/statusHelpers';
 
 interface ExportOptions {
   transactions: Transaction[];
@@ -275,21 +276,24 @@ export function exportWithExecutiveSummary({
   };
   Object.entries(categoryMappings).forEach(([key, value]) => categoryNames.set(key, value));
   
-  // ===== CALCULATIONS =====
-  const totalIncome = transactions.filter(tx => tx.type === 'INCOME').reduce((sum, tx) => sum + tx.amount, 0);
-  const totalExpense = transactions.filter(tx => tx.type === 'EXPENSE').reduce((sum, tx) => sum + tx.amount, 0);
+  // ===== CALCULATIONS - Excluir cancelados =====
+  const activeTransactions = transactions.filter(tx => !isCancelled(tx.status));
+  const realizedTransactions = activeTransactions.filter(tx => isRealized(tx.status));
+  
+  const totalIncome = realizedTransactions.filter(tx => tx.type === 'INCOME').reduce((sum, tx) => sum + tx.amount, 0);
+  const totalExpense = realizedTransactions.filter(tx => tx.type === 'EXPENSE').reduce((sum, tx) => sum + tx.amount, 0);
   const netResult = totalIncome - totalExpense;
   
-  // By classification
-  const operationalIncome = transactions.filter(tx => tx.type === 'INCOME' && tx.financialCategory === 'OPERACIONAL').reduce((sum, tx) => sum + tx.amount, 0);
-  const operationalExpense = transactions.filter(tx => tx.type === 'EXPENSE' && tx.financialCategory === 'OPERACIONAL').reduce((sum, tx) => sum + tx.amount, 0);
+  // By classification (usando apenas realizadas)
+  const operationalIncome = realizedTransactions.filter(tx => tx.type === 'INCOME' && tx.financialCategory === 'OPERACIONAL').reduce((sum, tx) => sum + tx.amount, 0);
+  const operationalExpense = realizedTransactions.filter(tx => tx.type === 'EXPENSE' && tx.financialCategory === 'OPERACIONAL').reduce((sum, tx) => sum + tx.amount, 0);
   const operationalResult = operationalIncome - operationalExpense;
   
-  const sharedExpense = transactions.filter(tx => tx.financialCategory === 'COMPARTILHADO').reduce((sum, tx) => sum + tx.amount, 0);
+  const sharedExpense = realizedTransactions.filter(tx => tx.financialCategory === 'COMPARTILHADO').reduce((sum, tx) => sum + tx.amount, 0);
   const sharedResult = -sharedExpense;
   
-  const nonOpIncome = transactions.filter(tx => tx.type === 'INCOME' && tx.financialCategory === 'NAO_OPERACIONAL').reduce((sum, tx) => sum + tx.amount, 0);
-  const nonOpExpense = transactions.filter(tx => tx.type === 'EXPENSE' && tx.financialCategory === 'NAO_OPERACIONAL').reduce((sum, tx) => sum + tx.amount, 0);
+  const nonOpIncome = realizedTransactions.filter(tx => tx.type === 'INCOME' && tx.financialCategory === 'NAO_OPERACIONAL').reduce((sum, tx) => sum + tx.amount, 0);
+  const nonOpExpense = realizedTransactions.filter(tx => tx.type === 'EXPENSE' && tx.financialCategory === 'NAO_OPERACIONAL').reduce((sum, tx) => sum + tx.amount, 0);
   const nonOperationalResult = nonOpIncome - nonOpExpense;
   
   const managementResult = operationalResult + sharedResult + nonOperationalResult;
