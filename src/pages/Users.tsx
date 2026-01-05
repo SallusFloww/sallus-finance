@@ -282,8 +282,8 @@ export default function Users() {
       
       // Check if email was sent or not
       if (data?.emailSent === false && data?.inviteUrl) {
-        toast("Convite criado, mas o e-mail não foi enviado.", {
-          description: "Copie o link abaixo e envie manualmente para o usuário.",
+        toast("Convite criado. Copie o link abaixo e envie no WhatsApp.", {
+          description: "O e-mail não foi enviado pois o SMTP não está configurado.",
           action: {
             label: "Copiar link",
             onClick: async () => {
@@ -294,7 +294,7 @@ export default function Users() {
           duration: 10000,
         });
       } else {
-        toast.success("Convite enviado com sucesso!");
+        toast.success("Convite enviado por e-mail com sucesso!");
       }
     },
     onError: (error: Error) => {
@@ -361,8 +361,8 @@ export default function Users() {
       
       // Check if email was sent or not
       if (data?.emailSent === false && data?.inviteUrl) {
-        toast("Convite reenviado, mas o e-mail não foi enviado.", {
-          description: "Copie o link abaixo e envie manualmente para o usuário.",
+        toast("Convite reenviado. Copie o link abaixo e envie no WhatsApp.", {
+          description: "O e-mail não foi enviado pois o SMTP não está configurado.",
           action: {
             label: "Copiar link",
             onClick: async () => {
@@ -373,7 +373,7 @@ export default function Users() {
           duration: 10000,
         });
       } else {
-        toast.success("Convite reenviado!");
+        toast.success("Convite reenviado por e-mail com sucesso!");
       }
     },
     onError: (error: Error) => {
