@@ -276,47 +276,139 @@ export function useReceivablesDB() {
     toast.success("Recebível atualizado");
   }, [receivables, profile]);
 
-  // Mark as received
+  // Mark as received - CRIA MOVIMENTAÇÃO NO CAIXA AUTOMATICAMENTE
   const markAsReceived = useCallback(async (
     id: string,
     receivedAmount: number,
     actualReceiptDate: string,
     userName: string
-  ) => {
+  ): Promise<{ id: string; transactionId?: string } | null> => {
+    // Validações básicas
+    if (!currentCompany?.id || !profile?.id) {
+      toast.error("Usuário não autenticado");
+      return null;
+    }
+
     const receivable = receivables.find(r => r.id === id);
-    if (!receivable || receivable.status !== "FATURADO") {
+    if (!receivable) {
+      toast.error("Recebível não encontrado");
+      return null;
+    }
+
+    if (receivable.status !== "FATURADO") {
       toast.error("Apenas recebíveis FATURADO podem ser marcados como recebidos");
       return null;
     }
 
-    const history = [...(receivable.history || [])];
-    history.push(createHistoryEntry(
-      "RECEBIDO",
-      `Recebimento integral: R$ ${receivedAmount.toFixed(2)}`,
-      userName,
-      receivedAmount
-    ));
-
-    const { error: updateError } = await supabase
-      .from("receivables")
-      .update({
-        status: "RECEBIDO",
-        received_amount: receivedAmount,
-        glossed_amount: 0,
-        actual_receipt_date: actualReceiptDate,
-        updated_at: new Date().toISOString(),
-        history: JSON.parse(JSON.stringify(history)),
-      })
-      .eq("id", id);
-
-    if (updateError) {
-      toast.error("Erro ao marcar como recebido");
+    // BLOQUEIO DE DUPLICIDADE: se já tem linked_transaction_id, não permite reprocessar
+    if (receivable.linkedTransactionId) {
+      toast.error("Este recebível já está vinculado a uma movimentação. Use estorno/cancelamento se necessário.");
       return null;
     }
 
-    toast.success("Recebível marcado como recebido");
-    return { id };
-  }, [receivables]);
+    if (receivedAmount <= 0) {
+      toast.error("Valor recebido deve ser maior que zero");
+      return null;
+    }
+
+    let createdTransactionId: string | null = null;
+
+    try {
+      // STEP 1: Criar entrada no financial_entries (Caixa/Movimentações)
+      const { data: insertedEntry, error: insertError } = await supabase
+        .from("financial_entries")
+        .insert([{
+          company_id: currentCompany.id,
+          created_by: profile.id,
+          type: "entrada",
+          status: "recebido",
+          valor: receivedAmount,
+          data_prevista: actualReceiptDate,
+          data_recebimento: actualReceiptDate,
+          descricao: `Recebimento faturamento • ${receivable.source} • ${receivable.description}`.substring(0, 200),
+          categoria: "RECEBIMENTO_FATURAMENTO",
+          unit_id: receivable.unit || null,
+          receipt_type: receivable.source === "PARTICULAR" ? "PARTICULAR" : "CONVENIO",
+          payment_method: "TRANSFER",
+          operadora: receivable.source !== "PARTICULAR" ? receivable.source : null,
+          observacao: `Origem: receivable_id=${id} | Competência: ${receivable.competencia || "N/A"}`,
+        }])
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error("Erro ao criar movimentação:", insertError);
+        toast.error("Erro ao criar movimentação no caixa");
+        return null;
+      }
+
+      createdTransactionId = insertedEntry.id;
+
+      // STEP 2: Atualizar o receivable com status RECEBIDO e linked_transaction_id
+      const history = [...(receivable.history || [])];
+      history.push(createHistoryEntry(
+        "RECEBIDO",
+        `Recebimento integral: R$ ${receivedAmount.toFixed(2)} - Movimentação ${createdTransactionId} criada`,
+        userName,
+        receivedAmount,
+        createdTransactionId
+      ));
+
+      const { error: updateError } = await supabase
+        .from("receivables")
+        .update({
+          status: "RECEBIDO",
+          received_amount: receivedAmount,
+          glossed_amount: 0,
+          actual_receipt_date: actualReceiptDate,
+          linked_transaction_id: createdTransactionId,
+          updated_at: new Date().toISOString(),
+          updated_by: profile.id,
+          history: JSON.parse(JSON.stringify(history)),
+        })
+        .eq("id", id);
+
+      if (updateError) {
+        // ROLLBACK: Cancelar a movimentação criada se falhar ao atualizar o receivable
+        console.error("Erro ao atualizar receivable, aplicando rollback:", updateError);
+        
+        await supabase
+          .from("financial_entries")
+          .update({
+            status: "cancelado",
+            cancelled_at: new Date().toISOString(),
+            cancelled_by: profile.id,
+            cancel_reason: `Rollback automático: falha ao vincular com receivable ${id}`,
+          })
+          .eq("id", createdTransactionId);
+
+        toast.error("Erro ao atualizar recebível. Movimentação cancelada automaticamente.");
+        return null;
+      }
+
+      // Sucesso completo
+      return { id, transactionId: createdTransactionId };
+
+    } catch (error) {
+      console.error("Erro inesperado em markAsReceived:", error);
+      
+      // ROLLBACK em caso de erro inesperado
+      if (createdTransactionId) {
+        await supabase
+          .from("financial_entries")
+          .update({
+            status: "cancelado",
+            cancelled_at: new Date().toISOString(),
+            cancelled_by: profile.id,
+            cancel_reason: `Rollback automático: erro inesperado ao processar receivable ${id}`,
+          })
+          .eq("id", createdTransactionId);
+      }
+
+      toast.error("Erro inesperado ao processar recebimento");
+      return null;
+    }
+  }, [receivables, currentCompany?.id, profile?.id]);
 
   // Mark as glossed
   const markAsGlossed = useCallback(async (
