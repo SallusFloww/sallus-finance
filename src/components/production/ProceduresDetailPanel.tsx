@@ -6,6 +6,15 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { 
   Search, 
   Eye, 
@@ -21,6 +30,8 @@ import {
   HelpCircle,
   TrendingUp,
   Info,
+  DollarSign,
+  Filter,
 } from "lucide-react";
 import { Production } from "@/types";
 import { ProcedureDrilldownDrawer } from "./ProcedureDrilldownDrawer";
@@ -63,12 +74,14 @@ const PRODUCTION_TYPE_LABELS: Record<string, string> = {
   OUTRO: "Outro",
 };
 
-interface AggregatedProcedure {
+export interface AggregatedProcedure {
   name: string;
   nameNorm: string;
   type: string;
   quantity: number;
   percentage: number;
+  estimatedValue: number;
+  valuePercentage: number;
   productions: Production[];
 }
 
@@ -82,12 +95,32 @@ export function ProceduresDetailPanel({
   const [groupByNorm, setGroupByNorm] = useState(true);
   const [drilldownOpen, setDrilldownOpen] = useState(false);
   const [selectedProcedure, setSelectedProcedure] = useState<AggregatedProcedure | null>(null);
+  const [selectedType, setSelectedType] = useState<string>("all");
+  const [paretoMode, setParetoMode] = useState<"quantidade" | "valor">("quantidade");
+
+  // Check if we have estimated values
+  const hasEstimatedValues = useMemo(() => {
+    return productions.some(p => p.estimatedValue && p.estimatedValue > 0);
+  }, [productions]);
+
+  // Unique production types
+  const uniqueTypes = useMemo(() => {
+    const types = new Set<string>();
+    productions.forEach((p) => types.add(p.productionType));
+    return Array.from(types).sort();
+  }, [productions]);
+
+  // Filter by type first
+  const typeFilteredProductions = useMemo(() => {
+    if (selectedType === "all") return productions;
+    return productions.filter(p => p.productionType === selectedType);
+  }, [productions, selectedType]);
 
   // Aggregate procedures
   const aggregatedProcedures = useMemo(() => {
     const map = new Map<string, AggregatedProcedure>();
 
-    productions.forEach((p) => {
+    typeFilteredProductions.forEach((p) => {
       const key = groupByNorm
         ? normalizeProcedureName(p.description)
         : p.description;
@@ -99,24 +132,29 @@ export function ProceduresDetailPanel({
           type: p.productionType,
           quantity: 0,
           percentage: 0,
+          estimatedValue: 0,
+          valuePercentage: 0,
           productions: [],
         });
       }
 
       const entry = map.get(key)!;
       entry.quantity += p.quantity;
+      entry.estimatedValue += p.estimatedValue || 0;
       entry.productions.push(p);
     });
 
-    const total = productions.reduce((sum, p) => sum + p.quantity, 0);
+    const totalQty = typeFilteredProductions.reduce((sum, p) => sum + p.quantity, 0);
+    const totalValue = typeFilteredProductions.reduce((sum, p) => sum + (p.estimatedValue || 0), 0);
 
     return Array.from(map.values())
       .map((proc) => ({
         ...proc,
-        percentage: total > 0 ? (proc.quantity / total) * 100 : 0,
+        percentage: totalQty > 0 ? (proc.quantity / totalQty) * 100 : 0,
+        valuePercentage: totalValue > 0 ? (proc.estimatedValue / totalValue) * 100 : 0,
       }))
       .sort((a, b) => b.quantity - a.quantity);
-  }, [productions, groupByNorm]);
+  }, [typeFilteredProductions, groupByNorm]);
 
   // Filter by search
   const filteredProcedures = useMemo(() => {
@@ -130,7 +168,13 @@ export function ProceduresDetailPanel({
   }, [aggregatedProcedures, searchTerm]);
 
   // Top 15 for display
-  const top15 = filteredProcedures.slice(0, 15);
+  const top15 = useMemo(() => {
+    const sorted = [...filteredProcedures];
+    if (paretoMode === "valor" && hasEstimatedValues) {
+      sorted.sort((a, b) => b.estimatedValue - a.estimatedValue);
+    }
+    return sorted.slice(0, 15);
+  }, [filteredProcedures, paretoMode, hasEstimatedValues]);
 
   // Stats cards
   const stats = useMemo(() => {
@@ -165,6 +209,16 @@ export function ProceduresDetailPanel({
     return IconComponent;
   };
 
+  // Format currency
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(value);
+  };
+
   return (
     <>
       <Card>
@@ -176,24 +230,51 @@ export function ProceduresDetailPanel({
                 Detalhamento por Procedimentos
               </CardTitle>
               <CardDescription className="text-xs">
-                Quais exames, consultas e procedimentos compõem a produção
+                Hierarquia: Tipo → Procedimento • Clique no olho para drill-down
               </CardDescription>
             </div>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7">
-                    <Info className="h-3.5 w-3.5 text-muted-foreground" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="max-w-[250px]">
-                  <p className="text-xs">
-                    Agrupamento normalizado: nomes são padronizados (maiúsculas, sem acentos) 
-                    para evitar duplicidades como "Consulta" vs "CONSULTA".
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <div className="flex items-center gap-2">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="pareto-mode"
+                        checked={paretoMode === "valor"}
+                        onCheckedChange={(checked) => setParetoMode(checked ? "valor" : "quantidade")}
+                        disabled={!hasEstimatedValues}
+                      />
+                      <Label htmlFor="pareto-mode" className="text-xs cursor-pointer">
+                        <DollarSign className="h-3 w-3 inline mr-1" />
+                        Pareto por Valor
+                      </Label>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="max-w-[200px]">
+                    <p className="text-xs">
+                      {hasEstimatedValues 
+                        ? "Alterna ranking entre quantidade e valor estimado"
+                        : "Valores estimados não configurados para esta produção"}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-7 w-7">
+                      <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="max-w-[250px]">
+                    <p className="text-xs">
+                      Agrupamento normalizado: nomes são padronizados (maiúsculas, sem acentos) 
+                      para evitar duplicidades como "Consulta" vs "CONSULTA".
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
           </div>
         </CardHeader>
         
@@ -221,16 +302,34 @@ export function ProceduresDetailPanel({
             </div>
           </div>
 
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder="Buscar procedimento..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-8 h-9 text-sm"
-            />
+          {/* Type Filter + Search */}
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              <Select value={selectedType} onValueChange={setSelectedType}>
+                <SelectTrigger className="h-9 w-[150px] text-sm">
+                  <SelectValue placeholder="Tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os Tipos</SelectItem>
+                  {uniqueTypes.map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {PRODUCTION_TYPE_LABELS[type] || type}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Buscar procedimento..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-8 h-9 text-sm"
+              />
+            </div>
           </div>
 
           {/* Tabs */}
@@ -238,7 +337,7 @@ export function ProceduresDetailPanel({
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="quantidade" className="text-xs">
                 <BarChart3 className="h-3.5 w-3.5 mr-1.5" />
-                Top por Quantidade
+                Top por {paretoMode === "valor" && hasEstimatedValues ? "Valor" : "Quantidade"}
               </TabsTrigger>
               <TabsTrigger value="participacao" className="text-xs">
                 <TrendingUp className="h-3.5 w-3.5 mr-1.5" />
@@ -254,6 +353,9 @@ export function ProceduresDetailPanel({
                     <TableHead className="text-xs h-9">Procedimento</TableHead>
                     <TableHead className="text-xs h-9 w-16">Tipo</TableHead>
                     <TableHead className="text-xs h-9 text-right w-20">Qtd</TableHead>
+                    {hasEstimatedValues && (
+                      <TableHead className="text-xs h-9 text-right w-24">Valor Est.</TableHead>
+                    )}
                     <TableHead className="text-xs h-9 text-right w-14">%</TableHead>
                     <TableHead className="text-xs h-9 w-10"></TableHead>
                   </TableRow>
@@ -261,7 +363,7 @@ export function ProceduresDetailPanel({
                 <TableBody>
                   {top15.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-xs text-muted-foreground py-8">
+                      <TableCell colSpan={hasEstimatedValues ? 7 : 6} className="text-center text-xs text-muted-foreground py-8">
                         Nenhum procedimento encontrado
                       </TableCell>
                     </TableRow>
@@ -287,8 +389,13 @@ export function ProceduresDetailPanel({
                           <TableCell className="text-xs py-2 text-right font-medium">
                             {proc.quantity.toLocaleString("pt-BR")}
                           </TableCell>
+                          {hasEstimatedValues && (
+                            <TableCell className="text-xs py-2 text-right text-muted-foreground">
+                              {formatCurrency(proc.estimatedValue)}
+                            </TableCell>
+                          )}
                           <TableCell className="text-xs py-2 text-right text-muted-foreground">
-                            {proc.percentage.toFixed(1)}%
+                            {(paretoMode === "valor" && hasEstimatedValues ? proc.valuePercentage : proc.percentage).toFixed(1)}%
                           </TableCell>
                           <TableCell className="py-2">
                             <Button
