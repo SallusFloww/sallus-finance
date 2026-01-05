@@ -118,6 +118,7 @@ export function ProductionForm({
   
   // Use database-backed settings for suggestions
   const { 
+    settings,
     getSavedExamTypes, 
     getSavedTherapyTypes, 
     getSavedProductionTypes,
@@ -142,6 +143,7 @@ export function ProductionForm({
     specialty: "",
     payerType: "CONVENIO" as "CONVENIO" | "PARTICULAR",
     convenio: "",
+    paymentMethod: "", // Campo forma de pagamento para PARTICULAR
     productionType: "CONSULTA" as ProductionType,
     description: "",
     procedureCode: "",
@@ -161,9 +163,13 @@ export function ProductionForm({
   const [newTherapyType, setNewTherapyType] = useState("");
   const [newProductionType, setNewProductionType] = useState("");
 
-  const activeUnits = units.filter((u) => u.active);
-  const selectedUnit = units.find((u) => u.id === formData.unit);
+  // CORREÇÃO #1: Garantir unidades ativas - usar settings.units se units prop estiver vazia
+  const effectiveUnits = (units && units.length > 0) ? units : (settings?.units || []);
+  const activeUnits = effectiveUnits.filter((u) => u.active);
+  
+  const selectedUnit = effectiveUnits.find((u) => u.id === formData.unit);
   const isCentroClinico = selectedUnit?.id?.toLowerCase().includes("centroclinico") ||
+                          selectedUnit?.id?.toLowerCase().includes("centro_clinico") ||
                           selectedUnit?.name?.toLowerCase().includes("centro clínico");
   const specialties = isCentroClinico ? (selectedUnit?.specialties?.filter(s => s.active) || []) : [];
 
@@ -253,6 +259,12 @@ export function ProductionForm({
       return;
     }
 
+    // CORREÇÃO: Validar Forma de Pagamento para PARTICULAR
+    if (formData.payerType === "PARTICULAR" && !formData.paymentMethod) {
+      toast.error("Selecione a forma de pagamento");
+      return;
+    }
+
     const quantity = parseInt(formData.quantity) || 1;
     const totalValue = parseFloat(formData.totalValue) || 0;
 
@@ -315,6 +327,7 @@ export function ProductionForm({
       specialty: "",
       payerType: "CONVENIO",
       convenio: "",
+      paymentMethod: "",
       productionType: "CONSULTA",
       description: "",
       procedureCode: "",
@@ -636,19 +649,26 @@ export function ProductionForm({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Unidade *</Label>
-              <Select 
-                value={formData.unit} 
-                onValueChange={(v) => setFormData({ ...formData, unit: v, specialty: "" })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione" />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeUnits.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {activeUnits.length === 0 ? (
+                <div className="p-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-sm text-amber-700">
+                  ⚠️ Nenhuma unidade ativa cadastrada.{" "}
+                  <span className="font-medium">Vá em Configurações → Unidades</span>
+                </div>
+              ) : (
+                <Select 
+                  value={formData.unit} 
+                  onValueChange={(v) => setFormData({ ...formData, unit: v, specialty: "" })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activeUnits.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -686,7 +706,12 @@ export function ProductionForm({
               <Label>Pagador *</Label>
               <Select 
                 value={formData.payerType} 
-                onValueChange={(v) => setFormData({ ...formData, payerType: v as "CONVENIO" | "PARTICULAR", convenio: "" })}
+                onValueChange={(v) => setFormData({ 
+                  ...formData, 
+                  payerType: v as "CONVENIO" | "PARTICULAR", 
+                  convenio: v === "PARTICULAR" ? "" : formData.convenio,
+                  paymentMethod: v === "CONVENIO" ? "" : formData.paymentMethod
+                })}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -697,6 +722,28 @@ export function ProductionForm({
                 </SelectContent>
               </Select>
             </div>
+
+            {/* CORREÇÃO #2: Campo Forma de Pagamento para PARTICULAR */}
+            {formData.payerType === "PARTICULAR" && (
+              <div className="space-y-2">
+                <Label>Forma de Pagamento *</Label>
+                <Select 
+                  value={formData.paymentMethod} 
+                  onValueChange={(v) => setFormData({ ...formData, paymentMethod: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="DINHEIRO">Dinheiro</SelectItem>
+                    <SelectItem value="PIX">Pix</SelectItem>
+                    <SelectItem value="CARTAO_DEBITO">Cartão de Débito</SelectItem>
+                    <SelectItem value="CREDITO_VISTA">Crédito à Vista</SelectItem>
+                    <SelectItem value="CREDITO_PARCELADO">Crédito Parcelado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {formData.payerType === "CONVENIO" && (
               <div className="space-y-2">
