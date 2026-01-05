@@ -72,9 +72,10 @@ import {
   isWithinInterval,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { LineChart as RechartsLine, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { LineChart as RechartsLine, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { Production } from "@/types";
 import { ProceduresDetailPanel } from "@/components/production/ProceduresDetailPanel";
+import { UnbilledItemsPanel } from "@/components/production/UnbilledItemsPanel";
 
 // Labels para tipos de produção OFICIAIS
 const PRODUCTION_TYPE_LABELS: Record<string, string> = {
@@ -792,6 +793,11 @@ export default function ProductionReport() {
           </section>
         )}
 
+        {/* Painel de Itens Não Faturados */}
+        <section>
+          <UnbilledItemsPanel productions={filteredProductions} />
+        </section>
+
         {/* Filtros - Compactos */}
         <Card className="border-dashed">
           <CardContent className="pt-4 pb-4">
@@ -1040,15 +1046,24 @@ export default function ProductionReport() {
                   <CardTitle className="text-sm font-semibold flex items-center gap-2">
                     <LineChart className="h-4 w-4 text-primary" />
                     Evolução no Tempo
+                    {totalQuantity < 50 && totalQuantity > 0 && (
+                      <Badge variant="outline" className="text-[10px] gap-1">
+                        <AlertTriangle className="h-2.5 w-2.5" />
+                        Amostra pequena
+                      </Badge>
+                    )}
                   </CardTitle>
                   <CardDescription className="text-xs">
-                    Histórico de produção {periodDays > 60 ? "(semanal)" : evolutionGranularity === "weekly" ? "(semanal)" : "(diário)"}
+                    Histórico de produção {totalQuantity < 50 ? "(semanal - amostra pequena)" : periodDays > 60 ? "(semanal)" : evolutionGranularity === "weekly" ? "(semanal)" : "(diário)"}
+                    {variationData.hasData && previousTotalQuantity < 10 && previousTotalQuantity > 0 && (
+                      <span className="text-amber-600 ml-2">• Período anterior com poucos dados</span>
+                    )}
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Tabs value={evolutionGranularity} onValueChange={(v) => setEvolutionGranularity(v as "daily" | "weekly")}>
+                  <Tabs value={totalQuantity < 50 ? "weekly" : evolutionGranularity} onValueChange={(v) => setEvolutionGranularity(v as "daily" | "weekly")}>
                     <TabsList className="h-8">
-                      <TabsTrigger value="daily" className="text-xs px-3" disabled={periodDays > 60}>
+                      <TabsTrigger value="daily" className="text-xs px-3" disabled={periodDays > 60 || totalQuantity < 50}>
                         Diário
                       </TabsTrigger>
                       <TabsTrigger value="weekly" className="text-xs px-3">
@@ -1074,6 +1089,42 @@ export default function ProductionReport() {
               {evolutionData.length === 0 ? (
                 <div className="h-[300px] flex items-center justify-center text-muted-foreground">
                   Sem dados para o período selecionado
+                </div>
+              ) : totalQuantity < 50 && evolutionBreakdown === "geral" ? (
+                /* Use bar chart for small samples */
+                <div className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={evolutionData}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis 
+                        dataKey="dateLabel" 
+                        tick={{ fontSize: 10 }}
+                        className="text-muted-foreground"
+                      />
+                      <YAxis 
+                        tick={{ fontSize: 10 }}
+                        className="text-muted-foreground"
+                      />
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: "hsl(var(--card))",
+                          border: "1px solid hsl(var(--border))",
+                          borderRadius: "8px",
+                          fontSize: "12px"
+                        }}
+                        formatter={(value: number) => [
+                          `${value.toLocaleString("pt-BR")}`,
+                          "Quantidade"
+                        ]}
+                      />
+                      <Bar 
+                        dataKey="total" 
+                        fill="hsl(var(--primary))" 
+                        radius={[4, 4, 0, 0]}
+                        name="Total"
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
               ) : (
                 <div className="h-[300px]">
