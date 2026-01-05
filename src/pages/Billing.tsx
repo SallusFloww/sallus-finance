@@ -207,28 +207,31 @@ export default function Billing() {
   const activeUnits = settings.units.filter((u) => u.active);
 
   // Handlers
-  const handleMarkReceived = () => {
+  const handleMarkReceived = async () => {
     if (!selectedReceivable || !receiveData.amount || !receiveData.date) {
       toast.error("Preencha o valor e data de recebimento");
       return;
     }
 
-    const result = markAsReceived(
-      selectedReceivable.id,
-      parseMoneyBR(receiveData.amount),
-      receiveData.date,
-      user?.name || "Sistema"
-    );
+    try {
+      const result = await markAsReceived(
+        selectedReceivable.id,
+        parseMoneyBR(receiveData.amount),
+        receiveData.date,
+        user?.name || "Sistema"
+      );
 
-    if (result) {
-      toast.success("Recebimento registrado! Movimentação criada automaticamente.");
-    } else {
+      if (result) {
+        toast.success("Recebimento registrado! Movimentação criada automaticamente no Caixa.");
+      }
+    } catch (error) {
+      console.error("Erro ao marcar como recebido:", error);
       toast.error("Erro ao registrar recebimento");
+    } finally {
+      setReceiveDialogOpen(false);
+      setSelectedReceivable(null);
+      setReceiveData({ amount: "", date: format(new Date(), "yyyy-MM-dd") });
     }
-
-    setReceiveDialogOpen(false);
-    setSelectedReceivable(null);
-    setReceiveData({ amount: "", date: format(new Date(), "yyyy-MM-dd") });
   };
 
   const handleMarkGlossed = () => {
