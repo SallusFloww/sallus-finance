@@ -174,18 +174,16 @@ export default function Production() {
     return getProductionStats(start, end);
   }, [getProductionStats, startDate, endDate]);
 
-  // Handlers de produção
-  const handleAddProduction = (data: ProductionFormData) => {
-    addProduction({
+  // Handlers de produção (toast is handled inside addProduction)
+  const handleAddProduction = async (data: ProductionFormData) => {
+    await addProduction({
       ...data,
       estimatedValue: data.quantity * data.unitValue,
     });
-    toast.success("Produção registrada com sucesso");
   };
 
   const handleDeleteProduction = (id: string) => {
     deleteProduction(id);
-    toast.success("Produção excluída");
   };
 
   // Total de quantidade
