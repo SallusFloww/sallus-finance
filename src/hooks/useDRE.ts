@@ -87,14 +87,21 @@ export function useDRE() {
   };
 
   const calculateDRE = useCallback(
-    (startDate?: Date, endDate?: Date, unitFilter?: string): DREData => {
+    (startDate?: Date, endDate?: Date, unitFilter?: string, includeCancelled: boolean = false): DREData => {
       const start = startDate || getStartOfMonth(new Date());
       const end = endDate || getEndOfMonth(new Date());
 
-      // Filtrar transações do período
+      // Filtrar transações do período - EXCLUIR CANCELADOS por padrão
       const periodTransactions = transactions.filter((t) => {
         const txDate = new Date(t.date);
-        return txDate >= start && txDate <= end;
+        const inPeriod = txDate >= start && txDate <= end;
+        
+        // Excluir cancelados a menos que explicitamente solicitado
+        if (!includeCancelled && t.status === "CANCELADO") {
+          return false;
+        }
+        
+        return inPeriod;
       });
 
       // Aplicar filtro de unidade se necessário (apenas para operacional)
@@ -308,7 +315,7 @@ export function useDRE() {
 
   // Comparativo mês a mês
   const getMonthlyComparison = useCallback(
-    (months: number = 3, unitFilter?: string): DREData[] => {
+    (months: number = 3, unitFilter?: string, includeCancelled: boolean = false): DREData[] => {
       const results: DREData[] = [];
       const now = new Date();
       
@@ -316,7 +323,7 @@ export function useDRE() {
         const month = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const start = getStartOfMonth(month);
         const end = getEndOfMonth(month);
-        results.push(calculateDRE(start, end, unitFilter));
+        results.push(calculateDRE(start, end, unitFilter, includeCancelled));
       }
       
       return results.reverse();

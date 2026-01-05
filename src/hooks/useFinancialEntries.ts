@@ -144,7 +144,7 @@ export function useFinancialEntries() {
     };
   }, [fetchEntries, currentCompanyId]);
 
-  // Add new entry
+  // Add new entry with optimistic update
   const addEntry = useCallback(
     async (entry: FinancialEntryInsert): Promise<FinancialEntry | null> => {
       if (!currentCompanyId || !user) {
@@ -165,6 +165,11 @@ export function useFinancialEntries() {
 
         if (insertError) throw insertError;
 
+        // Optimistic update - add to local state immediately
+        if (data) {
+          setEntries(prev => [data, ...prev]);
+        }
+
         toast.success(`${entry.type === "entrada" ? "Entrada" : "Saída"} registrada com sucesso`);
         return data;
       } catch (err: any) {
@@ -179,7 +184,7 @@ export function useFinancialEntries() {
     [currentCompanyId, user]
   );
 
-  // Update entry
+  // Update entry with optimistic update
   const updateEntry = useCallback(
     async (id: string, updates: FinancialEntryUpdate): Promise<boolean> => {
       if (!user) {
@@ -188,15 +193,22 @@ export function useFinancialEntries() {
       }
 
       try {
-        const { error: updateError } = await supabase
+        const { data, error: updateError } = await supabase
           .from("financial_entries")
           .update({
             ...updates,
             updated_by: user.id,
           })
-          .eq("id", id);
+          .eq("id", id)
+          .select()
+          .single();
 
         if (updateError) throw updateError;
+
+        // Optimistic update - update local state immediately
+        if (data) {
+          setEntries(prev => prev.map(e => e.id === id ? data : e));
+        }
 
         toast.success("Movimentação atualizada com sucesso");
         return true;
@@ -212,7 +224,7 @@ export function useFinancialEntries() {
     [user]
   );
 
-  // Cancel entry (instead of delete)
+  // Cancel entry (instead of delete) with optimistic update
   const cancelEntry = useCallback(
     async (id: string, reason?: string): Promise<boolean> => {
       if (!user) {
@@ -220,18 +232,28 @@ export function useFinancialEntries() {
         return false;
       }
 
+      const cancelledAt = new Date().toISOString();
+      const cancelReason = reason || "Cancelado pelo usuário";
+
       try {
-        const { error: updateError } = await supabase
+        const { data, error: updateError } = await supabase
           .from("financial_entries")
           .update({
             status: "cancelado",
             cancelled_by: user.id,
-            cancelled_at: new Date().toISOString(),
-            cancel_reason: reason || "Cancelado pelo usuário",
+            cancelled_at: cancelledAt,
+            cancel_reason: cancelReason,
           })
-          .eq("id", id);
+          .eq("id", id)
+          .select()
+          .single();
 
         if (updateError) throw updateError;
+
+        // Optimistic update - update local state immediately
+        if (data) {
+          setEntries(prev => prev.map(e => e.id === id ? data : e));
+        }
 
         toast.success("Movimentação cancelada");
         return true;

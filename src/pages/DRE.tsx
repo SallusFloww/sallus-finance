@@ -6,6 +6,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { useDRE, DREData } from "@/hooks/useDRE";
 import { useApp } from "@/contexts/AppContext";
 import { useConsistencyCheck } from "@/hooks/useConsistencyCheck";
@@ -578,6 +580,7 @@ export default function DRE() {
   const { transactions, settings } = txContext;
   const [selectedMonth, setSelectedMonth] = useState<string>("current");
   const [selectedUnit, setSelectedUnit] = useState<string>("all");
+  const [includeCancelled, setIncludeCancelled] = useState<boolean>(false);
 
   // Gerar opções de meses
   const monthOptions = useMemo(() => {
@@ -609,21 +612,21 @@ export default function DRE() {
     };
   }, [selectedMonth]);
 
-  // Calcular DRE
+  // Calcular DRE - excluir cancelados por padrão
   const dreConsolidado = useMemo(() => 
-    calculateDRE(period.start, period.end, "all"),
-    [calculateDRE, period]
+    calculateDRE(period.start, period.end, "all", includeCancelled),
+    [calculateDRE, period, includeCancelled]
   );
 
   const dreUnit = useMemo(() => 
-    selectedUnit !== "all" ? calculateDRE(period.start, period.end, selectedUnit) : null,
-    [calculateDRE, period, selectedUnit]
+    selectedUnit !== "all" ? calculateDRE(period.start, period.end, selectedUnit, includeCancelled) : null,
+    [calculateDRE, period, selectedUnit, includeCancelled]
   );
 
   // Comparativo mensal
   const monthlyComparison = useMemo(() => 
-    getMonthlyComparison(3, selectedUnit !== "all" ? selectedUnit : undefined),
-    [getMonthlyComparison, selectedUnit]
+    getMonthlyComparison(3, selectedUnit !== "all" ? selectedUnit : undefined, includeCancelled),
+    [getMonthlyComparison, selectedUnit, includeCancelled]
   );
 
   // Checagem de consistência
@@ -690,8 +693,45 @@ export default function DRE() {
                 ))}
               </SelectContent>
             </Select>
+
+            {/* Toggle para incluir cancelados (auditoria) */}
+            <div className="flex items-center gap-2 px-3 py-2 bg-card rounded-lg border border-border/50 shadow-sm">
+              <Switch
+                id="include-cancelled"
+                checked={includeCancelled}
+                onCheckedChange={setIncludeCancelled}
+              />
+              <Label 
+                htmlFor="include-cancelled" 
+                className="text-xs text-muted-foreground cursor-pointer"
+              >
+                Incluir cancelados
+              </Label>
+              <Tooltip>
+                <TooltipTrigger>
+                  <HelpCircle className="h-3.5 w-3.5 text-muted-foreground/50" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="max-w-xs text-xs">
+                    Movimentações canceladas não compõem os totais por padrão.
+                    Ative esta opção apenas para fins de auditoria.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
           </div>
         </div>
+
+        {/* Alerta quando incluindo cancelados */}
+        {includeCancelled && (
+          <Alert variant="default" className="border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/20">
+            <AlertTriangle className="h-4 w-4 text-amber-600" />
+            <AlertTitle className="text-amber-800 dark:text-amber-400">Modo Auditoria Ativo</AlertTitle>
+            <AlertDescription className="text-amber-700 dark:text-amber-300">
+              Os valores exibidos incluem movimentações canceladas. Este modo é apenas para fins de auditoria e não representa a posição real.
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Alerta de validação */}
         {dreConsolidado.transactionCount > 0 && 
