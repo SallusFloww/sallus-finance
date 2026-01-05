@@ -137,8 +137,8 @@ export function exportConciliationPDF(data: ConciliationExportData): void {
       head: [["Data", "Unidade", "Convênio", "Faturado", "Em Aberto", "Idade", "Status"]],
       body: data.pendingItems.slice(0, 20).map(item => [
         format(new Date(item.date), "dd/MM/yy"),
-        formatUnitDisplayName(item.unit),
-        formatConvenioDisplayName(item.source),
+        item.unitLabel,
+        item.sourceLabel,
         formatCurrency(item.billedAmount),
         formatCurrency(item.openAmount),
         `${item.ageInDays}d`,
@@ -171,8 +171,8 @@ export function exportConciliationPDF(data: ConciliationExportData): void {
       body: data.divergences.slice(0, 15).map(div => [
         DIVERGENCE_LABELS[div.type] || div.type,
         div.severity,
-        formatUnitDisplayName(div.item.unit),
-        formatConvenioDisplayName(div.item.source),
+        div.item.unitLabel,
+        div.item.sourceLabel,
         div.description.substring(0, 50),
       ]),
       theme: "striped",
@@ -235,8 +235,8 @@ export function exportConciliationExcel(data: ConciliationExportData): void {
   ];
   const pendingRows = data.pendingItems.map(item => [
     format(new Date(item.date), "dd/MM/yyyy"),
-    formatUnitDisplayName(item.unit),
-    formatConvenioDisplayName(item.source),
+    item.unitLabel,
+    item.sourceLabel,
     item.description,
     item.billedAmount,
     item.receivedAmount,
@@ -262,8 +262,8 @@ export function exportConciliationExcel(data: ConciliationExportData): void {
   const divRows = data.divergences.map(div => [
     DIVERGENCE_LABELS[div.type] || div.type,
     div.severity,
-    formatUnitDisplayName(div.item.unit),
-    formatConvenioDisplayName(div.item.source),
+    div.item.unitLabel,
+    div.item.sourceLabel,
     div.description,
     div.item.billedAmount,
     div.item.openAmount,

@@ -242,18 +242,27 @@ export function sumMoney(...values: number[]): number {
 // ============================================
 
 /**
+ * Siglas conhecidas que devem permanecer em maiúsculas.
+ * Usadas em formatLabel e formatConvenioDisplayName.
+ */
+const KNOWN_ACRONYMS = new Set([
+  "PS", "UTI", "SUS", "UNIMED", "IPASGO", "GEAP", "BRADESCO", "AMIL", "HAPVIDA", "ONCO", "CC"
+]);
+
+/**
  * Converte uma string slug/código para label de exibição bonito.
  * Regras:
  * 1. Substitui underscores por espaços
  * 2. Remove duplicidade de espaços
  * 3. Aplica Title Case (primeira letra de cada palavra maiúscula)
- * 4. NÃO aplica uppercase global
+ * 4. Preserva siglas conhecidas em MAIÚSCULAS
  * 
  * Exemplos:
  * - "PRONTO_SOCORRO" → "Pronto Socorro"
  * - "centro_clinico" → "Centro Clínico"
  * - "OFTALMOLOGIA" → "Oftalmologia"
- * - "   some__weird___string  " → "Some Weird String"
+ * - "UTI" → "UTI"
+ * - "PS" → "PS"
  */
 export function displayLabel(value: string | null | undefined): string {
   if (!value) return "";
@@ -264,14 +273,79 @@ export function displayLabel(value: string | null | undefined): string {
   // Remove múltiplos espaços e trim
   result = result.replace(/\s+/g, " ").trim();
   
-  // Aplica Title Case
+  // Aplica Title Case, preservando siglas conhecidas
   result = result
-    .toLowerCase()
     .split(" ")
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .map(word => {
+      const upper = word.toUpperCase();
+      if (KNOWN_ACRONYMS.has(upper)) {
+        return upper;
+      }
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
     .join(" ");
   
   return result;
+}
+
+/**
+ * Normaliza string para chave de comparação/filtro.
+ * Regras:
+ * 1. Trim e lowercase
+ * 2. Espaços -> underscore
+ * 3. Remove acentos
+ * 4. Remove caracteres especiais (exceto underscore)
+ * 
+ * Exemplos:
+ * - "Pronto Socorro" → "pronto_socorro"
+ * - "CENTRO CLÍNICO" → "centro_clinico"
+ * - "  PS  " → "ps"
+ */
+export function normalizeKey(value: string | null | undefined): string {
+  if (!value) return "";
+  
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // Remove acentos
+    .replace(/\s+/g, "_") // Espaços -> underscore
+    .replace(/[^a-z0-9_]/g, ""); // Remove caracteres especiais
+}
+
+/**
+ * Alias para normalizeKey, usado em match engine
+ */
+export function normalizeForMatch(value: string | null | undefined): string {
+  return normalizeKey(value);
+}
+
+/**
+ * Extrai identificador (guia/NS/atendimento) de uma descrição por regex.
+ * Procura padrões comuns:
+ * - "Guia: 12345" ou "Guia 12345"
+ * - "NS: 12345" ou "NS 12345"
+ * - "Atend: 12345" ou "Atend 12345"
+ * - Números isolados de 6+ dígitos
+ * 
+ * @returns Identificador encontrado ou null
+ */
+export function extractIdentifier(description: string | null | undefined): string | null {
+  if (!description) return null;
+  
+  const patterns = [
+    /(?:guia|ns|atend|atendimento)[:\s]*(\d{4,})/i,
+    /\b(\d{6,})\b/, // Número de 6+ dígitos
+  ];
+  
+  for (const pattern of patterns) {
+    const match = description.match(pattern);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+  
+  return null;
 }
 
 /**

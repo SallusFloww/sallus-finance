@@ -96,8 +96,8 @@ export function ConciliationPending({
       const search = searchTerm.toLowerCase();
       return (
         item.description.toLowerCase().includes(search) ||
-        item.source.toLowerCase().includes(search) ||
-        item.unit.toLowerCase().includes(search)
+        item.sourceLabel.toLowerCase().includes(search) ||
+        item.unitLabel.toLowerCase().includes(search)
       );
     }
 
@@ -216,8 +216,8 @@ export function ConciliationPending({
                       <TableCell className="font-mono text-sm">
                         {format(new Date(item.date), "dd/MM/yy")}
                       </TableCell>
-                      <TableCell>{formatUnitDisplayName(item.unit)}</TableCell>
-                      <TableCell>{formatConvenioDisplayName(item.source)}</TableCell>
+                      <TableCell>{item.unitLabel}</TableCell>
+                      <TableCell>{item.sourceLabel}</TableCell>
                       <TableCell className="max-w-[200px] truncate" title={item.description}>
                         {item.description}
                       </TableCell>
@@ -286,11 +286,11 @@ export function ConciliationPending({
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Unidade:</span>
-                    <span>{formatUnitDisplayName(selectedItem.unit)}</span>
+                    <span>{selectedItem.unitLabel}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Convênio:</span>
-                    <span>{formatConvenioDisplayName(selectedItem.source)}</span>
+                    <span>{selectedItem.sourceLabel}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Descrição:</span>
