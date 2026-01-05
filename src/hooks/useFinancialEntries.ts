@@ -122,19 +122,50 @@ export function useFinancialEntries() {
   useEffect(() => {
     fetchEntries();
 
-    // Subscribe to realtime changes
+    // Subscribe to realtime changes - handle specific events for better performance
     const channel = supabase
       .channel("financial_entries_changes")
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "INSERT",
           schema: "public",
           table: "financial_entries",
           filter: currentCompanyId ? `company_id=eq.${currentCompanyId}` : undefined,
         },
-        () => {
-          fetchEntries();
+        (payload) => {
+          // Only add if not already in state (avoid duplicates from optimistic update)
+          const newEntry = payload.new as FinancialEntry;
+          setEntries(prev => {
+            if (prev.some(e => e.id === newEntry.id)) return prev;
+            return [newEntry, ...prev];
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "financial_entries",
+          filter: currentCompanyId ? `company_id=eq.${currentCompanyId}` : undefined,
+        },
+        (payload) => {
+          const updatedEntry = payload.new as FinancialEntry;
+          setEntries(prev => prev.map(e => e.id === updatedEntry.id ? updatedEntry : e));
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "financial_entries",
+          filter: currentCompanyId ? `company_id=eq.${currentCompanyId}` : undefined,
+        },
+        (payload) => {
+          const deletedId = (payload.old as FinancialEntry).id;
+          setEntries(prev => prev.filter(e => e.id !== deletedId));
         }
       )
       .subscribe();
