@@ -50,6 +50,7 @@ import { Link } from "react-router-dom";
 import { ProductionStats, ProductionForm, ProductionList, ProductionFormData } from "@/components/production";
 import { ProductionStatus, ProductionType } from "@/types";
 import { toast } from "sonner";
+import { formatUnitDisplayName, formatConvenioDisplayName } from "@/utils/formatters";
 
 // Labels para tipos de produção
 const PRODUCTION_TYPE_LABELS: Record<string, string> = {
@@ -80,16 +81,7 @@ function getProductionTypeIcon(type: string) {
   return PRODUCTION_TYPE_ICONS[type] || Activity;
 }
 
-function formatUnitName(unit: string): string {
-  const unitLabels: Record<string, string> = {
-    oncologia: "Oncologia",
-    "pronto-socorro": "Pronto Socorro",
-    "centro-clinico": "Centro Clínico",
-    centroclinico: "Centro Clínico",
-  };
-  const normalized = unit.toLowerCase().replace(/\s+/g, "-");
-  return unitLabels[normalized] || unit;
-}
+// Use centralized formatUnitDisplayName from formatters.ts
 
 interface OperationalAlert {
   type: "concentration" | "unbilled";
@@ -398,7 +390,7 @@ export default function Production() {
                   <SelectItem value="all">Todas unid.</SelectItem>
                   {uniqueUnits.map((unit) => (
                     <SelectItem key={unit} value={unit}>
-                      {formatUnitName(unit)}
+                      {formatUnitDisplayName(unit)}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -51,7 +51,7 @@ import { useReceivablesDB } from "@/hooks/useReceivablesDB";
 import { useApp } from "@/contexts/AppContext";
 import { differenceInDays, parseISO, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { formatCurrency } from "@/utils/formatters";
+import { formatCurrency, formatUnitDisplayName, formatConvenioDisplayName } from "@/utils/formatters";
 import {
   BarChart,
   Bar,
@@ -62,16 +62,7 @@ import {
   Cell,
 } from "recharts";
 
-function formatUnitName(unit: string): string {
-  const unitLabels: Record<string, string> = {
-    oncologia: "Oncologia",
-    "pronto-socorro": "Pronto Socorro",
-    "centro-clinico": "Centro Clínico",
-    centroclinico: "Centro Clínico",
-  };
-  const normalized = unit.toLowerCase().replace(/\s+/g, "-");
-  return unitLabels[normalized] || unit;
-}
+// Use centralized formatUnitDisplayName from formatters.ts
 
 interface AgingBucket {
   label: string;
@@ -213,7 +204,7 @@ export default function AgingReport() {
 
     return {
       topConvenio: topConvenio ? { name: topConvenio[0], value: topConvenio[1], percentage: topConvenioPercentage } : null,
-      topUnit: topUnit ? { name: formatUnitName(topUnit[0]), value: topUnit[1], key: topUnit[0] } : null,
+      topUnit: topUnit ? { name: formatUnitDisplayName(topUnit[0]), value: topUnit[1], key: topUnit[0] } : null,
       riskLevel,
     };
   }, [openReceivables, totals]);
@@ -486,7 +477,7 @@ export default function AgingReport() {
                       <SelectItem value="all">Todas</SelectItem>
                       {uniqueUnits.map((unit) => (
                         <SelectItem key={unit} value={unit}>
-                          {formatUnitName(unit)}
+                          {formatUnitDisplayName(unit)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -502,7 +493,7 @@ export default function AgingReport() {
                       <SelectItem value="all">Todos</SelectItem>
                       {uniqueSources.map((source) => (
                         <SelectItem key={source} value={source}>
-                          {source}
+                          {formatConvenioDisplayName(source)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -596,7 +587,7 @@ export default function AgingReport() {
                     <SelectItem value="all">Todas</SelectItem>
                     {uniqueUnits.map((unit) => (
                       <SelectItem key={unit} value={unit}>
-                        {formatUnitName(unit)}
+                        {formatUnitDisplayName(unit)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -612,7 +603,7 @@ export default function AgingReport() {
                     <SelectItem value="all">Todos</SelectItem>
                     {uniqueSources.map((source) => (
                       <SelectItem key={source} value={source}>
-                        {source}
+                        {formatConvenioDisplayName(source)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -670,7 +661,7 @@ export default function AgingReport() {
                 <span className="font-semibold text-foreground">Em aberto:</span>{" "}
                 {formatCurrency(totals.total)}
                 {executiveReading.topConvenio && (
-                  <> — {executiveReading.topConvenio.percentage.toFixed(0)}% concentrado no convênio <span className="font-medium">{executiveReading.topConvenio.name}</span>.</>
+                  <> — {executiveReading.topConvenio.percentage.toFixed(0)}% concentrado no convênio <span className="font-medium">{formatConvenioDisplayName(executiveReading.topConvenio.name)}</span>.</>
                 )}
               </p>
               {executiveReading.topUnit && (
@@ -692,7 +683,7 @@ export default function AgingReport() {
               </div>
               <div className="text-center">
                 <p className="text-xs text-muted-foreground">Convênio com maior pendência</p>
-                <p className="text-sm font-medium">{executiveReading.topConvenio?.name || "—"}</p>
+                <p className="text-sm font-medium">{executiveReading.topConvenio ? formatConvenioDisplayName(executiveReading.topConvenio.name) : "—"}</p>
               </div>
               <div className="text-center">
                 <p className="text-xs text-muted-foreground">Unidade mais exposta</p>
@@ -856,7 +847,7 @@ export default function AgingReport() {
                       className="cursor-pointer hover:bg-muted/70"
                       onClick={() => handleConvenioDrilldown(row.source)}
                     >
-                      <TableCell className="font-medium">{row.source}</TableCell>
+                      <TableCell className="font-medium">{formatConvenioDisplayName(row.source)}</TableCell>
                       <TableCell className="text-right text-green-600">
                         {formatCurrency(row.buckets["0-30 dias"])}
                       </TableCell>
@@ -924,7 +915,7 @@ export default function AgingReport() {
                       className="cursor-pointer hover:bg-muted/70"
                       onClick={() => handleUnitDrilldown(row.unit)}
                     >
-                      <TableCell className="font-medium">{formatUnitName(row.unit)}</TableCell>
+                      <TableCell className="font-medium">{formatUnitDisplayName(row.unit)}</TableCell>
                       <TableCell className="text-right text-green-600">
                         {formatCurrency(row.buckets["0-30 dias"])}
                       </TableCell>
@@ -1046,8 +1037,8 @@ export default function AgingReport() {
               </div>
               {detailFilter !== "all" && (
                 <Badge variant="secondary" className="w-fit mt-2">
-                  Filtro ativo: {detailFilter.startsWith("convenio:") ? `Convênio: ${detailFilter.replace("convenio:", "")}` :
-                                 detailFilter.startsWith("unit:") ? `Unidade: ${formatUnitName(detailFilter.replace("unit:", ""))}` :
+                  Filtro ativo: {detailFilter.startsWith("convenio:") ? `Convênio: ${formatConvenioDisplayName(detailFilter.replace("convenio:", ""))}` :
+                                 detailFilter.startsWith("unit:") ? `Unidade: ${formatUnitDisplayName(detailFilter.replace("unit:", ""))}` :
                                  detailFilter}
                   <Button
                     variant="ghost"
@@ -1088,8 +1079,8 @@ export default function AgingReport() {
                             <TableCell className="text-sm">
                               {format(parseISO(r.billingDate), "dd/MM/yyyy", { locale: ptBR })}
                             </TableCell>
-                            <TableCell className="font-medium">{r.source}</TableCell>
-                            <TableCell>{formatUnitName(r.unit)}</TableCell>
+                            <TableCell className="font-medium">{formatConvenioDisplayName(r.source)}</TableCell>
+                            <TableCell>{formatUnitDisplayName(r.unit)}</TableCell>
                             <TableCell className="max-w-[200px] truncate text-sm text-muted-foreground">
                               {r.description || "—"}
                             </TableCell>
@@ -1211,11 +1202,11 @@ export default function AgingReport() {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Convênio</p>
-                <p className="font-medium">{selectedReceivable.source}</p>
+                <p className="font-medium">{formatConvenioDisplayName(selectedReceivable.source)}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Unidade</p>
-                <p className="font-medium">{formatUnitName(selectedReceivable.unit)}</p>
+                <p className="font-medium">{formatUnitDisplayName(selectedReceivable.unit)}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Descrição</p>
