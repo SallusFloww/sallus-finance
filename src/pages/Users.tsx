@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { secureInvoke } from "@/hooks/useSecureInvoke";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -72,6 +73,15 @@ import { formatDate } from "@/utils/formatters";
 import { RoleSelector, ROLE_CONFIGS, RoleSummaryCards, UserFilters } from "@/components/users";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+
+// Type for send-invite response
+interface SendInviteResponse {
+  success: boolean;
+  emailSent: boolean;
+  inviteUrl: string;
+  emailError?: string;
+  error?: string;
+}
 
 const inviteSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -235,29 +245,34 @@ export default function Users() {
     enabled: !!currentCompany?.id,
   });
 
-  // Send invite mutation (via edge function)
+  // Send invite mutation (via edge function with robust error handling)
   const inviteMutation = useMutation({
     mutationFn: async (data: { email: string; fullName: string; roleId: string }) => {
       if (!currentCompany?.id) throw new Error("Empresa não selecionada");
 
       const role = roles.find(r => r.id === data.roleId);
       
-      const { data: result, error } = await supabase.functions.invoke("send-invite", {
-        body: {
-          email: data.email,
-          fullName: data.fullName,
-          companyId: currentCompany.id,
-          roleId: data.roleId,
-          companyName: currentCompany.name,
-          roleName: role?.name || "Usuário",
-          invitedByName: profile?.full_name || profile?.email || "Administrador",
-        },
-      });
+      try {
+        const { data: result, error } = await secureInvoke<SendInviteResponse>("send-invite", {
+          body: {
+            email: data.email,
+            fullName: data.fullName,
+            companyId: currentCompany.id,
+            roleId: data.roleId,
+            companyName: currentCompany.name,
+            roleName: role?.name || "Usuário",
+            invitedByName: profile?.full_name || profile?.email || "Administrador",
+          },
+        });
 
-      if (error) throw error;
-      if (result?.error) throw new Error(result.error);
+        if (error) throw error;
 
-      return result;
+        return result;
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : "Erro ao enviar convite";
+        console.error("Erro no convite:", err);
+        throw new Error(errorMessage);
+      }
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["pending-invites"] });
@@ -282,7 +297,8 @@ export default function Users() {
         toast.success("Convite enviado com sucesso!");
       }
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
+      console.error("inviteMutation.onError:", error);
       toast.error(error.message || "Erro ao enviar convite");
     },
   });
@@ -309,37 +325,59 @@ export default function Users() {
   // Resend invite mutation
   const resendInviteMutation = useMutation({
     mutationFn: async (invite: PendingInvite) => {
-      // First cancel the old invite
-      await supabase
-        .from("user_invites")
-        .update({ status: "cancelled" })
-        .eq("id", invite.id);
+      try {
+        // First cancel the old invite
+        await supabase
+          .from("user_invites")
+          .update({ status: "cancelled" })
+          .eq("id", invite.id);
 
-      // Then create a new one via edge function
-      const role = roles.find(r => r.name === invite.role_name);
-      
-      const { data: result, error } = await supabase.functions.invoke("send-invite", {
-        body: {
-          email: invite.email,
-          fullName: invite.full_name,
-          companyId: currentCompany?.id,
-          roleId: role?.id,
-          companyName: currentCompany?.name,
-          roleName: invite.role_name,
-          invitedByName: profile?.full_name || profile?.email || "Administrador",
-        },
-      });
+        // Then create a new one via edge function
+        const role = roles.find(r => r.name === invite.role_name);
+        
+        const { data: result, error } = await secureInvoke<SendInviteResponse>("send-invite", {
+          body: {
+            email: invite.email,
+            fullName: invite.full_name,
+            companyId: currentCompany?.id,
+            roleId: role?.id,
+            companyName: currentCompany?.name,
+            roleName: invite.role_name,
+            invitedByName: profile?.full_name || profile?.email || "Administrador",
+          },
+        });
 
-      if (error) throw error;
-      if (result?.error) throw new Error(result.error);
+        if (error) throw error;
 
-      return result;
+        return result;
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : "Erro ao reenviar convite";
+        console.error("Erro ao reenviar convite:", err);
+        throw new Error(errorMessage);
+      }
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["pending-invites"] });
-      toast.success("Convite reenviado!");
+      
+      // Check if email was sent or not
+      if (data?.emailSent === false && data?.inviteUrl) {
+        toast("Convite reenviado, mas o e-mail não foi enviado.", {
+          description: "Copie o link abaixo e envie manualmente para o usuário.",
+          action: {
+            label: "Copiar link",
+            onClick: async () => {
+              await navigator.clipboard.writeText(data.inviteUrl);
+              toast.success("Link copiado!");
+            },
+          },
+          duration: 10000,
+        });
+      } else {
+        toast.success("Convite reenviado!");
+      }
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
+      console.error("resendInviteMutation.onError:", error);
       toast.error(error.message || "Erro ao reenviar convite");
     },
   });
