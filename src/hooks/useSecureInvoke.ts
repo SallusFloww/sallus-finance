@@ -72,8 +72,8 @@ export async function secureInvoke<T = unknown>(
     }
   }
 
-  // Check for errors in response body
-  if (!result.error && result.data && typeof result.data === "object") {
+  // Check for errors in response body (handle 4xx responses)
+  if (result.data && typeof result.data === "object") {
     const responseData = result.data as Record<string, unknown>;
     if (responseData.error && typeof responseData.error === "string") {
       return {
@@ -83,8 +83,32 @@ export async function secureInvoke<T = unknown>(
     }
   }
 
+  // Handle edge function errors (like 400 status)
+  if (result.error) {
+    // Try to extract error message from the error context
+    const errorContext = (result.error as any)?.context;
+    if (errorContext && typeof errorContext === "object") {
+      try {
+        const parsed = typeof errorContext === "string" ? JSON.parse(errorContext) : errorContext;
+        if (parsed?.error) {
+          return {
+            data: null,
+            error: new Error(parsed.error),
+          };
+        }
+      } catch {
+        // Ignore parsing errors
+      }
+    }
+    
+    return {
+      data: null,
+      error: result.error,
+    };
+  }
+
   return {
     data: result.data as T,
-    error: result.error,
+    error: null,
   };
 }
