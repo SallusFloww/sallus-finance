@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertTriangle, CheckCircle2, Info } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, Calculator } from "lucide-react";
 import { UnitApportionment, ApportionmentCriteria } from "@/types";
 import { useApp } from "@/contexts/AppContext";
 import { formatCurrency } from "@/utils/formatters";
@@ -30,104 +30,130 @@ export function UnitApportionmentBlock({
   const { transactions } = useApp();
   const { settings } = transactions;
 
-  // Component initialization - no debug logging in production
-
   // Get active units
   const activeUnits = useMemo(() => {
     return settings.units.filter(u => u.active);
   }, [settings.units]);
 
-  // Initialize apportionments when units change
+  const isManual = apportionmentCriteria === "MANUAL";
+  const isIgual = apportionmentCriteria === "IGUAL";
+  const isFaturamento = apportionmentCriteria === "FATURAMENTO";
+  const isProducao = apportionmentCriteria === "PRODUCAO";
+
+  // Calculate apportionments when criteria or units change
+  const calculateApportionments = useCallback(() => {
+    if (activeUnits.length === 0 || totalAmount <= 0) return [];
+
+    const unitCount = activeUnits.length;
+
+    if (isIgual) {
+      // Equal distribution
+      const baseAmount = Math.floor((totalAmount * 100) / unitCount) / 100;
+      const remainder = Math.round((totalAmount - baseAmount * unitCount) * 100) / 100;
+      
+      return activeUnits.map((unit, idx) => ({
+        unitId: unit.id,
+        unitName: unit.name,
+        criterionValue: 100 / unitCount,
+        apportionedAmount: idx === unitCount - 1 ? baseAmount + remainder : baseAmount,
+      }));
+    }
+
+    if (isFaturamento || isProducao) {
+      // For now, if no data, fall back to equal
+      // TODO: Integrate with actual billing/production data
+      const baseAmount = Math.floor((totalAmount * 100) / unitCount) / 100;
+      const remainder = Math.round((totalAmount - baseAmount * unitCount) * 100) / 100;
+      
+      return activeUnits.map((unit, idx) => ({
+        unitId: unit.id,
+        unitName: unit.name,
+        criterionValue: 100 / unitCount,
+        apportionedAmount: idx === unitCount - 1 ? baseAmount + remainder : baseAmount,
+      }));
+    }
+
+    // Manual - keep existing or initialize with zeros
+    if (apportionments.length === activeUnits.length) {
+      return apportionments;
+    }
+
+    return activeUnits.map(unit => ({
+      unitId: unit.id,
+      unitName: unit.name,
+      criterionValue: 0,
+      apportionedAmount: 0,
+    }));
+  }, [activeUnits, totalAmount, isIgual, isFaturamento, isProducao, apportionments.length]);
+
+  // Initialize/recalculate on criteria or amount change
   useEffect(() => {
-    if (activeUnits.length > 0 && apportionments.length === 0) {
-      const initialApportionments: UnitApportionment[] = activeUnits.map(unit => ({
+    if (!apportionmentCriteria || activeUnits.length === 0) return;
+
+    // Only auto-recalculate for automatic criteria
+    if (isIgual || isFaturamento || isProducao) {
+      const calculated = calculateApportionments();
+      onApportionmentsChange(calculated);
+    } else if (isManual && apportionments.length === 0) {
+      // Initialize manual with zeros
+      const initial = activeUnits.map(unit => ({
         unitId: unit.id,
         unitName: unit.name,
         criterionValue: 0,
         apportionedAmount: 0,
       }));
-      onApportionmentsChange(initialApportionments);
+      onApportionmentsChange(initial);
     }
-  }, [activeUnits, apportionments.length, onApportionmentsChange]);
+  }, [apportionmentCriteria, activeUnits.length, totalAmount]);
 
-  // Recalculate apportioned amounts when total or criterion values change
+  // Recalculate amounts when manual percentages change
   useEffect(() => {
-    if (apportionments.length === 0 || totalAmount <= 0) return;
+    if (!isManual || apportionments.length === 0 || totalAmount <= 0) return;
 
-    const totalCriterion = apportionments.reduce((sum, a) => sum + a.criterionValue, 0);
-    
-    if (totalCriterion > 0) {
-      const updatedApportionments = apportionments.map(a => ({
-        ...a,
-        apportionedAmount: (a.criterionValue / totalCriterion) * totalAmount,
-      }));
+    const totalPercent = apportionments.reduce((sum, a) => sum + a.criterionValue, 0);
+    if (totalPercent > 0) {
+      const updated = apportionments.map((a, idx) => {
+        const percent = a.criterionValue / totalPercent;
+        let amount = Math.floor(percent * totalAmount * 100) / 100;
+        
+        // Adjust last item to ensure total matches
+        if (idx === apportionments.length - 1) {
+          const currentTotal = apportionments.slice(0, -1).reduce((sum, item, i) => {
+            const p = item.criterionValue / totalPercent;
+            return sum + Math.floor(p * totalAmount * 100) / 100;
+          }, 0);
+          amount = Math.round((totalAmount - currentTotal) * 100) / 100;
+        }
+        
+        return { ...a, apportionedAmount: amount };
+      });
       
-      // Only update if values actually changed
-      const hasChanges = updatedApportionments.some((ua, idx) => 
-        Math.abs(ua.apportionedAmount - apportionments[idx].apportionedAmount) > 0.01
+      // Only update if amounts changed
+      const hasChanges = updated.some((u, i) => 
+        Math.abs(u.apportionedAmount - apportionments[i].apportionedAmount) > 0.001
       );
-      
       if (hasChanges) {
-        onApportionmentsChange(updatedApportionments);
+        onApportionmentsChange(updated);
       }
     }
-  }, [totalAmount]);
+  }, [apportionments.map(a => a.criterionValue).join(','), totalAmount, isManual]);
 
-  // Handle criterion value change for a unit
-  const handleCriterionChange = (unitId: string, value: string) => {
+  // Handle manual percentage change
+  const handlePercentChange = (unitId: string, value: string) => {
     const numValue = parseFloat(value) || 0;
-    
-    const updatedApportionments = apportionments.map(a => {
-      if (a.unitId === unitId) {
-        return { ...a, criterionValue: numValue };
-      }
-      return a;
-    });
-
-    // Recalculate apportioned amounts
-    const totalCriterion = updatedApportionments.reduce((sum, a) => sum + a.criterionValue, 0);
-    
-    const finalApportionments = updatedApportionments.map(a => ({
-      ...a,
-      apportionedAmount: totalCriterion > 0 
-        ? (a.criterionValue / totalCriterion) * totalAmount 
-        : 0,
-    }));
-
-    onApportionmentsChange(finalApportionments);
+    const updated = apportionments.map(a => 
+      a.unitId === unitId ? { ...a, criterionValue: Math.min(100, Math.max(0, numValue)) } : a
+    );
+    onApportionmentsChange(updated);
   };
 
   // Validation
-  const totalCriterion = apportionments.reduce((sum, a) => sum + a.criterionValue, 0);
+  const totalPercent = apportionments.reduce((sum, a) => sum + a.criterionValue, 0);
   const totalApportioned = apportionments.reduce((sum, a) => sum + a.apportionedAmount, 0);
-  
-  const isPercentual = apportionmentCriteria === "PERCENTUAL";
-  const isValid = isPercentual 
-    ? Math.abs(totalCriterion - 100) < 0.01 
-    : totalCriterion > 0;
-  
-  const showValidationError = totalCriterion > 0 && isPercentual && Math.abs(totalCriterion - 100) >= 0.01;
+  const isPercentValid = Math.abs(totalPercent - 100) < 0.01;
+  const isAmountValid = Math.abs(totalApportioned - totalAmount) < 0.01;
+  const isValid = isManual ? (isPercentValid && isAmountValid) : isAmountValid;
 
-  // Get criterion label
-  const getCriterionLabel = () => {
-    switch (apportionmentCriteria) {
-      case "PERCENTUAL": return "%";
-      case "M2": return "m²";
-      case "FIXO": return "R$";
-      default: return "";
-    }
-  };
-
-  const getCriterionPlaceholder = () => {
-    switch (apportionmentCriteria) {
-      case "PERCENTUAL": return "Ex: 40";
-      case "M2": return "Ex: 150";
-      case "FIXO": return "Ex: 1000";
-      default: return "Valor";
-    }
-  };
-
-  // DEBUG: se não houver unidades ativas, mostramos o motivo (não some silenciosamente)
   if (!apportionmentCriteria) {
     return null;
   }
@@ -137,7 +163,7 @@ export function UnitApportionmentBlock({
       <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-200 border border-border rounded-lg p-4 bg-muted/30">
         <div className="flex items-center justify-between">
           <Label className="text-foreground font-semibold flex items-center gap-2">
-            📊 Distribuição do Rateio por Unidade
+            📊 Rateio por Unidade
           </Label>
           <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/20">
             <AlertTriangle className="h-3 w-3 mr-1" />
@@ -158,7 +184,7 @@ export function UnitApportionmentBlock({
     <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-200 border border-purple-500/20 rounded-lg p-4 bg-purple-500/5">
       <div className="flex items-center justify-between">
         <Label className="text-primary font-semibold flex items-center gap-2">
-          📊 Distribuição do Rateio por Unidade
+          📊 Rateio por Unidade
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -166,14 +192,15 @@ export function UnitApportionmentBlock({
               </TooltipTrigger>
               <TooltipContent side="right" className="max-w-xs">
                 <p className="text-xs">
-                  Defina como este custo será distribuído entre as unidades. 
-                  {isPercentual && " A soma deve ser exatamente 100%."}
+                  {isManual 
+                    ? "Defina o percentual de cada unidade. A soma deve ser exatamente 100%."
+                    : "Os valores são calculados automaticamente pelo critério selecionado."}
                 </p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </Label>
-        {totalCriterion > 0 && (
+        {apportionments.length > 0 && (
           <Badge 
             variant="outline" 
             className={isValid 
@@ -182,19 +209,27 @@ export function UnitApportionmentBlock({
             }
           >
             {isValid ? <CheckCircle2 className="h-3 w-3 mr-1" /> : <AlertTriangle className="h-3 w-3 mr-1" />}
-            {isPercentual ? `${totalCriterion.toFixed(1)}%` : `Total: ${totalCriterion}`}
+            {isManual ? `${totalPercent.toFixed(1)}%` : <Calculator className="h-3 w-3" />}
           </Badge>
         )}
       </div>
 
+      {/* Info about automatic calculation */}
+      {(isIgual || isFaturamento || isProducao) && (
+        <Alert className="border-blue-500/30 bg-blue-500/10">
+          <Calculator className="h-4 w-4 text-blue-600" />
+          <AlertDescription className="text-xs text-blue-700 dark:text-blue-300">
+            {isIgual && "Valor dividido igualmente entre todas as unidades ativas."}
+            {isFaturamento && "Valores calculados proporcionalmente ao faturamento de cada unidade. (Usando distribuição igual como fallback)"}
+            {isProducao && "Valores calculados proporcionalmente à produção de cada unidade. (Usando distribuição igual como fallback)"}
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Table Header */}
       <div className="grid grid-cols-3 gap-4 text-xs font-medium text-muted-foreground border-b border-border pb-2">
         <div>Unidade</div>
-        <div className="text-center">
-          {apportionmentCriteria === "PERCENTUAL" ? "% Rateio" : 
-           apportionmentCriteria === "M2" ? "Metragem (m²)" : 
-           "Critério"}
-        </div>
+        <div className="text-center">% Rateio</div>
         <div className="text-right">Valor (R$)</div>
       </div>
 
@@ -206,19 +241,27 @@ export function UnitApportionmentBlock({
               <span className="font-medium text-sm">{apportionment.unitName}</span>
             </div>
             <div className="relative">
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                max={isPercentual ? 100 : undefined}
-                placeholder={getCriterionPlaceholder()}
-                value={apportionment.criterionValue || ""}
-                onChange={(e) => handleCriterionChange(apportionment.unitId, e.target.value)}
-                className="text-center pr-8"
-              />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-                {getCriterionLabel()}
-              </span>
+              {isManual ? (
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="100"
+                  placeholder="Ex: 33.33"
+                  value={apportionment.criterionValue || ""}
+                  onChange={(e) => handlePercentChange(apportionment.unitId, e.target.value)}
+                  className="text-center pr-8"
+                />
+              ) : (
+                <div className="text-center font-medium text-muted-foreground">
+                  {apportionment.criterionValue.toFixed(2)}%
+                </div>
+              )}
+              {isManual && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                  %
+                </span>
+              )}
             </div>
             <div className="text-right">
               <span className={`font-semibold ${apportionment.apportionedAmount > 0 ? "text-purple-600" : "text-muted-foreground"}`}>
@@ -232,41 +275,47 @@ export function UnitApportionmentBlock({
       {/* Totals Row */}
       <div className="grid grid-cols-3 gap-4 items-center pt-3 border-t border-border font-semibold">
         <div className="text-sm text-muted-foreground">Total</div>
-        <div className={`text-center ${showValidationError ? "text-amber-600" : "text-foreground"}`}>
-          {totalCriterion.toFixed(isPercentual ? 1 : 2)} {getCriterionLabel()}
+        <div className={`text-center ${isManual && !isPercentValid ? "text-amber-600" : "text-foreground"}`}>
+          {totalPercent.toFixed(2)}%
         </div>
-        <div className="text-right text-purple-600">
+        <div className={`text-right ${isAmountValid ? "text-purple-600" : "text-amber-600"}`}>
           {formatCurrency(totalApportioned)}
         </div>
       </div>
 
+      {/* Comparison with total */}
+      <div className="flex items-center justify-between text-xs text-muted-foreground bg-muted/30 rounded p-2">
+        <span>Valor Total da Movimentação:</span>
+        <span className="font-semibold text-foreground">{formatCurrency(totalAmount)}</span>
+      </div>
+
       {/* Validation Messages */}
-      {showValidationError && (
+      {isManual && totalPercent > 0 && !isPercentValid && (
         <Alert className="border-amber-500/30 bg-amber-500/10">
           <AlertTriangle className="h-4 w-4 text-amber-600" />
           <AlertDescription className="text-sm text-amber-700 dark:text-amber-300">
-            {totalCriterion < 100 
-              ? `Faltam ${(100 - totalCriterion).toFixed(1)}% para completar o rateio.`
-              : `Excedeu ${(totalCriterion - 100).toFixed(1)}%. A soma deve ser exatamente 100%.`
+            {totalPercent < 100 
+              ? `Faltam ${(100 - totalPercent).toFixed(2)}% para completar o rateio.`
+              : `Excedeu ${(totalPercent - 100).toFixed(2)}%. A soma deve ser exatamente 100%.`
             }
           </AlertDescription>
         </Alert>
       )}
 
-      {totalCriterion === 0 && (
+      {isManual && totalPercent === 0 && (
         <Alert className="border-muted bg-muted/30">
           <Info className="h-4 w-4 text-muted-foreground" />
           <AlertDescription className="text-sm text-muted-foreground">
-            Preencha os valores de rateio para cada unidade.
+            Preencha os percentuais de rateio para cada unidade. A soma deve ser 100%.
           </AlertDescription>
         </Alert>
       )}
 
-      {isValid && totalCriterion > 0 && (
+      {isValid && apportionments.length > 0 && (
         <Alert className="border-emerald-500/30 bg-emerald-500/10">
           <CheckCircle2 className="h-4 w-4 text-emerald-600" />
           <AlertDescription className="text-sm text-emerald-700 dark:text-emerald-300">
-            Rateio válido. A movimentação será registrada com distribuição por unidade no DRE.
+            Rateio válido. A despesa será distribuída entre as unidades no DRE.
           </AlertDescription>
         </Alert>
       )}

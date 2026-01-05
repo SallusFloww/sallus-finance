@@ -28,6 +28,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useMovementAllocations } from "@/hooks/useMovementAllocations";
 import { 
   Transaction, 
   TransactionType, 
@@ -88,6 +89,7 @@ export function TransactionForm({ editingTransaction, onClose }: TransactionForm
   const { transactions, auditLog } = useApp();
   const { settings, addTransaction, updateTransaction } = transactions;
   const { profile } = useAuth();
+  const { saveAllocations, fetchAllocations } = useMovementAllocations();
   
   // Compatibilidade com código legado
   const user = { name: profile?.full_name || "Sistema" };
@@ -250,6 +252,19 @@ export function TransactionForm({ editingTransaction, onClose }: TransactionForm
     }
   }, [category, type, editingTransaction]);
 
+  // ============= CARREGAR RATEIO AO EDITAR MOVIMENTAÇÃO COMPARTILHADA =============
+  useEffect(() => {
+    const loadAllocations = async () => {
+      if (editingTransaction && editingTransaction.financialCategory === "COMPARTILHADO" && editingTransaction.id) {
+        const allocations = await fetchAllocations(editingTransaction.id);
+        if (allocations.length > 0) {
+          setUnitApportionments(allocations);
+        }
+      }
+    };
+    loadAllocations();
+  }, [editingTransaction?.id, fetchAllocations]);
+
   // Palavras ambíguas que podem indicar receita ao invés de aporte de capital
   const AMBIGUOUS_KEYWORDS = ["royalty", "royalties", "licença", "licenciamento", "aluguel", "renda", "receita"];
   
@@ -311,23 +326,40 @@ export function TransactionForm({ editingTransaction, onClose }: TransactionForm
       createdBy: user?.name || "Sistema",
     };
 
+    let transactionId: string | undefined;
+
     if (editingTransaction) {
       await updateTransaction(editingTransaction.id, transactionData);
+      transactionId = editingTransaction.id;
       addAuditLog(
         "UPDATE_TRANSACTION",
         `Transação ${editingTransaction.id} atualizada`,
         { transactionId: editingTransaction.id, ...transactionData }
       );
-      toast.success("Movimentação atualizada com sucesso!");
     } else {
       const newTransaction = await addTransaction(transactionData);
+      transactionId = newTransaction?.id;
       addAuditLog(
         "CREATE_TRANSACTION",
         `Nova ${type === "INCOME" ? "entrada" : "saída"} de ${amount}`,
         { transactionId: newTransaction?.id, ...transactionData }
       );
-      toast.success("Movimentação registrada com sucesso!");
     }
+
+    // Save allocations for shared expenses
+    if (transactionId && financialCategory === "COMPARTILHADO" && type === "EXPENSE" && apportionmentCriteria && unitApportionments.length > 0) {
+      const allocationsSaved = await saveAllocations(
+        transactionId,
+        unitApportionments,
+        apportionmentCriteria as ApportionmentCriteria
+      );
+      
+      if (!allocationsSaved) {
+        toast.error("Erro ao salvar o rateio. A movimentação foi salva, mas o rateio não.");
+      }
+    }
+
+    toast.success(editingTransaction ? "Movimentação atualizada com sucesso!" : "Movimentação registrada com sucesso!");
 
     resetForm();
     setOpen(false);
@@ -391,16 +423,25 @@ export function TransactionForm({ editingTransaction, onClose }: TransactionForm
 
     // Validação de rateio para despesas compartilhadas
     if (financialCategory === "COMPARTILHADO" && type === "EXPENSE" && apportionmentCriteria) {
-      const totalCriterion = unitApportionments.reduce((sum, a) => sum + a.criterionValue, 0);
+      const totalPercent = unitApportionments.reduce((sum, a) => sum + a.criterionValue, 0);
+      const totalAmount = unitApportionments.reduce((sum, a) => sum + a.apportionedAmount, 0);
+      const expectedAmount = parseMoneyBR(amount);
       
-      if (totalCriterion === 0) {
-        toast.error("Preencha os valores de rateio para cada unidade");
-        return;
+      // Para rateio manual, percentuais devem somar 100%
+      if (apportionmentCriteria === "MANUAL") {
+        if (totalPercent === 0) {
+          toast.error("Preencha os percentuais de rateio para cada unidade");
+          return;
+        }
+        if (Math.abs(totalPercent - 100) >= 0.01) {
+          toast.error(`A soma dos percentuais deve ser exatamente 100%. Atual: ${totalPercent.toFixed(1)}%`);
+          return;
+        }
       }
       
-      // Para percentual, soma deve ser exatamente 100%
-      if (apportionmentCriteria === "PERCENTUAL" && Math.abs(totalCriterion - 100) >= 0.01) {
-        toast.error(`A soma dos percentuais deve ser exatamente 100%. Atual: ${totalCriterion.toFixed(1)}%`);
+      // Verificar se o valor total está correto
+      if (Math.abs(totalAmount - expectedAmount) >= 0.01) {
+        toast.error("O valor total do rateio não corresponde ao valor da movimentação");
         return;
       }
     }

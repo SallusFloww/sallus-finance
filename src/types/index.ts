@@ -36,12 +36,12 @@ export type FinancialCategory =
   | "COMPARTILHADO"     // Custos operacionais compartilhados (corporativo)
   | "NAO_OPERACIONAL";  // Financeiras não assistenciais (aportes, distribuições, etc.)
 
-// Critérios de rateio para custos compartilhados (informativo)
+// Critérios de rateio para custos compartilhados
 export type ApportionmentCriteria = 
-  | "FIXO"              // Valor fixo por unidade
-  | "M2"                // Por metragem quadrada
-  | "PERCENTUAL"        // Por percentual de faturamento
-  | "MANUAL";           // Rateio definido manualmente
+  | "IGUAL"             // Divide igualmente entre unidades
+  | "MANUAL"            // Rateio definido manualmente
+  | "FATURAMENTO"       // Proporcional ao faturamento
+  | "PRODUCAO";         // Proporcional à produção
 
 // ============= RATEIO POR UNIDADE =============
 // Estrutura para armazenar o rateio detalhado por unidade

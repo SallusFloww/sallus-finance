@@ -290,6 +290,77 @@ export type Database = {
           },
         ]
       }
+      movement_allocations: {
+        Row: {
+          allocation_amount: number
+          allocation_percent: number
+          company_id: string
+          created_at: string
+          criterion: string
+          criterion_value: number | null
+          id: string
+          movement_id: string
+          unit_id: string
+          unit_name: string
+          updated_at: string
+        }
+        Insert: {
+          allocation_amount?: number
+          allocation_percent?: number
+          company_id: string
+          created_at?: string
+          criterion: string
+          criterion_value?: number | null
+          id?: string
+          movement_id: string
+          unit_id: string
+          unit_name: string
+          updated_at?: string
+        }
+        Update: {
+          allocation_amount?: number
+          allocation_percent?: number
+          company_id?: string
+          created_at?: string
+          criterion?: string
+          criterion_value?: number | null
+          id?: string
+          movement_id?: string
+          unit_id?: string
+          unit_name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "movement_allocations_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movement_allocations_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movement_allocations_movement_id_fkey"
+            columns: ["movement_id"]
+            isOneToOne: false
+            referencedRelation: "financial_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movement_allocations_movement_id_fkey"
+            columns: ["movement_id"]
+            isOneToOne: false
+            referencedRelation: "movements_effective"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       permissions: {
         Row: {
           code: string
