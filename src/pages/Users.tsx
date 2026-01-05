@@ -259,12 +259,28 @@ export default function Users() {
 
       return result;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["pending-invites"] });
-      toast.success("Convite enviado com sucesso!");
       setIsInviteOpen(false);
       setInviteForm({ email: "", fullName: "", roleId: "" });
       setActiveTab("invites");
+      
+      // Check if email was sent or not
+      if (data?.emailSent === false && data?.inviteUrl) {
+        toast("Convite criado, mas o e-mail não foi enviado.", {
+          description: "Copie o link abaixo e envie manualmente para o usuário.",
+          action: {
+            label: "Copiar link",
+            onClick: async () => {
+              await navigator.clipboard.writeText(data.inviteUrl);
+              toast.success("Link copiado!");
+            },
+          },
+          duration: 10000,
+        });
+      } else {
+        toast.success("Convite enviado com sucesso!");
+      }
     },
     onError: (error: any) => {
       toast.error(error.message || "Erro ao enviar convite");

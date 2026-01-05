@@ -27,6 +27,7 @@ import Billing from "./pages/Billing";
 import BillingReport from "./pages/BillingReport";
 import AgingReport from "./pages/AgingReport";
 import ExecutiveReport from "./pages/ExecutiveReport";
+import Onboarding from "./pages/Onboarding";
 import MonthlyReport from "./pages/MonthlyReport";
 import BI from "./pages/BI";
 import Users from "./pages/Users";
@@ -43,7 +44,7 @@ function AppRoutes() {
       <Route path="/auth" element={<Auth />} />
       
       {/* Protected Routes (requires authentication) */}
-      <Route path="/onboarding" element={<Navigate to="/" replace />} />
+      <Route path="/onboarding" element={<ProtectedRoute allowNoCompany={true}><Onboarding /></ProtectedRoute>} />
       <Route path="/" element={<ProtectedRoute requiredPermission="VIEW_DASHBOARD"><Dashboard /></ProtectedRoute>} />
       <Route path="/trends" element={<ProtectedRoute requiredPermission="VIEW_TRENDS"><Trends /></ProtectedRoute>} />
       <Route path="/trends-history" element={<ProtectedRoute requiredPermission="VIEW_TRENDS"><TrendsHistory /></ProtectedRoute>} />

@@ -1,15 +1,20 @@
+import { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { Button } from "@/components/ui/button";
 
 interface ProtectedRouteProps {
-  children: React.ReactNode;
+  children: ReactNode;
   requiredPermission?: string;
+  allowNoCompany?: boolean;
 }
 
-export function ProtectedRoute({ children, requiredPermission }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading, hasPermission, currentCompany, dataLoaded, signOut } = useAuth();
+export function ProtectedRoute({
+  children,
+  requiredPermission,
+  allowNoCompany = false,
+}: ProtectedRouteProps) {
+  const { isAuthenticated, isLoading, hasPermission, currentCompany, dataLoaded } = useAuth();
   const location = useLocation();
 
   // Show loading state while auth is being determined
@@ -29,7 +34,15 @@ export function ProtectedRoute({ children, requiredPermission }: ProtectedRouteP
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
-  // Check for required permission
+  // Usuário logado mas ainda sem empresa selecionada/associada
+  if (!currentCompany) {
+    if (allowNoCompany) {
+      return <>{children}</>;
+    }
+    return <Navigate to="/onboarding" replace />;
+  }
+
+  // Checar permissão só quando já existe empresa
   if (requiredPermission && !hasPermission(requiredPermission)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -44,27 +57,6 @@ export function ProtectedRoute({ children, requiredPermission }: ProtectedRouteP
           >
             Voltar
           </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Check if user has a company - if not, show inactive/no access message
-  if (!currentCompany) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="max-w-md mx-auto text-center p-8">
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
-            <AlertCircle className="h-8 w-8 text-destructive" />
-          </div>
-          <h1 className="text-2xl font-bold text-foreground mb-2">Acesso Indisponível</h1>
-          <p className="text-muted-foreground mb-6">
-            Sua conta não está vinculada a nenhuma empresa ativa ou foi desativada. 
-            Entre em contato com o administrador do sistema para obter acesso.
-          </p>
-          <Button variant="outline" onClick={() => signOut()}>
-            Sair
-          </Button>
         </div>
       </div>
     );
