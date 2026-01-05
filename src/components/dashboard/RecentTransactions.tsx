@@ -170,9 +170,11 @@ export const RecentTransactions = forwardRef<HTMLDivElement, RecentTransactionsP
                   </div>
 
                   <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-[10px] text-muted-foreground font-mono">
-                      {format(parseLocalDate(transaction.date), "HH:mm")}
-                    </span>
+                    {!/^\d{4}-\d{2}-\d{2}$/.test(transaction.date) && (
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        {format(new Date(transaction.date), "HH:mm")}
+                      </span>
+                    )}
                     <span
                       className={cn(
                         "text-sm font-semibold tabular-nums min-w-[80px] text-right",
