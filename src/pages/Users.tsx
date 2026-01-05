@@ -77,10 +77,13 @@ import { cn } from "@/lib/utils";
 // Type for send-invite response
 interface SendInviteResponse {
   success: boolean;
-  emailSent: boolean;
-  inviteUrl: string;
+  emailSent?: boolean;
+  inviteUrl?: string;
   emailError?: string;
   error?: string;
+  reactivated?: boolean;
+  message?: string;
+  userId?: string;
 }
 
 const inviteSchema = z.object({
@@ -276,11 +279,19 @@ export default function Users() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["pending-invites"] });
+      queryClient.invalidateQueries({ queryKey: ["company-users"] });
       setIsInviteOpen(false);
       setInviteForm({ email: "", fullName: "", roleId: "" });
-      setActiveTab("invites");
       
-      // Check if email was sent or not
+      // Check if user was reactivated (existing user added to company)
+      if (data?.reactivated) {
+        toast.success(data.message || "Usuário adicionado à empresa com sucesso!");
+        setActiveTab("users");
+        return;
+      }
+      
+      // Check if email was sent or not (new invite flow)
+      setActiveTab("invites");
       if (data?.emailSent === false && data?.inviteUrl) {
         // Sanitize URL - fallback to window.location.origin if invalid
         const safeInviteUrl =
@@ -288,7 +299,7 @@ export default function Users() {
           data.inviteUrl.startsWith("http") && 
           !data.inviteUrl.includes("placeholder_value_to_be_replaced")
             ? data.inviteUrl
-            : `${window.location.origin}/auth?invite=${data.inviteUrl?.split("invite=")[1] || ""}`;
+            : `${window.location.origin}/i/${data.inviteUrl?.split("/i/")[1] || data.inviteUrl?.split("invite=")[1] || ""}`;
         
         toast("Convite criado. Copie o link abaixo e envie no WhatsApp.", {
           description: "O e-mail não foi enviado pois o SMTP não está configurado.",
