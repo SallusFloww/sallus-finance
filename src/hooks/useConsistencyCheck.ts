@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Transaction, Settings } from "@/types";
 import { format, parseISO } from "date-fns";
 import { DREData } from "./useDRE";
+import { isRealized } from "@/utils/statusHelpers";
 
 export type ConsistencyStatus = "consistent" | "warning" | "error";
 
@@ -83,9 +84,9 @@ export function useConsistencyCheck({
     // =====================================================
     let scoreValid = true;
 
-    // Check: Only REALIZADO status should be considered
+    // Check: Only REALIZADO status should be considered (usando helper robusto)
     const nonRealizadoTransactions = filteredTransactions.filter(
-      (t) => t.status !== "REALIZADO"
+      (t) => !isRealized(t.status)
     );
     
     if (nonRealizadoTransactions.length > 0) {

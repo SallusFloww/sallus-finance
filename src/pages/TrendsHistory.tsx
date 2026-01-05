@@ -35,6 +35,7 @@ import {
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { isRealized, isCancelled } from "@/utils/statusHelpers";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -101,13 +102,16 @@ export default function TrendsHistory() {
       const monthEnd = endOfMonth(monthDate);
       const totalDays = monthEnd.getDate();
 
-      // Filtrar transações do mês
+      // Filtrar transações do mês (apenas REALIZADAS, excluindo CANCELADAS)
       const monthTransactions = transactions.filter((t) => {
         const tDate = parseISO(t.date);
-        return tDate >= monthStart && tDate <= monthEnd;
+        if (tDate < monthStart || tDate > monthEnd) return false;
+        // CRÍTICO: Excluir cancelados e considerar apenas realizados
+        if (isCancelled(t.status)) return false;
+        return isRealized(t.status);
       });
 
-      // Calcular totais
+      // Calcular totais (apenas transações realizadas)
       const income = monthTransactions
         .filter((t) => t.type === "INCOME")
         .reduce((sum, t) => sum + t.amount, 0);
