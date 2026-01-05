@@ -97,18 +97,90 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     /* =========================
-       CHECK USER
+       CHECK IF USER EXISTS
     ========================== */
     const { data: users } = await supabaseAdmin.auth.admin.listUsers();
-    const alreadyExists = users?.users?.some(
+    const existingUser = users?.users?.find(
       (u) => u.email?.toLowerCase() === email.toLowerCase()
     );
 
-    if (alreadyExists) {
-      return new Response(
-        JSON.stringify({ error: "Este e-mail já possui conta" }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+    // If user already exists in Auth, reactivate them instead of creating invite
+    if (existingUser) {
+      console.log("User already exists in Auth, attempting to reactivate:", existingUser.id);
+      
+      // Check if user already has a role in this company
+      const { data: existingRole } = await supabaseAdmin
+        .from("user_company_roles")
+        .select("*")
+        .eq("user_id", existingUser.id)
+        .eq("company_id", companyId)
+        .maybeSingle();
+
+      if (existingRole) {
+        // User already has role in this company - just reactivate if inactive
+        if (!existingRole.is_active) {
+          await supabaseAdmin
+            .from("user_company_roles")
+            .update({ 
+              is_active: true, 
+              role_id: roleId,
+              updated_at: new Date().toISOString() 
+            })
+            .eq("id", existingRole.id);
+          
+          console.log("Reactivated existing user role");
+          return new Response(
+            JSON.stringify({ 
+              success: true, 
+              reactivated: true,
+              message: "Usuário reativado com sucesso",
+              userId: existingUser.id
+            }),
+            { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+          );
+        } else {
+          // User is already active in this company
+          return new Response(
+            JSON.stringify({ error: "Este usuário já está ativo nesta empresa" }),
+            { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+          );
+        }
+      } else {
+        // User exists but not in this company - add them
+        const { error: insertError } = await supabaseAdmin
+          .from("user_company_roles")
+          .insert({
+            user_id: existingUser.id,
+            company_id: companyId,
+            role_id: roleId,
+            is_primary: false,
+            is_active: true
+          });
+
+        if (insertError) {
+          console.error("Error adding user to company:", insertError);
+          throw insertError;
+        }
+
+        // Update profile name if provided
+        if (fullName) {
+          await supabaseAdmin
+            .from("profiles")
+            .update({ full_name: fullName })
+            .eq("id", existingUser.id);
+        }
+
+        console.log("Added existing user to new company");
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            reactivated: true,
+            message: "Usuário adicionado à empresa com sucesso",
+            userId: existingUser.id
+          }),
+          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
     }
 
     /* =========================
