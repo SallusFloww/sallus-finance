@@ -35,6 +35,7 @@ import AdminDiagnostics from "./pages/AdminDiagnostics";
 import Financial from "./pages/Financial";
 import QA from "./pages/QA";
 import NotFound from "./pages/NotFound";
+import InviteRedirect from "./pages/InviteRedirect";
 
 const queryClient = new QueryClient();
 
@@ -43,6 +44,7 @@ function AppRoutes() {
     <Routes>
       {/* Public Routes */}
       <Route path="/auth" element={<Auth />} />
+      <Route path="/i/:token" element={<InviteRedirect />} />
       
       {/* Protected Routes (requires authentication) */}
       <Route path="/onboarding" element={<ProtectedRoute allowNoCompany={true}><Onboarding /></ProtectedRoute>} />

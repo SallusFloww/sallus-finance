@@ -178,7 +178,7 @@ serve(async (req: Request): Promise<Response> => {
       appUrl = fallbackUrl;
     }
 
-    const inviteUrl = `${appUrl}/auth?invite=${invite.token}`;
+    const inviteUrl = `${appUrl}/i/${invite.token}`;
     console.log("Generated inviteUrl:", inviteUrl);
 
     /* =========================
