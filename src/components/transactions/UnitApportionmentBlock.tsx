@@ -154,8 +154,23 @@ export function UnitApportionmentBlock({
   const isAmountValid = Math.abs(totalApportioned - totalAmount) < 0.01;
   const isValid = isManual ? (isPercentValid && isAmountValid) : isAmountValid;
 
+  // Don't hide block if no criteria - show message prompting user to select one
   if (!apportionmentCriteria) {
-    return null;
+    return (
+      <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-200 border border-border rounded-lg p-4 bg-muted/30">
+        <div className="flex items-center justify-between">
+          <Label className="text-foreground font-semibold flex items-center gap-2">
+            📊 Rateio por Unidade
+          </Label>
+        </div>
+        <Alert className="border-blue-500/30 bg-blue-500/10">
+          <Info className="h-4 w-4 text-blue-600" />
+          <AlertDescription className="text-sm text-blue-700 dark:text-blue-300">
+            Selecione um <strong>Critério de Rateio</strong> acima para distribuir este custo entre as unidades.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
   }
 
   if (activeUnits.length === 0) {
