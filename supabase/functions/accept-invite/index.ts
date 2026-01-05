@@ -20,7 +20,10 @@ serve(async (req) => {
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
-    const { token, password } = await req.json();
+    // Accept both formats: { token, password } or { inviteToken, password }
+    const body = await req.json();
+    const token = body.token || body.inviteToken;
+    const password = body.password;
 
     if (!token || !password) {
       return new Response(
@@ -90,7 +93,67 @@ serve(async (req) => {
 
     console.log("Processing invite for:", email, "company:", companyId, "role:", roleId);
 
-    // 2) Criar usuário
+    // 2) Check if user already exists
+    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
+    const existingUser = existingUsers?.users?.find(
+      (u) => u.email?.toLowerCase() === email.toLowerCase()
+    );
+
+    if (existingUser) {
+      console.log("User already exists:", existingUser.id);
+      
+      // Check if user already has access to this company
+      const { data: existingUCR } = await supabaseAdmin
+        .from("user_company_roles")
+        .select("id")
+        .eq("user_id", existingUser.id)
+        .eq("company_id", companyId)
+        .maybeSingle();
+
+      if (existingUCR) {
+        // User already has access to this company
+        return new Response(
+          JSON.stringify({ 
+            error: "Este email já está cadastrado e já tem acesso a esta empresa. Faça login normalmente.",
+            userExists: true 
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // User exists but doesn't have access to this company - add them
+      const { error: ucrError } = await supabaseAdmin.from("user_company_roles").insert({
+        user_id: existingUser.id,
+        company_id: companyId,
+        role_id: roleId,
+        is_primary: false, // Not primary since they already have another company
+        is_active: true,
+      });
+
+      if (ucrError) {
+        console.error("Erro ao vincular usuário existente:", ucrError);
+        return new Response(
+          JSON.stringify({ error: "Erro ao vincular usuário à empresa." }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Mark invite as accepted
+      await supabaseAdmin
+        .from("user_invites")
+        .update({ status: "accepted", accepted_at: new Date().toISOString() })
+        .eq("id", inviteId);
+
+      return new Response(
+        JSON.stringify({ 
+          error: "Este email já está cadastrado. Foi vinculado à empresa. Faça login com sua senha existente.",
+          userExists: true 
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // 3) Criar usuário novo
     const { data: created, error: createUserError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
@@ -102,6 +165,19 @@ serve(async (req) => {
 
     if (createUserError || !created?.user) {
       console.error("Create user error:", createUserError);
+      
+      // Check if it's a duplicate error
+      if (createUserError?.message?.toLowerCase().includes("already") || 
+          createUserError?.message?.toLowerCase().includes("duplicate")) {
+        return new Response(
+          JSON.stringify({ 
+            error: "Este email já está cadastrado. Faça login com sua senha existente.",
+            userExists: true 
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      
       return new Response(
         JSON.stringify({ error: createUserError?.message || "Erro ao criar usuário." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -111,7 +187,7 @@ serve(async (req) => {
     const userId = created.user.id;
     console.log("User created:", userId);
 
-    // 3) Criar profile (se der duplicate, ignora)
+    // 4) Criar profile (se der duplicate, ignora)
     const { error: profileError } = await supabaseAdmin.from("profiles").insert({
       id: userId,
       email: email.toLowerCase(),
@@ -123,7 +199,7 @@ serve(async (req) => {
       console.error("Erro ao criar profile:", profileError);
     }
 
-    // 4) Inserir permissão na tabela CORRETA: user_company_roles
+    // 5) Inserir permissão na tabela CORRETA: user_company_roles
     const { data: existingUCR } = await supabaseAdmin
       .from("user_company_roles")
       .select("id")
@@ -152,7 +228,7 @@ serve(async (req) => {
       console.log("user_company_roles already exists for user:", userId);
     }
 
-    // 5) Marcar convite como aceito
+    // 6) Marcar convite como aceito
     const { error: updateInviteError } = await supabaseAdmin
       .from("user_invites")
       .update({ status: "accepted", accepted_at: new Date().toISOString() })

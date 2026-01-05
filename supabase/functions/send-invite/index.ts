@@ -150,58 +150,82 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     /* =========================
-       EMAIL
+       BUILD INVITE URL
     ========================== */
     const appUrl = (
       Deno.env.get("APP_URL") || "https://finance.sallusfinance.com.br"
     ).replace(/\/$/, "");
 
-    const inviteUrl = `${appUrl}/auth?invite_token=${invite.token}`;
+    const inviteUrl = `${appUrl}/auth?invite=${invite.token}`;
 
+    /* =========================
+       EMAIL (with fallback)
+    ========================== */
     const smtpHost = Deno.env.get("SMTP_HOST");
     const smtpPort = Number(Deno.env.get("SMTP_PORT") || "587");
     const smtpUser = Deno.env.get("SMTP_USER");
     const smtpPass = Deno.env.get("SMTP_PASS");
 
-    if (!smtpHost || !smtpUser || !smtpPass) {
-      throw new Error("SMTP não configurado");
+    let emailSent = false;
+    let emailError: string | null = null;
+
+    try {
+      if (!smtpHost || !smtpUser || !smtpPass) {
+        throw new Error("SMTP não configurado (SMTP_HOST/SMTP_USER/SMTP_PASS).");
+      }
+
+      const client = new SMTPClient({
+        connection: {
+          hostname: smtpHost,
+          port: smtpPort,
+          tls: false, // STARTTLS (CORRETO PARA UMBLER)
+          auth: {
+            username: smtpUser,
+            password: smtpPass,
+          },
+        },
+      });
+
+      const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #4F46E5;">Convite SallusFinance</h2>
+          <p>Olá, <strong>${fullName}</strong>!</p>
+          <p>${invitedByName} convidou você para a empresa <b>${companyName}</b>.</p>
+          <p>Perfil: <b>${roleName}</b></p>
+          <p style="margin: 24px 0;">
+            <a href="${inviteUrl}" style="background: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+              👉 Aceitar convite
+            </a>
+          </p>
+          <p style="font-size: 12px; color: #666;">Este convite expira em 24h.</p>
+          <p style="font-size: 11px; color: #999; margin-top: 16px;">Se o botão não funcionar, copie e cole este link no navegador:<br/>${inviteUrl}</p>
+        </div>
+      `;
+
+      await client.send({
+        from: `SallusFinance <${smtpUser}>`,
+        to: email,
+        subject: `Convite para acessar o SallusFinance`,
+        html,
+        content: "auto",
+      });
+
+      await client.close();
+      emailSent = true;
+      console.log("Email sent successfully to:", email);
+    } catch (err) {
+      console.error("Falha ao enviar e-mail de convite:", err);
+      emailError = err instanceof Error ? err.message : String(err);
     }
 
-    const client = new SMTPClient({
-      connection: {
-        hostname: smtpHost,
-        port: smtpPort,
-        tls: false, // STARTTLS (CORRETO PARA UMBLER)
-        auth: {
-          username: smtpUser,
-          password: smtpPass,
-        },
-      },
-    });
-
-    const html = `
-      <h2>Convite SallusFinance</h2>
-      <p>Olá, <strong>${fullName}</strong></p>
-      <p>${invitedByName} convidou você para a empresa <b>${companyName}</b></p>
-      <p>Perfil: <b>${roleName}</b></p>
-      <p>
-        <a href="${inviteUrl}">👉 Aceitar convite</a>
-      </p>
-      <p>Este convite expira em 24h.</p>
-    `;
-
-    await client.send({
-      from: `SallusFinance <${smtpUser}>`,
-      to: email,
-      subject: `Convite para acessar o SallusFinance`,
-      html,
-      content: "auto",
-    });
-
-    await client.close();
-
+    // Sempre retorna sucesso com status do e-mail
     return new Response(
-      JSON.stringify({ success: true }),
+      JSON.stringify({
+        success: true,
+        emailSent,
+        inviteUrl,
+        ...(emailError ? { emailError } : {}),
+      }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   } catch (err: any) {
