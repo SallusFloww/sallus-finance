@@ -713,117 +713,81 @@ export default function ProductionReport() {
     return productions.some(p => p.specialty && p.specialty !== p.unit);
   }, [productions]);
 
+  // Top procedure for executive summary
+  const topProcedure = topProcedures[0];
+  
+  // Small sample check
+  const isSmallSample = previousTotalQuantity > 0 && previousTotalQuantity < 10;
+  
+  // Unbilled count for secondary alert
+  const unbilledCount = filteredProductions.filter(p => p.status === "PRODUZIDO").length;
+  const unbilledQty = filteredProductions
+    .filter(p => p.status === "PRODUZIDO")
+    .reduce((sum, p) => sum + p.quantity, 0);
+  
+  // Alerts without unbilled (production-focused)
+  const productionAlerts = managementAlerts.filter(a => a.type !== "unbilled");
+  const unbilledAlert = managementAlerts.find(a => a.type === "unbilled");
+
   return (
     <DashboardLayout>
-      <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
+      <div className="space-y-8 animate-fade-in max-w-7xl mx-auto">
         
         {/* ══════════════════════════════════════════════════════════════════
-            1️⃣ CABEÇALHO GERENCIAL PREMIUM
+            1️⃣ HEADER PREMIUM
         ══════════════════════════════════════════════════════════════════ */}
-        <header className="border-b pb-5">
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div className="space-y-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-gradient-to-br from-primary/20 to-primary/5 rounded-xl">
-                  <BarChart3 className="h-6 w-6 text-primary" />
-                </div>
-                <div>
-                  <h1 className="text-2xl font-bold text-foreground tracking-tight">
-                    Relatório Gerencial de Produção
-                  </h1>
-                  <p className="text-sm text-muted-foreground">
-                    Análise estratégica, histórica e comparativa da produção assistencial
-                  </p>
-                </div>
+        <header className="border-b border-border/50 pb-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-gradient-to-br from-primary/15 to-primary/5 rounded-2xl shadow-sm">
+                <BarChart3 className="h-7 w-7 text-primary" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-foreground tracking-tight">
+                  Relatório Gerencial de Produção
+                </h1>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Análise estratégica e operacional da produção assistencial
+                </p>
               </div>
             </div>
-            <div className="flex flex-col items-end gap-2">
+            <div className="flex items-center gap-3">
               <Badge variant="secondary" className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider bg-primary/10 text-primary border-primary/20">
                 <BookOpen className="mr-1.5 h-3.5 w-3.5" />
                 Visão Gerencial
               </Badge>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Calendar className="h-3.5 w-3.5" />
-                <span>{formattedPeriod}</span>
-              </div>
             </div>
           </div>
         </header>
 
         {/* ══════════════════════════════════════════════════════════════════
-            2️⃣ ALERTAS GERENCIAIS INTELIGENTES
+            2️⃣ FILTROS (LOGO ABAIXO DO HEADER)
         ══════════════════════════════════════════════════════════════════ */}
-        {managementAlerts.length > 0 && (
-          <section className="space-y-2">
-            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <AlertTriangle className="h-4 w-4" />
-              <span>Alertas Gerenciais</span>
-            </div>
-            <div className="grid gap-2 md:grid-cols-2">
-              {managementAlerts.map((alert, idx) => (
-                <Alert 
-                  key={idx} 
-                  className={`${
-                    alert.severity === "error" 
-                      ? "border-red-500/50 bg-red-50/50 dark:bg-red-950/20" 
-                      : alert.severity === "warning" 
-                        ? "border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/20" 
-                        : "border-blue-500/50 bg-blue-50/50 dark:bg-blue-950/20"
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    {alert.type === "concentration" && <PieChart className="h-4 w-4 text-amber-600 mt-0.5" />}
-                    {alert.type === "specialty" && <Award className="h-4 w-4 text-amber-600 mt-0.5" />}
-                    {alert.type === "unbilled" && <FileWarning className="h-4 w-4 text-blue-600 mt-0.5" />}
-                    {alert.type === "drop" && <TrendDown className="h-4 w-4 text-red-600 mt-0.5" />}
-                    {alert.type === "trend" && <TrendingUp className="h-4 w-4 text-blue-600 mt-0.5" />}
-                    <AlertDescription className="flex-1">
-                      <span className="font-semibold text-sm">{alert.message}</span>
-                      <span className="block text-xs text-muted-foreground mt-0.5">{alert.interpretation}</span>
-                      {alert.actionable && (
-                        <Button variant="link" size="sm" className="h-auto p-0 mt-1 text-xs">
-                          {alert.actionLabel} <ChevronRight className="h-3 w-3 ml-1" />
-                        </Button>
-                      )}
-                    </AlertDescription>
-                  </div>
-                </Alert>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Painel de Itens Não Faturados */}
-        <section>
-          <UnbilledItemsPanel productions={filteredProductions} />
-        </section>
-
-        {/* Filtros - Compactos */}
-        <Card className="border-dashed">
-          <CardContent className="pt-4 pb-4">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-              <div className="space-y-1">
-                <Label className="text-xs">Início</Label>
+        <section className="bg-muted/30 rounded-2xl p-5 border border-border/50">
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-muted-foreground">Início</Label>
                 <Input
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="h-8 text-sm"
+                  className="h-9 text-sm bg-background"
                 />
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Fim</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-muted-foreground">Fim</Label>
                 <Input
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="h-8 text-sm"
+                  className="h-9 text-sm bg-background"
                 />
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Unidade</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-muted-foreground">Unidade</Label>
                 <Select value={selectedUnit} onValueChange={setSelectedUnit}>
-                  <SelectTrigger className="h-8 text-sm">
+                  <SelectTrigger className="h-9 text-sm bg-background">
                     <SelectValue placeholder="Todas" />
                   </SelectTrigger>
                   <SelectContent>
@@ -836,10 +800,10 @@ export default function ProductionReport() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Convênio</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-muted-foreground">Convênio</Label>
                 <Select value={selectedConvenio} onValueChange={setSelectedConvenio}>
-                  <SelectTrigger className="h-8 text-sm">
+                  <SelectTrigger className="h-9 text-sm bg-background">
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
                   <SelectContent>
@@ -852,10 +816,10 @@ export default function ProductionReport() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Tipo</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-muted-foreground">Tipo</Label>
                 <Select value={selectedType} onValueChange={setSelectedType}>
-                  <SelectTrigger className="h-8 text-sm">
+                  <SelectTrigger className="h-9 text-sm bg-background">
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
                   <SelectContent>
@@ -868,12 +832,12 @@ export default function ProductionReport() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">
-                  Especialidade {!hasRealSpecialty && <span className="text-muted-foreground">(proxy)</span>}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-muted-foreground">
+                  Especialidade {!hasRealSpecialty && <span className="opacity-60">(proxy)</span>}
                 </Label>
                 <Select value={selectedSpecialty} onValueChange={setSelectedSpecialty}>
-                  <SelectTrigger className="h-8 text-sm">
+                  <SelectTrigger className="h-9 text-sm bg-background">
                     <SelectValue placeholder="Todas" />
                   </SelectTrigger>
                   <SelectContent>
@@ -887,43 +851,96 @@ export default function ProductionReport() {
                 </Select>
               </div>
             </div>
-          </CardContent>
-        </Card>
+            <div className="flex items-center justify-between text-xs text-muted-foreground pt-1 border-t border-border/30">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-3.5 w-3.5" />
+                <span>Período: {formattedPeriod}</span>
+                <span className="mx-2">•</span>
+                <span>{periodDays} dias</span>
+              </div>
+              <span className="opacity-70">Atualizado em: {format(new Date(), "dd/MM/yyyy HH:mm", { locale: ptBR })}</span>
+            </div>
+          </div>
+        </section>
 
         {/* ══════════════════════════════════════════════════════════════════
-            3️⃣ KPIs ESTRATÉGICOS (com variação corrigida)
+            3️⃣ RESUMO EXECUTIVO (NOVO - TEXTO AUTOMÁTICO)
+        ══════════════════════════════════════════════════════════════════ */}
+        {totalQuantity > 0 && (
+          <section className="bg-gradient-to-r from-primary/5 via-primary/3 to-transparent rounded-xl px-5 py-4 border border-primary/10">
+            <div className="flex items-start gap-3">
+              <Sparkles className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
+              <div className="text-sm text-foreground/90 leading-relaxed">
+                <span>No período, foram registradas </span>
+                <span className="font-semibold text-foreground">{totalQuantity.toLocaleString("pt-BR")} produções</span>
+                {variationData.hasData && variationData.percent !== 0 && (
+                  <>
+                    <span>. Variação vs período anterior: </span>
+                    <span className={`font-semibold ${variationData.percent >= 0 ? "text-green-600" : "text-red-600"}`}>
+                      {variationData.percent >= 0 ? "+" : ""}{variationData.percent.toFixed(0)}%
+                    </span>
+                    {isSmallSample && (
+                      <Badge variant="outline" className="ml-1.5 text-[10px] px-1.5 py-0 h-4 align-middle">
+                        Amostra pequena
+                      </Badge>
+                    )}
+                  </>
+                )}
+                {strategicKPIs.topUnit && (
+                  <>
+                    <span>. Unidade destaque: </span>
+                    <span className="font-semibold text-foreground">{strategicKPIs.topUnit.name}</span>
+                    <span className="text-muted-foreground"> ({strategicKPIs.topUnit.percentage.toFixed(0)}%)</span>
+                  </>
+                )}
+                {strategicKPIs.topConvenio && (
+                  <>
+                    <span>. Convênio principal: </span>
+                    <span className="font-semibold text-foreground">{strategicKPIs.topConvenio.name}</span>
+                  </>
+                )}
+                {topProcedure && (
+                  <>
+                    <span>. Top procedimento: </span>
+                    <span className="font-semibold text-foreground truncate">{topProcedure.name}</span>
+                  </>
+                )}
+                <span>.</span>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ══════════════════════════════════════════════════════════════════
+            4️⃣ KPIs ESTRATÉGICOS (CARDS PRINCIPAIS - 4 CARDS)
         ══════════════════════════════════════════════════════════════════ */}
         <section>
-          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-3">
-            <Target className="h-4 w-4" />
-            <span>Indicadores Estratégicos</span>
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             {/* Produção Total */}
-            <Card>
-              <CardContent className="pt-5 pb-4">
+            <Card className="shadow-sm border-border/60">
+              <CardContent className="pt-5 pb-5">
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Produção Total
                     </p>
-                    <p className="text-3xl font-bold text-foreground mt-1">
-                      {strategicKPIs.totalQuantity.toLocaleString("pt-BR")}
+                    <p className="text-3xl font-bold text-foreground mt-2 tabular-nums">
+                      {totalQuantity.toLocaleString("pt-BR")}
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      itens no período
+                      {filteredProductions.length.toLocaleString("pt-BR")} registros
                     </p>
                   </div>
-                  <div className="p-2 bg-primary/10 rounded-lg">
+                  <div className="p-2.5 bg-primary/10 rounded-xl">
                     <Activity className="h-5 w-5 text-primary" />
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Variação vs Período Anterior (CORRIGIDO) */}
-            <Card>
-              <CardContent className="pt-5 pb-4">
+            {/* Variação vs Anterior */}
+            <Card className="shadow-sm border-border/60">
+              <CardContent className="pt-5 pb-5">
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -931,74 +948,81 @@ export default function ProductionReport() {
                     </p>
                     {variationData.hasData ? (
                       <>
-                        <div className="flex items-baseline gap-2 mt-1">
-                          <p className={`text-2xl font-bold ${variationData.percent >= 0 ? "text-green-600" : "text-red-600"}`}>
-                            {variationData.percent >= 0 ? "+" : ""}{variationData.percent.toFixed(1)}%
+                        <div className="flex items-center gap-2 mt-2">
+                          <p className={`text-3xl font-bold tabular-nums ${
+                            variationData.percent >= 0 ? "text-green-600" : "text-red-600"
+                          }`}>
+                            {variationData.percent >= 0 ? "+" : ""}{variationData.percent.toFixed(0)}%
                           </p>
-                          <Badge 
-                            variant={variationData.percent >= 0 ? "default" : "destructive"}
-                            className="text-xs"
-                          >
-                            {variationData.percent > 0 ? "🔼" : variationData.percent < 0 ? "🔽" : "➖"}
-                          </Badge>
+                          {isSmallSample && (
+                            <Badge variant="outline" className="text-[10px] gap-0.5 h-5">
+                              <AlertCircle className="h-2.5 w-2.5" />
+                              Amostra pequena
+                            </Badge>
+                          )}
                         </div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Δ {variationData.absolute >= 0 ? "+" : ""}{variationData.absolute.toLocaleString("pt-BR")} itens
-                        </p>
-                        <p className="text-[10px] text-muted-foreground">
-                          Comparado a: {previousFormattedPeriod}
+                        <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                          {variationData.percent >= 0 ? (
+                            <TrendingUp className="h-3 w-3 text-green-600" />
+                          ) : (
+                            <TrendingDown className="h-3 w-3 text-red-600" />
+                          )}
+                          {variationData.absolute >= 0 ? "+" : ""}{variationData.absolute.toLocaleString("pt-BR")} itens
                         </p>
                       </>
                     ) : (
-                      <div className="mt-1">
-                        <p className="text-lg font-semibold text-muted-foreground">—</p>
+                      <>
+                        <div className="flex items-center gap-2 mt-2">
+                          <Minus className="h-5 w-5 text-muted-foreground" />
+                          <span className="text-sm text-muted-foreground">Sem dados</span>
+                        </div>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {variationData.message || "Sem base comparativa no período anterior"}
+                          Período anterior sem produção
                         </p>
-                      </div>
+                      </>
                     )}
                   </div>
-                  <div className={`p-2 rounded-lg ${
-                    !variationData.hasData 
-                      ? "bg-muted" 
-                      : variationData.percent >= 0 
-                        ? "bg-green-100 dark:bg-green-900/30" 
-                        : "bg-red-100 dark:bg-red-900/30"
+                  <div className={`p-2.5 rounded-xl ${
+                    variationData.hasData && variationData.percent >= 0 
+                      ? "bg-green-100 dark:bg-green-900/30" 
+                      : variationData.hasData 
+                        ? "bg-red-100 dark:bg-red-900/30"
+                        : "bg-muted"
                   }`}>
-                    {!variationData.hasData ? (
-                      <Minus className="h-5 w-5 text-muted-foreground" />
-                    ) : variationData.percent >= 0 ? (
+                    {variationData.hasData && variationData.percent >= 0 ? (
                       <TrendingUp className="h-5 w-5 text-green-600" />
-                    ) : (
+                    ) : variationData.hasData ? (
                       <TrendingDown className="h-5 w-5 text-red-600" />
+                    ) : (
+                      <Minus className="h-5 w-5 text-muted-foreground" />
                     )}
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Unidade Mais Produtiva */}
-            <Card>
-              <CardContent className="pt-5 pb-4">
+            {/* Unidade Destaque */}
+            <Card className="shadow-sm border-border/60">
+              <CardContent className="pt-5 pb-5">
                 <div className="flex items-start justify-between">
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 pr-3">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Unidade Destaque
                     </p>
                     {strategicKPIs.topUnit ? (
                       <>
-                        <p className="text-lg font-bold text-foreground mt-1 truncate">
+                        <p className="text-xl font-bold text-foreground mt-2 truncate">
                           {strategicKPIs.topUnit.name}
                         </p>
-                        <p className="text-xs text-muted-foreground">
-                          {strategicKPIs.topUnit.percentage.toFixed(0)}% do total ({strategicKPIs.topUnit.quantity.toLocaleString("pt-BR")})
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {strategicKPIs.topUnit.percentage.toFixed(0)}% ({strategicKPIs.topUnit.quantity.toLocaleString("pt-BR")} itens)
                         </p>
                       </>
                     ) : (
-                      <p className="text-sm text-muted-foreground mt-1">Sem dados</p>
+                      <p className="text-sm text-muted-foreground mt-2">Sem dados</p>
                     )}
                   </div>
-                  <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg flex-shrink-0">
+                  <div className="p-2.5 bg-green-100 dark:bg-green-900/30 rounded-xl flex-shrink-0">
                     <Building2 className="h-5 w-5 text-green-600" />
                   </div>
                 </div>
@@ -1006,33 +1030,132 @@ export default function ProductionReport() {
             </Card>
 
             {/* Convênio Principal */}
-            <Card>
-              <CardContent className="pt-5 pb-4">
+            <Card className="shadow-sm border-border/60">
+              <CardContent className="pt-5 pb-5">
                 <div className="flex items-start justify-between">
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 pr-3">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Convênio Principal
                     </p>
                     {strategicKPIs.topConvenio ? (
                       <>
-                        <p className="text-lg font-bold text-foreground mt-1 truncate">
+                        <p className="text-xl font-bold text-foreground mt-2 truncate">
                           {strategicKPIs.topConvenio.name}
                         </p>
-                        <p className="text-xs text-muted-foreground">
-                          {strategicKPIs.topConvenio.percentage.toFixed(0)}% do total ({strategicKPIs.topConvenio.quantity.toLocaleString("pt-BR")})
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {strategicKPIs.topConvenio.percentage.toFixed(0)}% ({strategicKPIs.topConvenio.quantity.toLocaleString("pt-BR")} itens)
                         </p>
                       </>
                     ) : (
-                      <p className="text-sm text-muted-foreground mt-1">Sem dados</p>
+                      <p className="text-sm text-muted-foreground mt-2">Sem dados</p>
                     )}
                   </div>
-                  <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-lg flex-shrink-0">
+                  <div className="p-2.5 bg-amber-100 dark:bg-amber-900/30 rounded-xl flex-shrink-0">
                     <Users className="h-5 w-5 text-amber-600" />
                   </div>
                 </div>
               </CardContent>
             </Card>
           </div>
+        </section>
+
+        {/* ══════════════════════════════════════════════════════════════════
+            5️⃣ ALERTAS GERENCIAIS (SOMENTE PRODUÇÃO)
+        ══════════════════════════════════════════════════════════════════ */}
+        {productionAlerts.length > 0 && (
+          <section className="space-y-3">
+            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <AlertTriangle className="h-4 w-4" />
+              <span>Alertas de Produção</span>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {productionAlerts.map((alert, idx) => (
+                <Alert 
+                  key={idx} 
+                  className={`${
+                    alert.severity === "error" 
+                      ? "border-red-500/40 bg-red-50/50 dark:bg-red-950/20" 
+                      : alert.severity === "warning" 
+                        ? "border-amber-500/40 bg-amber-50/50 dark:bg-amber-950/20" 
+                        : "border-blue-500/40 bg-blue-50/50 dark:bg-blue-950/20"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    {alert.type === "concentration" && <PieChart className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />}
+                    {alert.type === "specialty" && <Award className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />}
+                    {alert.type === "drop" && <TrendDown className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />}
+                    {alert.type === "trend" && <TrendingUp className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />}
+                    <AlertDescription className="flex-1">
+                      <span className="font-semibold text-sm">{alert.message}</span>
+                      <span className="block text-xs text-muted-foreground mt-0.5">{alert.interpretation}</span>
+                    </AlertDescription>
+                  </div>
+                </Alert>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* ══════════════════════════════════════════════════════════════════
+            6️⃣ PENDÊNCIAS OPERACIONAIS (FATURAMENTO SECUNDÁRIO)
+        ══════════════════════════════════════════════════════════════════ */}
+        {unbilledCount > 0 && (
+          <section className="space-y-3">
+            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <FileWarning className="h-4 w-4" />
+              <span>Pendências Operacionais</span>
+            </div>
+            <Card className="border-border/50 bg-muted/20">
+              <CardContent className="py-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-amber-100/80 dark:bg-amber-900/30 rounded-lg">
+                      <FileText className="h-4 w-4 text-amber-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">
+                        Produção pendente de fechamento
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {unbilledQty.toLocaleString("pt-BR")} itens aguardando envio para faturamento
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 sm:flex-shrink-0">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="text-xs h-8"
+                      onClick={() => {
+                        const unbilledProductions = filteredProductions.filter(p => p.status === "PRODUZIDO");
+                        handleOpenDrilldown("Itens pendentes de faturamento", unbilledProductions);
+                      }}
+                    >
+                      <Eye className="h-3 w-3 mr-1.5" />
+                      Ver Detalhes
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="text-xs h-8 text-muted-foreground"
+                      onClick={() => window.location.href = "/suggested-billing"}
+                    >
+                      Faturamento Sugerido
+                      <ChevronRight className="h-3 w-3 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-3 pt-2 border-t border-border/30">
+                  Ação operacional (fora do relatório de produção)
+                </p>
+              </CardContent>
+            </Card>
+          </section>
+        )}
+
+        {/* Painel de Itens Não Faturados (mantido mas agora após alertas) */}
+        <section>
+          <UnbilledItemsPanel productions={filteredProductions} />
         </section>
 
         {/* ══════════════════════════════════════════════════════════════════
