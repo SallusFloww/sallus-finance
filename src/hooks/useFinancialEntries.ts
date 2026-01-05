@@ -20,6 +20,7 @@ export interface FinancialEntry {
   data_recebimento: string | null;
   observacao: string | null;
   unit_id: string | null;
+  specialty: string | null;
   payment_method: string | null;
   receipt_type: string | null;
   operadora: string | null;
@@ -42,6 +43,7 @@ export interface FinancialEntryInsert {
   data_recebimento?: string;
   observacao?: string;
   unit_id?: string;
+  specialty?: string;
   payment_method?: string;
   receipt_type?: string;
   operadora?: string;
@@ -56,6 +58,7 @@ export interface FinancialEntryUpdate {
   data_recebimento?: string;
   observacao?: string;
   unit_id?: string;
+  specialty?: string;
   payment_method?: string;
   receipt_type?: string;
   operadora?: string;

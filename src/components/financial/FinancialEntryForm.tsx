@@ -35,7 +35,7 @@ import {
   useFinancialEntries 
 } from "@/hooks/useFinancialEntries";
 import { useCompanySettings } from "@/hooks/useCompanySettings";
-import { BUSINESS_UNITS, RECEIPT_TYPES, PAYMENT_METHODS_PARTICULAR, OPERADORAS, DEFAULT_CATEGORIES } from "@/utils/constants";
+import { BUSINESS_UNITS, RECEIPT_TYPES, PAYMENT_METHODS_PARTICULAR, OPERADORAS, DEFAULT_CATEGORIES, SPECIALTIES } from "@/utils/constants";
 import { parseMoneyBR, parseLocalDate } from "@/utils/formatters";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
@@ -77,6 +77,7 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
   );
   const [observacao, setObservacao] = useState(editingEntry?.observacao || "");
   const [unitId, setUnitId] = useState(editingEntry?.unit_id || "");
+  const [specialty, setSpecialty] = useState(editingEntry?.specialty || "");
   const [receiptType, setReceiptType] = useState(editingEntry?.receipt_type || "");
   const [paymentMethod, setPaymentMethod] = useState(editingEntry?.payment_method || "");
   const [operadora, setOperadora] = useState(editingEntry?.operadora || "");
@@ -206,7 +207,17 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
   // Clear validation error when any relevant field changes
   useEffect(() => {
     if (validationError) setValidationError(null);
-  }, [valor, descricao, categoria, unitId, receiptType, paymentMethod, operadora, status, type]);
+  }, [valor, descricao, categoria, unitId, specialty, receiptType, paymentMethod, operadora, status, type]);
+
+  // Clear specialty when unit changes (and unit doesn't support specialty)
+  useEffect(() => {
+    const normalizedUnit = unitId?.toUpperCase().replace(/[^A-Z]/g, '_');
+    const supportsSpecialty = normalizedUnit === "CENTRO_CLINICO" || normalizedUnit === "CENTROCLÍNICO" || 
+                              normalizedUnit === "CENTRO_CLÍNICO" || normalizedUnit === "ONCOLOGIA";
+    if (!supportsSpecialty) {
+      setSpecialty("");
+    }
+  }, [unitId]);
 
   // Reset form when modal opens (only for new entries, not editing)
   useEffect(() => {
@@ -229,6 +240,7 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
       setDataRecebimento(editingEntry.data_recebimento ? parseLocalDate(editingEntry.data_recebimento) : undefined);
       setObservacao(editingEntry.observacao || "");
       setUnitId(editingEntry.unit_id || "");
+      setSpecialty(editingEntry.specialty || "");
       setReceiptType(editingEntry.receipt_type || "");
       setPaymentMethod(editingEntry.payment_method || "");
       setOperadora(editingEntry.operadora || "");
@@ -297,6 +309,7 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
           : undefined,
         observacao: observacao || undefined,
         unit_id: unitId || undefined,
+        specialty: specialty || undefined,
         receipt_type: type === "entrada" && receiptType ? receiptType : undefined,
         payment_method: type === "entrada" && receiptType === "PARTICULAR" && paymentMethod
           ? paymentMethod
@@ -331,10 +344,18 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
     setDataRecebimento(undefined);
     setObservacao("");
     setUnitId("");
+    setSpecialty("");
     setReceiptType("");
     setPaymentMethod("");
     setOperadora("");
   };
+
+  // Helper: check if unit supports specialty selection
+  const unitSupportsSpecialty = useMemo(() => {
+    const normalizedUnit = unitId?.toUpperCase().replace(/[^A-Z]/g, '_');
+    return normalizedUnit === "CENTRO_CLINICO" || normalizedUnit === "CENTROCLÍNICO" || 
+           normalizedUnit === "CENTRO_CLÍNICO" || normalizedUnit === "ONCOLOGIA";
+  }, [unitId]);
 
   const FormFields = (
     <div className="space-y-4">
@@ -546,6 +567,29 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
           </SelectContent>
         </Select>
       </div>
+
+      {/* Especialidade (apenas para Centro Clínico e Oncologia) */}
+      {unitSupportsSpecialty && (
+        <div className="space-y-2">
+          <Label>Especialidade</Label>
+          <Select value={specialty} onValueChange={setSpecialty}>
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione a especialidade (opcional)" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Sem especialidade</SelectItem>
+              {SPECIALTIES.map((spec) => (
+                <SelectItem key={spec.id} value={spec.id}>
+                  {spec.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Opcional. Se não informado, aparecerá em "Sem especialidade" nos relatórios.
+          </p>
+        </div>
+      )}
 
       {/* Tipo de Recebimento (apenas para entradas) */}
       {type === "entrada" && (
