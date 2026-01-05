@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Transaction, Settings } from "@/types";
+import { isRealized } from "@/utils/statusHelpers";
 
 export interface FinancialIntegrityResult {
   isValid: boolean;
@@ -30,13 +31,13 @@ export function useFinancialIntegrity(
     const initialBalance = settings.initialBalance || 0;
     
     // Calcular total de entradas e saídas APENAS de transações REALIZADAS
-    // Transações CANCELADAS são excluídas do cálculo
+    // Transações CANCELADAS são excluídas do cálculo (usando helper robusto)
     const totalIncome = transactions
-      .filter((t) => t.type === "INCOME" && t.status === "REALIZADO")
+      .filter((t) => t.type === "INCOME" && isRealized(t.status))
       .reduce((sum, t) => sum + t.amount, 0);
     
     const totalExpense = transactions
-      .filter((t) => t.type === "EXPENSE" && t.status === "REALIZADO")
+      .filter((t) => t.type === "EXPENSE" && isRealized(t.status))
       .reduce((sum, t) => sum + t.amount, 0);
     
     // FÓRMULA ÚNICA E INEGOCIÁVEL
@@ -51,7 +52,7 @@ export function useFinancialIntegrity(
     const isValid = difference < 0.01; // Tolerância para arredondamento
     
     // Contar apenas transações que compõem o saldo (REALIZADAS)
-    const activeTransactionCount = transactions.filter(t => t.status === "REALIZADO").length;
+    const activeTransactionCount = transactions.filter(t => isRealized(t.status)).length;
     
     return {
       isValid,

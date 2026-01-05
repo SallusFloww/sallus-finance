@@ -11,7 +11,7 @@ import {
   eachDayOfInterval,
   differenceInDays
 } from "date-fns";
-
+import { isRealized } from "@/utils/statusHelpers";
 // ============================================
 // BI DATA HOOK - READ-ONLY AGGREGATIONS
 // Fonte de verdade:
@@ -112,11 +112,11 @@ export function useBIData(filters: BIFilters) {
   const kpis = useMemo((): BIKPIs => {
     const { startDate, endDate, unit } = filters;
 
-    // === CAIXA (apenas REALIZADO) ===
+    // === CAIXA (apenas REALIZADO - usando helper robusto) ===
     const realizedTransactions = transactions.filter(t => {
       const tDate = parseISO(t.date);
       if (tDate < startDate || tDate > endDate) return false;
-      if (t.status !== "REALIZADO") return false;
+      if (!isRealized(t.status)) return false;
       if (unit && unit !== "all" && t.unit !== unit) return false;
       return true;
     });
@@ -204,7 +204,7 @@ export function useBIData(filters: BIFilters) {
       const dayTransactions = transactions.filter(t => {
         const tDate = format(parseISO(t.date), "yyyy-MM-dd");
         if (tDate !== dayStr) return false;
-        if (t.status !== "REALIZADO") return false;
+        if (!isRealized(t.status)) return false;
         if (unit && unit !== "all" && t.unit !== unit) return false;
         return true;
       });
@@ -233,7 +233,7 @@ export function useBIData(filters: BIFilters) {
       .filter(t => {
         const tDate = parseISO(t.date);
         if (tDate < startDate || tDate > endDate) return false;
-        if (t.status !== "REALIZADO") return false;
+        if (!isRealized(t.status)) return false;
         if (unit && unit !== "all" && t.unit !== unit) return false;
         return true;
       })
@@ -265,7 +265,7 @@ export function useBIData(filters: BIFilters) {
       .filter(t => {
         const tDate = parseISO(t.date);
         if (tDate < startDate || tDate > endDate) return false;
-        if (t.status !== "REALIZADO") return false;
+        if (!isRealized(t.status)) return false;
         if (t.type !== "INCOME") return false;
         if (unit && unit !== "all" && t.unit !== unit) return false;
         return true;
@@ -290,7 +290,7 @@ export function useBIData(filters: BIFilters) {
       .filter(t => {
         const tDate = parseISO(t.date);
         if (tDate < startDate || tDate > endDate) return false;
-        if (t.status !== "REALIZADO") return false;
+        if (!isRealized(t.status)) return false;
         if (t.type !== "EXPENSE") return false;
         if (unit && unit !== "all" && t.unit !== unit) return false;
         return true;
@@ -408,7 +408,7 @@ export function useBIData(filters: BIFilters) {
       .filter(t => {
         const tDate = parseISO(t.date);
         if (tDate < startDate || tDate > endDate) return false;
-        if (t.status !== "REALIZADO") return false;
+        if (!isRealized(t.status)) return false;
         if (unit && unit !== "all" && t.unit !== unit) return false;
         return true;
       })
