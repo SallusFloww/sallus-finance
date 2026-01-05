@@ -480,7 +480,14 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
             <Calendar
               mode="single"
               selected={dataPrevista}
-              onSelect={(date) => date && setDataPrevista(date)}
+              onSelect={(date) => {
+                if (date) {
+                  // HOTFIX P0: normaliza para meio-dia para evitar edge cases de DST
+                  const safe = new Date(date);
+                  safe.setHours(12, 0, 0, 0);
+                  setDataPrevista(safe);
+                }
+              }}
               initialFocus
             />
           </PopoverContent>
@@ -508,7 +515,14 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
               <Calendar
                 mode="single"
                 selected={dataRecebimento}
-                onSelect={setDataRecebimento}
+                onSelect={(date) => {
+                  if (date) {
+                    // HOTFIX P0: normaliza para meio-dia para evitar edge cases de DST
+                    const safe = new Date(date);
+                    safe.setHours(12, 0, 0, 0);
+                    setDataRecebimento(safe);
+                  }
+                }}
                 initialFocus
               />
             </PopoverContent>

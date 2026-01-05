@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { parseLocalDate, toStartOfDay } from "@/utils/formatters";
 
 // Types for financial entries
 export type FinancialEntryType = "entrada" | "saida";
@@ -315,14 +316,14 @@ export function useFinancialEntries() {
   const filterEntries = useCallback(
     (filters: FinancialFilters): FinancialEntry[] => {
       return entries.filter((entry) => {
-        // Date filter
+        // Date filter - usa parseLocalDate para YYYY-MM-DD (evita UTC shift)
         if (filters.startDate) {
-          const entryDate = new Date(entry.data_prevista);
-          if (entryDate < filters.startDate) return false;
+          const entryDate = toStartOfDay(parseLocalDate(entry.data_prevista));
+          if (entryDate < toStartOfDay(filters.startDate)) return false;
         }
         if (filters.endDate) {
-          const entryDate = new Date(entry.data_prevista);
-          if (entryDate > filters.endDate) return false;
+          const entryDate = toStartOfDay(parseLocalDate(entry.data_prevista));
+          if (entryDate > toStartOfDay(filters.endDate)) return false;
         }
 
         // Type filter

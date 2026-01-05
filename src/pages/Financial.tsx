@@ -5,6 +5,7 @@ import { useFinancialEntries, FinancialEntryStatus } from "@/hooks/useFinancialE
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
+import { parseLocalDate } from "@/utils/formatters";
 
 export default function Financial() {
   const { entries, entradas, saidas, loading, getStats } = useFinancialEntries();
@@ -20,7 +21,8 @@ export default function Financial() {
       result = result.filter(e => e.status === selectedStatus);
     }
     
-    return result.sort((a, b) => new Date(b.data_prevista).getTime() - new Date(a.data_prevista).getTime());
+    // HOTFIX P0: usa parseLocalDate para YYYY-MM-DD (evita UTC shift)
+    return result.sort((a, b) => parseLocalDate(b.data_prevista).getTime() - parseLocalDate(a.data_prevista).getTime());
   }, [entries, entradas, saidas, activeTab, selectedStatus]);
 
   const handleStatusClick = (status: "previsto" | "recebido" | "cancelado") => {

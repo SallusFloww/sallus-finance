@@ -1,8 +1,9 @@
 import { useMemo } from "react";
 import { Transaction, Settings } from "@/types";
-import { format, parseISO } from "date-fns";
+import { format } from "date-fns";
 import { DREData } from "./useDRE";
 import { isRealized } from "@/utils/statusHelpers";
+import { parseLocalDate, formatLocalISODate } from "@/utils/formatters";
 
 export type ConsistencyStatus = "consistent" | "warning" | "error";
 
@@ -48,8 +49,9 @@ export function useConsistencyCheck({
     const issues: ConsistencyIssue[] = [];
 
     // Filter transactions for the period
+    // HOTFIX P0: usa parseLocalDate para YYYY-MM-DD (evita UTC shift)
     const periodTransactions = transactions.filter((t) => {
-      const txDate = parseISO(t.date);
+      const txDate = parseLocalDate(t.date);
       return txDate >= periodStart && txDate <= periodEnd;
     });
 
@@ -118,7 +120,8 @@ export function useConsistencyCheck({
 
     operacionalTransactions.forEach((t) => {
       if (t.unit && unitActiveDays[t.unit]) {
-        unitActiveDays[t.unit].add(format(parseISO(t.date), "yyyy-MM-dd"));
+        // HOTFIX P0: usa parseLocalDate + formatLocalISODate para YYYY-MM-DD (evita UTC shift)
+        unitActiveDays[t.unit].add(formatLocalISODate(parseLocalDate(t.date)));
       }
     });
 

@@ -1,7 +1,7 @@
 import { useMemo, useCallback } from "react";
 import { Transaction } from "@/types";
 import { useApp } from "@/contexts/AppContext";
-import { getStartOfMonth, getEndOfMonth } from "@/utils/formatters";
+import { getStartOfMonth, getEndOfMonth, parseLocalDate, toStartOfDay } from "@/utils/formatters";
 import { isCancelled } from "@/utils/statusHelpers";
 
 export interface DRELineItem {
@@ -93,9 +93,10 @@ export function useDRE() {
       const end = endDate || getEndOfMonth(new Date());
 
       // Filtrar transações do período - EXCLUIR CANCELADOS por padrão
+      // HOTFIX P0: usa parseLocalDate para YYYY-MM-DD (evita UTC shift)
       const periodTransactions = transactions.filter((t) => {
-        const txDate = new Date(t.date);
-        const inPeriod = txDate >= start && txDate <= end;
+        const txDate = toStartOfDay(parseLocalDate(t.date));
+        const inPeriod = txDate >= toStartOfDay(start) && txDate <= toStartOfDay(end);
         
         // Excluir cancelados a menos que explicitamente solicitado
         if (!includeCancelled && isCancelled(t.status)) {

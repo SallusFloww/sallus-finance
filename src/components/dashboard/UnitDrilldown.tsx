@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { ChevronDown, ChevronRight, Building2, AlertCircle, Stethoscope, TrendingUp, TrendingDown, LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatCurrency } from "@/utils/formatters";
+import { formatCurrency, parseLocalDate, toStartOfDay } from "@/utils/formatters";
 import { Transaction, Specialty } from "@/types";
 import { UNIT_LABELS, SPECIALTY_LABELS, SPECIALTIES } from "@/utils/constants";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -58,18 +58,22 @@ export function UnitDrilldown({ transactions, dateRange }: UnitDrilldownProps) {
   const [expandedUnit, setExpandedUnit] = useState<string | null>(null);
 
   const unitData = useMemo(() => {
+    // HOTFIX P0: usa parseLocalDate para YYYY-MM-DD (evita UTC shift)
+    const startNorm = toStartOfDay(dateRange.start);
+    const endNorm = toStartOfDay(dateRange.end);
+    
     // Filtrar por data E por status REALIZADO (única fonte de verdade)
     const filtered = transactions.filter((t) => {
-      const transactionDate = new Date(t.date);
-      const inDateRange = transactionDate >= dateRange.start && transactionDate <= dateRange.end;
+      const transactionDate = toStartOfDay(parseLocalDate(t.date));
+      const inDateRange = transactionDate >= startNorm && transactionDate <= endNorm;
       // IMPORTANTE: Apenas movimentações REALIZADAS impactam o saldo
       return inDateRange && isRealized(t.status);
     });
 
     // Também contar previstos para exibir separadamente
     const previstos = transactions.filter((t) => {
-      const transactionDate = new Date(t.date);
-      const inDateRange = transactionDate >= dateRange.start && transactionDate <= dateRange.end;
+      const transactionDate = toStartOfDay(parseLocalDate(t.date));
+      const inDateRange = transactionDate >= startNorm && transactionDate <= endNorm;
       return inDateRange && isPending(t.status);
     });
 
