@@ -4,8 +4,9 @@ import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-supabase-authorization, x-client-info, apikey, content-type",
 };
 
 interface InviteRequest {
@@ -19,9 +20,9 @@ interface InviteRequest {
 }
 
 serve(async (req: Request): Promise<Response> => {
-  // CORS
+  // CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { status: 204, headers: corsHeaders });
   }
 
   try {
