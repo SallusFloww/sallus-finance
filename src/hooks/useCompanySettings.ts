@@ -14,6 +14,7 @@ import {
   SystemParameters,
 } from "@/types";
 import type { Json } from "@/integrations/supabase/types";
+import { DEFAULT_UNITS } from "@/utils/constants";
 
 interface CompanyFinancialSettings {
   id: string;
@@ -28,7 +29,7 @@ interface CompanyFinancialSettings {
 }
 
 const DEFAULT_SETTINGS: Settings = {
-  units: [],
+  units: DEFAULT_UNITS,
   categories: [],
   paymentMethods: ["PIX", "TRANSFER", "CASH", "CARD"],
   initialBalance: 0,
@@ -78,11 +79,48 @@ export function useCompanySettings() {
       if (data) {
         setSettingsId(data.id);
 
-        // Parse units
-        const units: UnitConfig[] = Array.isArray(data.units) 
-          ? (data.units as unknown as UnitConfig[])
+        // Parse units (guardrail: never allow empty / missing defaults)
+        const rawUnits = Array.isArray(data.units)
+          ? (data.units as unknown as any[])
           : [];
 
+        const normalizedUnits: UnitConfig[] = rawUnits
+          .map((u) => {
+            if (typeof u === "string") {
+              return {
+                id: u,
+                name: u,
+                active: true,
+                subunits: [],
+              } as UnitConfig;
+            }
+            if (!u || typeof u !== "object") return null;
+            const obj: any = u;
+            return {
+              id: String(obj.id ?? obj.name ?? ""),
+              name: String(obj.name ?? obj.id ?? "Unidade"),
+              active: obj.active ?? true,
+              subunits: Array.isArray(obj.subunits) ? obj.subunits : [],
+              specialties: Array.isArray(obj.specialties) ? obj.specialties : undefined,
+            } as UnitConfig;
+          })
+          .filter(Boolean) as UnitConfig[];
+
+        const byId = new Map(normalizedUnits.map((u) => [u.id, u]));
+        DEFAULT_UNITS.forEach((def) => {
+          const existing = byId.get(def.id);
+          if (existing) {
+            byId.set(def.id, {
+              ...existing,
+              name: existing.name || def.name,
+              active: existing.active ?? true,
+            });
+          } else {
+            byId.set(def.id, def);
+          }
+        });
+
+        const units: UnitConfig[] = Array.from(byId.values());
         // Parse categories
         const categories: Category[] = Array.isArray(data.categories)
           ? (data.categories as unknown as Category[])
@@ -127,7 +165,7 @@ export function useCompanySettings() {
           .from("company_financial_settings")
           .insert({
             company_id: currentCompany.id,
-            units: [] as unknown as Json,
+            units: DEFAULT_UNITS as unknown as Json,
             categories: [] as unknown as Json,
             payment_methods: ["PIX", "TRANSFER", "CASH", "CARD"] as unknown as Json,
             initial_balance: 0,

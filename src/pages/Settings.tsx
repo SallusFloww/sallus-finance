@@ -54,7 +54,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { SPECIALTY_LABELS } from "@/utils/constants";
+import { DEFAULT_UNITS, SPECIALTIES, SPECIALTY_LABELS } from "@/utils/constants";
 import { useCompanySettings } from "@/hooks/useCompanySettings";
 import {
   SettingsProductionTypes,
@@ -68,7 +68,7 @@ import { useProductionDB } from "@/hooks/useProductionDB";
 export default function Settings() {
   const { transactions, auditLog } = useApp();
   const { transactions: allTransactions } = transactions;
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
   
   // Use database-backed settings instead of localStorage
   const { 
@@ -136,6 +136,41 @@ export default function Settings() {
   };
 
   // ============= UNIT HANDLERS =============
+  const handleRestoreDefaultUnits = () => {
+    if (!isAdmin()) {
+      toast.error("Apenas administradores podem restaurar unidades.");
+      return;
+    }
+
+    const byId = new Map(settings.units.map((u) => [u.id, u]));
+
+    DEFAULT_UNITS.forEach((def) => {
+      const existing = byId.get(def.id);
+      if (existing) {
+        byId.set(def.id, {
+          ...existing,
+          name: def.name, // garante o nome correto
+          active: true,
+        });
+      } else {
+        byId.set(def.id, { ...def, active: true, subunits: def.subunits || [] });
+      }
+    });
+
+    // Garantir especialidades padrão no Centro Clínico (se não existir cadastro)
+    const centro = byId.get("CENTRO_CLINICO");
+    if (centro) {
+      const existing = Array.isArray((centro as any).specialties) ? (centro as any).specialties : [];
+      if (existing.length === 0) {
+        (centro as any).specialties = SPECIALTIES.map((s) => ({ id: s.id, name: s.name, active: true }));
+      }
+      byId.set("CENTRO_CLINICO", centro);
+    }
+
+    updateSettings({ units: Array.from(byId.values()) });
+    toast.success("Unidades padrão restauradas!");
+  };
+
   const handleToggleUnit = (unitId: string) => {
     const unit = settings.units.find((u) => u.id === unitId);
     const updatedUnits = settings.units.map((u) =>
@@ -819,6 +854,13 @@ export default function Settings() {
                 <Button onClick={handleAddUnit} className="gap-2 gradient-primary">
                   <Plus className="h-4 w-4" />
                   Adicionar
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleRestoreDefaultUnits}
+                  disabled={!isAdmin()}
+                >
+                  Restaurar Unidades Padrão
                 </Button>
               </div>
 

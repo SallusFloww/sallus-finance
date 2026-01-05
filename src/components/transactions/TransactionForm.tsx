@@ -97,6 +97,10 @@ export function TransactionForm({ editingTransaction, onClose }: TransactionForm
 
   const categories = settings.categories;
 
+  const centroClinicoSpecialties =
+    settings.units.find((u: any) => u.id === "CENTRO_CLINICO")?.specialties?.filter((s: any) => s.active) ||
+    SPECIALTIES.map((s) => ({ id: s.id, name: s.name, active: true }));
+
   const [open, setOpen] = useState(false);
   const [showAporteConfirmation, setShowAporteConfirmation] = useState(false);
   const [type, setType] = useState<TransactionType>(editingTransaction?.type || "INCOME");
@@ -985,7 +989,7 @@ export function TransactionForm({ editingTransaction, onClose }: TransactionForm
               <SelectValue placeholder="Selecione a especialidade" />
             </SelectTrigger>
             <SelectContent>
-              {SPECIALTIES.map((s) => (
+              {centroClinicoSpecialties.map((s: any) => (
                 <SelectItem key={s.id} value={s.id}>
                   {s.name}
                 </SelectItem>
