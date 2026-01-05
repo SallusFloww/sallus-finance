@@ -277,30 +277,50 @@ export function displayLabel(value: string | null | undefined): string {
 /**
  * Map de unidades com nomes customizados conhecidos.
  * Usado para normalizar nomes de unidades comuns.
+ * Inclui variações de slug, código e nome para garantir match.
  */
 const UNIT_DISPLAY_NAMES: Record<string, string> = {
+  // Oncologia
   oncologia: "Oncologia",
+  onco: "Oncologia",
+  
+  // Pronto Socorro
   "pronto-socorro": "Pronto Socorro",
   "pronto_socorro": "Pronto Socorro",
+  prontosocorro: "Pronto Socorro",
+  "pronto socorro": "Pronto Socorro",
+  ps: "Pronto Socorro",
+  
+  // Centro Clínico
   "centro-clinico": "Centro Clínico",
   "centro_clinico": "Centro Clínico",
   centroclinico: "Centro Clínico",
   "centro clinico": "Centro Clínico",
+  cc: "Centro Clínico",
 };
 
 /**
  * Formata nome de unidade para exibição.
  * Primeiro tenta um lookup em nomes conhecidos, depois aplica displayLabel como fallback.
+ * 
+ * REGRA: Nunca exibir slug/código com underscore para o usuário.
  */
 export function formatUnitDisplayName(unit: string | null | undefined): string {
   if (!unit) return "";
   
-  const normalizedKey = unit.toLowerCase().replace(/\s+/g, "-");
-  const knownName = UNIT_DISPLAY_NAMES[normalizedKey] || UNIT_DISPLAY_NAMES[unit.toLowerCase()];
+  // Normaliza para lookup: lowercase, substitui underscores e espaços por hífen
+  const normalizedKey = unit.toLowerCase().replace(/[_\s]+/g, "-").replace(/-+/g, "-");
+  const normalizedKeyNoHyphen = unit.toLowerCase().replace(/[_\s-]+/g, "");
+  
+  // Tenta match direto, com hífen normalizado, e sem separadores
+  const knownName = 
+    UNIT_DISPLAY_NAMES[unit.toLowerCase()] || 
+    UNIT_DISPLAY_NAMES[normalizedKey] || 
+    UNIT_DISPLAY_NAMES[normalizedKeyNoHyphen];
   
   if (knownName) return knownName;
   
-  // Fallback para displayLabel
+  // Fallback para displayLabel (converte PRONTO_SOCORRO -> Pronto Socorro)
   return displayLabel(unit);
 }
 

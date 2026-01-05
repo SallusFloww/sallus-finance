@@ -47,18 +47,7 @@ import { useReceivablesDB } from "@/hooks/useReceivablesDB";
 import { useApp } from "@/contexts/AppContext";
 import { startOfMonth, endOfMonth, format, parseISO, differenceInDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { formatCurrency } from "@/utils/formatters";
-
-function formatUnitName(unit: string): string {
-  const unitLabels: Record<string, string> = {
-    oncologia: "Oncologia",
-    "pronto-socorro": "Pronto Socorro",
-    "centro-clinico": "Centro Clínico",
-    centroclinico: "Centro Clínico",
-  };
-  const normalized = unit.toLowerCase().replace(/\s+/g, "-");
-  return unitLabels[normalized] || unit;
-}
+import { formatCurrency, formatUnitDisplayName } from "@/utils/formatters";
 
 export default function BillingReport() {
   const navigate = useNavigate();
@@ -256,7 +245,7 @@ export default function BillingReport() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2"><Label>Data Início</Label><Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></div>
               <div className="space-y-2"><Label>Data Fim</Label><Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></div>
-              <div className="space-y-2"><Label>Unidade</Label><Select value={selectedUnit} onValueChange={setSelectedUnit}><SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger><SelectContent><SelectItem value="all">Todas</SelectItem>{uniqueUnits.map((unit) => (<SelectItem key={unit} value={unit}>{formatUnitName(unit)}</SelectItem>))}</SelectContent></Select></div>
+              <div className="space-y-2"><Label>Unidade</Label><Select value={selectedUnit} onValueChange={setSelectedUnit}><SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger><SelectContent><SelectItem value="all">Todas</SelectItem>{uniqueUnits.map((unit) => (<SelectItem key={unit} value={unit}>{formatUnitDisplayName(unit)}</SelectItem>))}</SelectContent></Select></div>
               <div className="space-y-2"><Label>Convênio</Label><Select value={selectedConvenio} onValueChange={setSelectedConvenio}><SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger><SelectContent><SelectItem value="all">Todos</SelectItem>{uniqueSources.map((source) => (<SelectItem key={source} value={source}>{source}</SelectItem>))}</SelectContent></Select></div>
             </div>
           </CardContent>
@@ -292,13 +281,13 @@ export default function BillingReport() {
                 {executiveReading.topUnitReceiptRate && (
                   <div className="flex items-start gap-3 p-3 rounded-lg bg-background/50 border">
                     <CheckCircle2 className="h-5 w-5 text-emerald-500 mt-0.5" />
-                    <div><p className="text-xs text-muted-foreground uppercase tracking-wide">Melhor Taxa de Recebimento</p><p className="font-semibold text-foreground">{formatUnitName(executiveReading.topUnitReceiptRate.unit)}</p><p className="text-sm text-muted-foreground">{executiveReading.topUnitReceiptRate.receiptRate.toFixed(0)}%</p></div>
+                    <div><p className="text-xs text-muted-foreground uppercase tracking-wide">Melhor Taxa de Recebimento</p><p className="font-semibold text-foreground">{formatUnitDisplayName(executiveReading.topUnitReceiptRate.unit)}</p><p className="text-sm text-muted-foreground">{executiveReading.topUnitReceiptRate.receiptRate.toFixed(0)}%</p></div>
                   </div>
                 )}
                 {executiveReading.topUnitPending && (
                   <div className="flex items-start gap-3 p-3 rounded-lg bg-background/50 border">
                     <Building2 className="h-5 w-5 text-amber-500 mt-0.5" />
-                    <div><p className="text-xs text-muted-foreground uppercase tracking-wide">Unidade com Maior Pendente</p><p className="font-semibold text-foreground">{formatUnitName(executiveReading.topUnitPending.unit)}</p><p className="text-sm text-muted-foreground">{formatCurrency(executiveReading.topUnitPending.open)}</p></div>
+                    <div><p className="text-xs text-muted-foreground uppercase tracking-wide">Unidade com Maior Pendente</p><p className="font-semibold text-foreground">{formatUnitDisplayName(executiveReading.topUnitPending.unit)}</p><p className="text-sm text-muted-foreground">{formatCurrency(executiveReading.topUnitPending.open)}</p></div>
                   </div>
                 )}
               </div>
@@ -460,7 +449,7 @@ export default function BillingReport() {
                   <TableBody>
                     {dataByUnit.map((row) => {
                       const receiptRate = row.billed > 0 ? (row.received / row.billed) * 100 : 0;
-                      return (<TableRow key={row.unit}><TableCell className="font-medium">{formatUnitName(row.unit)}</TableCell><TableCell className="text-right">{formatCurrency(row.billed)}</TableCell><TableCell className="text-right text-green-600">{formatCurrency(row.received)}</TableCell><TableCell className="text-right text-red-600">{formatCurrency(row.glossed)}</TableCell><TableCell className="text-right text-orange-600">{formatCurrency(row.open)}</TableCell><TableCell className="text-right"><Badge variant={receiptRate > 80 ? "default" : receiptRate > 60 ? "secondary" : "destructive"}>{receiptRate.toFixed(1)}%</Badge></TableCell></TableRow>);
+                      return (<TableRow key={row.unit}><TableCell className="font-medium">{formatUnitDisplayName(row.unit)}</TableCell><TableCell className="text-right">{formatCurrency(row.billed)}</TableCell><TableCell className="text-right text-green-600">{formatCurrency(row.received)}</TableCell><TableCell className="text-right text-red-600">{formatCurrency(row.glossed)}</TableCell><TableCell className="text-right text-orange-600">{formatCurrency(row.open)}</TableCell><TableCell className="text-right"><Badge variant={receiptRate > 80 ? "default" : receiptRate > 60 ? "secondary" : "destructive"}>{receiptRate.toFixed(1)}%</Badge></TableCell></TableRow>);
                     })}
                   </TableBody>
                 </Table>
