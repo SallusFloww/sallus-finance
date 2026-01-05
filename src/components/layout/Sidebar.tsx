@@ -18,6 +18,7 @@ import {
   PieChart,
   LineChart,
   Users,
+  CheckSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -58,6 +59,7 @@ const navSections: NavSection[] = [
       { to: "/production", icon: Activity, label: "Produção", permission: "VIEW_PRODUCTION" },
       { to: "/suggested-billing", icon: Send, label: "Faturamento Sugerido", permission: "VIEW_BILLING" },
       { to: "/billing", icon: Receipt, label: "Faturamento", permission: "VIEW_BILLING" },
+      { to: "/conciliation", icon: CheckSquare, label: "Conciliação", badge: "NOVO", permission: "VIEW_RECEIVABLES" },
     ],
   },
   {
