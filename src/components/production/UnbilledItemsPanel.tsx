@@ -20,6 +20,7 @@ import { Production } from "@/types";
 import { format, parseISO, differenceInDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
+import { formatUnitDisplayName, formatConvenioDisplayName, formatSpecialtyDisplayName } from "@/utils/formatters";
 
 interface UnbilledItemsPanelProps {
   productions: Production[];
@@ -38,17 +39,7 @@ interface UnbilledItem {
   status: string;
 }
 
-// Format unit name for display
-function formatUnitName(unit: string): string {
-  const unitLabels: Record<string, string> = {
-    oncologia: "Oncologia",
-    "pronto-socorro": "Pronto Socorro",
-    "centro-clinico": "Centro Clínico",
-    centroclinico: "Centro Clínico",
-  };
-  const normalized = unit.toLowerCase().replace(/\s+/g, "-");
-  return unitLabels[normalized] || unit;
-}
+// Use centralized formatUnitDisplayName from formatters.ts
 
 export function UnbilledItemsPanel({ productions, onNavigateToBilling }: UnbilledItemsPanelProps) {
   const navigate = useNavigate();
@@ -226,7 +217,7 @@ export function UnbilledItemsPanel({ productions, onNavigateToBilling }: Unbille
               </p>
               {stats.byUnit.map(([unit, qty]) => (
                 <div key={unit} className="flex items-center justify-between text-xs">
-                  <span className="truncate max-w-[100px]">{formatUnitName(unit)}</span>
+                  <span className="truncate max-w-[100px]">{formatUnitDisplayName(unit)}</span>
                   <Badge variant="outline" className="text-[10px]">{qty}</Badge>
                 </div>
               ))}
@@ -289,10 +280,10 @@ export function UnbilledItemsPanel({ productions, onNavigateToBilling }: Unbille
                         {item.description}
                       </span>
                     </TableCell>
-                    <TableCell className="text-xs py-2">{formatUnitName(item.unit)}</TableCell>
+                    <TableCell className="text-xs py-2">{formatUnitDisplayName(item.unit)}</TableCell>
                     <TableCell className="text-xs py-2">
-                      <span className="truncate block max-w-[80px]" title={item.convenio}>
-                        {item.convenio}
+                      <span className="truncate block max-w-[80px]" title={formatConvenioDisplayName(item.convenio)}>
+                        {formatConvenioDisplayName(item.convenio)}
                       </span>
                     </TableCell>
                     <TableCell className="text-xs py-2 text-right font-medium">

@@ -11,6 +11,7 @@ import { Production } from "@/types";
 import { format, parseISO, eachWeekOfInterval, eachDayOfInterval, startOfWeek, endOfWeek, isWithinInterval, differenceInDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip } from "recharts";
+import { formatUnitDisplayName, formatSpecialtyDisplayName, formatConvenioDisplayName } from "@/utils/formatters";
 
 interface ProcedureDrilldownDrawerProps {
   open: boolean;
@@ -21,17 +22,7 @@ interface ProcedureDrilldownDrawerProps {
   endDate: string;
 }
 
-// Format unit name for display
-function formatUnitName(unit: string): string {
-  const unitLabels: Record<string, string> = {
-    oncologia: "Oncologia",
-    "pronto-socorro": "Pronto Socorro",
-    "centro-clinico": "Centro Clínico",
-    centroclinico: "Centro Clínico",
-  };
-  const normalized = unit.toLowerCase().replace(/\s+/g, "-");
-  return unitLabels[normalized] || unit;
-}
+// Use centralized formatUnitDisplayName from formatters.ts
 
 // Status labels
 const STATUS_LABELS: Record<string, string> = {
@@ -64,7 +55,7 @@ export function ProcedureDrilldownDrawer({
     return Object.entries(map)
       .sort((a, b) => b[1] - a[1])
       .map(([unit, qty]) => ({
-        name: formatUnitName(unit),
+        name: formatUnitDisplayName(unit),
         quantity: qty,
         percentage: total > 0 ? (qty / total) * 100 : 0,
       }));
@@ -98,7 +89,7 @@ export function ProcedureDrilldownDrawer({
     return Object.entries(map)
       .sort((a, b) => b[1] - a[1])
       .map(([specialty, qty]) => ({
-        name: formatUnitName(specialty),
+        name: formatSpecialtyDisplayName(specialty),
         quantity: qty,
         percentage: total > 0 ? (qty / total) * 100 : 0,
       }));
@@ -436,12 +427,12 @@ export function ProcedureDrilldownDrawer({
                             <TableCell className="text-xs py-2">
                               {format(parseISO(p.productionDate), "dd/MM/yy")}
                             </TableCell>
-                            <TableCell className="text-xs py-2">{formatUnitName(p.unit)}</TableCell>
+                            <TableCell className="text-xs py-2">{formatUnitDisplayName(p.unit)}</TableCell>
                             <TableCell className="text-xs py-2 truncate max-w-[80px]">
-                              {p.convenio || "PARTICULAR"}
+                              {formatConvenioDisplayName(p.convenio) || "PARTICULAR"}
                             </TableCell>
                             <TableCell className="text-xs py-2 truncate max-w-[60px]">
-                              {formatUnitName(p.specialty || p.unit)}
+                              {p.specialty ? formatSpecialtyDisplayName(p.specialty) : formatUnitDisplayName(p.unit)}
                             </TableCell>
                             <TableCell className="text-xs py-2">
                               <Badge 
