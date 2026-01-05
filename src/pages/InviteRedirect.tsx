@@ -76,7 +76,7 @@ const InviteRedirect = () => {
           </Button>
           <Button variant="outline" asChild>
             <a 
-              href="https://wa.me/5562999999999?text=Olá, preciso de ajuda com meu convite do SallusFinance" 
+              href="https://wa.me/556293340912?text=Olá, preciso de ajuda com meu convite do SallusFinance" 
               target="_blank" 
               rel="noopener noreferrer"
             >
