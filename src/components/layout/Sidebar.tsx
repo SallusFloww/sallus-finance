@@ -52,7 +52,8 @@ const navSections: NavSection[] = [
     title: "Operação",
     items: [
       { to: "/", icon: Wallet, label: "Caixa", permission: "VIEW_DASHBOARD" },
-      { to: "/financial", icon: Banknote, label: "Financeiro", badge: "BD", permission: "VIEW_TRANSACTIONS" },
+      // Removido: "Financeiro" estava redundante com Caixa/Movimentações
+      // A rota /financial continua funcionando com redirect para Caixa
       { to: "/transactions", icon: ArrowUpDown, label: "Movimentações", permission: "VIEW_TRANSACTIONS" },
       { to: "/production", icon: Activity, label: "Produção", permission: "VIEW_PRODUCTION" },
       { to: "/suggested-billing", icon: Send, label: "Faturamento Sugerido", permission: "VIEW_BILLING" },

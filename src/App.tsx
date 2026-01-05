@@ -69,7 +69,8 @@ function AppRoutes() {
       <Route path="/executive-report" element={<ProtectedRoute requiredPermission="VIEW_REPORTS"><ExecutiveReport /></ProtectedRoute>} />
       <Route path="/monthly-report" element={<ProtectedRoute requiredPermission="VIEW_REPORTS"><MonthlyReport /></ProtectedRoute>} />
       <Route path="/bi" element={<ProtectedRoute requiredPermission="VIEW_BI"><BI /></ProtectedRoute>} />
-      <Route path="/financial" element={<ProtectedRoute requiredPermission="VIEW_TRANSACTIONS"><Financial /></ProtectedRoute>} />
+      {/* Redirect: /financial removed from menu, redirect to Caixa */}
+      <Route path="/financial" element={<Navigate to="/" replace />} />
       
       {/* Admin Routes (requires Admin role) */}
       <Route path="/settings" element={<AdminRoute><Settings /></AdminRoute>} />
