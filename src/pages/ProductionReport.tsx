@@ -76,6 +76,7 @@ import { LineChart as RechartsLine, Line, BarChart, Bar, XAxis, YAxis, Cartesian
 import { Production } from "@/types";
 import { ProceduresDetailPanel } from "@/components/production/ProceduresDetailPanel";
 import { UnbilledItemsPanel } from "@/components/production/UnbilledItemsPanel";
+import { ProductionReportExport, ProductionReportExportData } from "@/components/production/ProductionReportExport";
 
 // Labels para tipos de produção OFICIAIS
 const PRODUCTION_TYPE_LABELS: Record<string, string> = {
@@ -728,6 +729,62 @@ export default function ProductionReport() {
   // Alerts without unbilled (production-focused)
   const productionAlerts = managementAlerts.filter(a => a.type !== "unbilled");
   const unbilledAlert = managementAlerts.find(a => a.type === "unbilled");
+  
+  // Unbilled productions for export
+  const unbilledProductions = useMemo(() => {
+    return filteredProductions.filter(p => p.status === "PRODUZIDO");
+  }, [filteredProductions]);
+
+  // Export data aggregated from all existing calculations
+  const exportData: ProductionReportExportData = useMemo(() => ({
+    // Metadata
+    startDate,
+    endDate,
+    selectedUnit,
+    selectedConvenio,
+    selectedType,
+    selectedSpecialty,
+    
+    // Core data
+    totalQuantity,
+    previousTotalQuantity,
+    variationPercent: variationData.percent,
+    variationAbsolute: variationData.absolute,
+    isSmallSample,
+    
+    // Rankings
+    unitRanking,
+    specialtyRanking: specialtyRanking.map(s => ({ name: s.name, quantity: s.quantity, percentage: s.percentage })),
+    typeBreakdown,
+    convenioRanking: convenioRanking.map(c => ({ name: c.name, quantity: c.quantity, percentage: c.percentage, riskLevel: c.riskLevel })),
+    topProcedures: topProcedures.map(p => ({ name: p.name, code: p.code, quantity: p.quantity, percentage: p.percentage })),
+    
+    // Time series
+    evolutionData: evolutionData.map(e => ({ date: e.date, dateLabel: e.dateLabel, total: e.total })),
+    
+    // Consolidated table
+    consolidatedTable: consolidatedTable.map(c => ({
+      productionType: c.productionType,
+      unit: c.unit,
+      specialty: c.specialty,
+      convenio: c.convenio,
+      quantity: c.quantity,
+      percentage: c.percentage,
+    })),
+    
+    // Unbilled
+    unbilledProductions,
+    
+    // Highlights
+    topUnit: strategicKPIs.topUnit,
+    topConvenio: strategicKPIs.topConvenio,
+    topProcedure: topProcedure ? { name: topProcedure.name, quantity: topProcedure.quantity, percentage: topProcedure.percentage } : null,
+  }), [
+    startDate, endDate, selectedUnit, selectedConvenio, selectedType, selectedSpecialty,
+    totalQuantity, previousTotalQuantity, variationData, isSmallSample,
+    unitRanking, specialtyRanking, typeBreakdown, convenioRanking, topProcedures,
+    evolutionData, consolidatedTable, unbilledProductions, strategicKPIs, topProcedure
+  ]);
 
   return (
     <DashboardLayout>
@@ -752,6 +809,7 @@ export default function ProductionReport() {
               </div>
             </div>
             <div className="flex items-center gap-3">
+              <ProductionReportExport data={exportData} />
               <Badge variant="secondary" className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider bg-primary/10 text-primary border-primary/20">
                 <BookOpen className="mr-1.5 h-3.5 w-3.5" />
                 Visão Gerencial
