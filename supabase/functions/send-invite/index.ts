@@ -165,11 +165,21 @@ serve(async (req: Request): Promise<Response> => {
     /* =========================
        BUILD INVITE URL
     ========================== */
-    const appUrl = (
-      Deno.env.get("APP_URL") || "https://finance.sallusfinance.com.br"
-    ).replace(/\/$/, "");
+    const fallbackUrl = (Deno.env.get("APP_URL") || "https://finance.sallusflow.com.br").replace(/\/$/, "");
+    const origin = req.headers.get("origin") || "";
+    let appUrl = (origin || fallbackUrl).replace(/\/$/, "");
+
+    // Blindagem: nunca permitir placeholder ou string inválida
+    if (
+      !appUrl ||
+      appUrl.includes("placeholder_value_to_be_replaced") ||
+      !appUrl.startsWith("http")
+    ) {
+      appUrl = fallbackUrl;
+    }
 
     const inviteUrl = `${appUrl}/auth?invite=${invite.token}`;
+    console.log("Generated inviteUrl:", inviteUrl);
 
     /* =========================
        EMAIL (with fallback)
