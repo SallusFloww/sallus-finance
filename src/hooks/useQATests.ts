@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { formatLocalISODate } from "@/utils/formatters";
 
 export interface QATestResult {
   name: string;
@@ -41,8 +42,8 @@ export function useQATests() {
   // Helper: random number in range
   const rand = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
 
-  // Helper: format date
-  const formatDate = (d: Date) => d.toISOString().split("T")[0];
+  // HOTFIX P0: usa formatLocalISODate para evitar UTC shift
+  const formatDate = (d: Date) => formatLocalISODate(d);
 
   // Create test data
   const createSeedData = useCallback(async (): Promise<QASeedResult> => {

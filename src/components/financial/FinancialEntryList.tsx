@@ -39,7 +39,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { FinancialEntry, useFinancialEntries } from "@/hooks/useFinancialEntries";
-import { formatCurrency, formatDate } from "@/utils/formatters";
+import { formatCurrency, formatDate, formatLocalISODate } from "@/utils/formatters";
 import { UNIT_LABELS } from "@/utils/constants";
 import { FinancialEntryForm } from "./FinancialEntryForm";
 import { useAuth } from "@/contexts/AuthContext";
@@ -76,7 +76,8 @@ export function FinancialEntryList({ entries }: FinancialEntryListProps) {
   };
 
   const handleMarkAsReceived = async (entry: FinancialEntry) => {
-    await markAsReceived(entry.id, new Date().toISOString().split("T")[0]);
+    // HOTFIX P0: usa formatLocalISODate para evitar UTC shift
+    await markAsReceived(entry.id, formatLocalISODate(new Date()));
   };
 
   const getStatusBadge = (entry: FinancialEntry) => {

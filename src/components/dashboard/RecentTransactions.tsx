@@ -3,7 +3,7 @@ import { ArrowUpRight, ArrowDownRight, CheckCircle2, Clock, Ban } from "lucide-r
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
-import { formatCurrency } from "@/utils/formatters";
+import { formatCurrency, parseLocalDate } from "@/utils/formatters";
 import { Transaction } from "@/types";
 import { UNIT_LABELS, SPECIALTY_LABELS } from "@/utils/constants";
 import { Badge } from "@/components/ui/badge";
@@ -18,11 +18,12 @@ interface RecentTransactionsProps {
   transactions: Transaction[];
 }
 
-// Agrupa transações por data
+// Agrupa transações por data (HOTFIX P0: usa parseLocalDate para evitar shift de timezone)
 function groupByDate(transactions: Transaction[]) {
   const groups: Record<string, Transaction[]> = {};
   transactions.forEach((t) => {
-    const dateKey = format(new Date(t.date), "yyyy-MM-dd");
+    // Usa parseLocalDate para interpretar YYYY-MM-DD como data local
+    const dateKey = format(parseLocalDate(t.date), "yyyy-MM-dd");
     if (!groups[dateKey]) groups[dateKey] = [];
     groups[dateKey].push(t);
   });
@@ -94,10 +95,10 @@ export const RecentTransactions = forwardRef<HTMLDivElement, RecentTransactionsP
     <div ref={ref} className="space-y-4">
       {groupedTransactions.map(([dateKey, dayTransactions]) => (
         <div key={dateKey}>
-          {/* Cabeçalho do dia */}
+          {/* Cabeçalho do dia - HOTFIX P0: usa parseLocalDate para evitar double shift */}
           <div className="flex items-center gap-2 mb-2">
             <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-              {format(new Date(dateKey), "EEEE, dd/MM", { locale: ptBR })}
+              {format(parseLocalDate(dateKey), "EEEE, dd/MM", { locale: ptBR })}
             </span>
             <div className="flex-1 h-px bg-border/50" />
             <span className="text-[10px] text-muted-foreground">
@@ -170,7 +171,7 @@ export const RecentTransactions = forwardRef<HTMLDivElement, RecentTransactionsP
 
                   <div className="flex items-center gap-3 shrink-0">
                     <span className="text-[10px] text-muted-foreground font-mono">
-                      {format(new Date(transaction.date), "HH:mm")}
+                      {format(parseLocalDate(transaction.date), "HH:mm")}
                     </span>
                     <span
                       className={cn(

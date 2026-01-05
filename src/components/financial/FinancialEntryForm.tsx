@@ -36,7 +36,7 @@ import {
 } from "@/hooks/useFinancialEntries";
 import { useCompanySettings } from "@/hooks/useCompanySettings";
 import { BUSINESS_UNITS, RECEIPT_TYPES, PAYMENT_METHODS_PARTICULAR, OPERADORAS, DEFAULT_CATEGORIES } from "@/utils/constants";
-import { parseMoneyBR } from "@/utils/formatters";
+import { parseMoneyBR, parseLocalDate } from "@/utils/formatters";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
 
@@ -68,11 +68,12 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
   const [descricao, setDescricao] = useState(editingEntry?.descricao || "");
   const [categoria, setCategoria] = useState(editingEntry?.categoria || "");
   const [valor, setValor] = useState(editingEntry?.valor?.toString() || "");
+  // HOTFIX P0: usa parseLocalDate para evitar UTC shift em datas YYYY-MM-DD
   const [dataPrevista, setDataPrevista] = useState<Date>(
-    editingEntry?.data_prevista ? new Date(editingEntry.data_prevista) : new Date()
+    editingEntry?.data_prevista ? parseLocalDate(editingEntry.data_prevista) : new Date()
   );
   const [dataRecebimento, setDataRecebimento] = useState<Date | undefined>(
-    editingEntry?.data_recebimento ? new Date(editingEntry.data_recebimento) : undefined
+    editingEntry?.data_recebimento ? parseLocalDate(editingEntry.data_recebimento) : undefined
   );
   const [observacao, setObservacao] = useState(editingEntry?.observacao || "");
   const [unitId, setUnitId] = useState(editingEntry?.unit_id || "");
@@ -223,8 +224,9 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
       setDescricao(editingEntry.descricao || "");
       setCategoria(editingEntry.categoria || "");
       setValor(editingEntry.valor?.toString() || "");
-      setDataPrevista(editingEntry.data_prevista ? new Date(editingEntry.data_prevista) : new Date());
-      setDataRecebimento(editingEntry.data_recebimento ? new Date(editingEntry.data_recebimento) : undefined);
+      // HOTFIX P0: usa parseLocalDate para evitar UTC shift
+      setDataPrevista(editingEntry.data_prevista ? parseLocalDate(editingEntry.data_prevista) : new Date());
+      setDataRecebimento(editingEntry.data_recebimento ? parseLocalDate(editingEntry.data_recebimento) : undefined);
       setObservacao(editingEntry.observacao || "");
       setUnitId(editingEntry.unit_id || "");
       setReceiptType(editingEntry.receipt_type || "");
