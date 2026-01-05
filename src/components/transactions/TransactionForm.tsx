@@ -175,6 +175,9 @@ export function TransactionForm({ editingTransaction, onClose }: TransactionForm
     if (financialCategory !== "COMPARTILHADO") {
       setApportionmentCriteria("");
       setUnitApportionments([]);
+    } else if (financialCategory === "COMPARTILHADO" && !apportionmentCriteria) {
+      // Auto-select default criteria so apportionment block appears immediately
+      setApportionmentCriteria("IGUAL");
     }
     
     // Regras de unidade por classificação
@@ -904,8 +907,8 @@ export function TransactionForm({ editingTransaction, onClose }: TransactionForm
             </Select>
           </div>
 
-          {/* Bloco de rateio por unidade */}
-          {type === "EXPENSE" && financialCategory === "COMPARTILHADO" && apportionmentCriteria !== "" && (
+          {/* Bloco de rateio por unidade - aparece sempre que classificação = COMPARTILHADO */}
+          {financialCategory === "COMPARTILHADO" && (
             <UnitApportionmentBlock
               totalAmount={parseMoneyBR(amount)}
               apportionmentCriteria={apportionmentCriteria}
