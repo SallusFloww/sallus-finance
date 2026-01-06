@@ -503,6 +503,80 @@ export type Database = {
           },
         ]
       }
+      package_pricing_rules: {
+        Row: {
+          company_id: string
+          consult_default_amount: number
+          created_at: string
+          created_by: string | null
+          effective_from: string
+          fee_default_amount: number
+          id: string
+          is_active: boolean
+          notes: string | null
+          package_type: string
+          plan_id: string
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          consult_default_amount?: number
+          created_at?: string
+          created_by?: string | null
+          effective_from?: string
+          fee_default_amount?: number
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          package_type: string
+          plan_id: string
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          consult_default_amount?: number
+          created_at?: string
+          created_by?: string | null
+          effective_from?: string
+          fee_default_amount?: number
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          package_type?: string
+          plan_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "package_pricing_rules_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "package_pricing_rules_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "package_pricing_rules_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "package_pricing_rules_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       permissions: {
         Row: {
           code: string
@@ -535,21 +609,28 @@ export type Database = {
           billed_value: number | null
           company_id: string
           competencia: string
+          consult_amount: number
           convenio: string | null
           created_at: string
           created_by: string | null
           description: string
           edit_logs: Json | null
+          fee_amount: number
           glossed_value: number | null
           history: Json | null
           id: string
+          is_package: boolean
           linked_receivable_id: string | null
+          matmed_amount: number
+          package_qty: number
+          package_type: string | null
           payer_type: string
           procedure_code: string | null
           production_date: string
           production_type: string
           quantity: number
           received_value: number | null
+          request_id: string | null
           specialty: string | null
           status: string
           total_value: number
@@ -561,21 +642,28 @@ export type Database = {
           billed_value?: number | null
           company_id: string
           competencia: string
+          consult_amount?: number
           convenio?: string | null
           created_at?: string
           created_by?: string | null
           description: string
           edit_logs?: Json | null
+          fee_amount?: number
           glossed_value?: number | null
           history?: Json | null
           id?: string
+          is_package?: boolean
           linked_receivable_id?: string | null
+          matmed_amount?: number
+          package_qty?: number
+          package_type?: string | null
           payer_type: string
           procedure_code?: string | null
           production_date: string
           production_type: string
           quantity?: number
           received_value?: number | null
+          request_id?: string | null
           specialty?: string | null
           status?: string
           total_value?: number
@@ -587,21 +675,28 @@ export type Database = {
           billed_value?: number | null
           company_id?: string
           competencia?: string
+          consult_amount?: number
           convenio?: string | null
           created_at?: string
           created_by?: string | null
           description?: string
           edit_logs?: Json | null
+          fee_amount?: number
           glossed_value?: number | null
           history?: Json | null
           id?: string
+          is_package?: boolean
           linked_receivable_id?: string | null
+          matmed_amount?: number
+          package_qty?: number
+          package_type?: string | null
           payer_type?: string
           procedure_code?: string | null
           production_date?: string
           production_type?: string
           quantity?: number
           received_value?: number | null
+          request_id?: string | null
           specialty?: string | null
           status?: string
           total_value?: number
@@ -672,19 +767,27 @@ export type Database = {
           billing_date: string
           company_id: string
           competencia: string | null
+          consult_amount: number
+          consult_qty: number
           created_at: string
           created_by: string | null
           description: string
           edit_logs: Json | null
           expected_receipt_days: number | null
+          fee_amount: number
           gloss_reason: string | null
           gloss_type: string | null
           glossed_amount: number
           history: Json | null
           id: string
+          is_package: boolean
           linked_transaction_id: string | null
+          matmed_amount: number
           notes: string | null
+          package_qty: number
+          package_type: string | null
           received_amount: number
+          request_id: string | null
           source: string
           status: string
           unit: string
@@ -703,19 +806,27 @@ export type Database = {
           billing_date: string
           company_id: string
           competencia?: string | null
+          consult_amount?: number
+          consult_qty?: number
           created_at?: string
           created_by?: string | null
           description: string
           edit_logs?: Json | null
           expected_receipt_days?: number | null
+          fee_amount?: number
           gloss_reason?: string | null
           gloss_type?: string | null
           glossed_amount?: number
           history?: Json | null
           id?: string
+          is_package?: boolean
           linked_transaction_id?: string | null
+          matmed_amount?: number
           notes?: string | null
+          package_qty?: number
+          package_type?: string | null
           received_amount?: number
+          request_id?: string | null
           source: string
           status?: string
           unit: string
@@ -734,19 +845,27 @@ export type Database = {
           billing_date?: string
           company_id?: string
           competencia?: string | null
+          consult_amount?: number
+          consult_qty?: number
           created_at?: string
           created_by?: string | null
           description?: string
           edit_logs?: Json | null
           expected_receipt_days?: number | null
+          fee_amount?: number
           gloss_reason?: string | null
           gloss_type?: string | null
           glossed_amount?: number
           history?: Json | null
           id?: string
+          is_package?: boolean
           linked_transaction_id?: string | null
+          matmed_amount?: number
           notes?: string | null
+          package_qty?: number
+          package_type?: string | null
           received_amount?: number
+          request_id?: string | null
           source?: string
           status?: string
           unit?: string
