@@ -61,6 +61,8 @@ export function useMovementAllocations() {
   );
 
   // Save allocations for a movement (replaces existing)
+  // Note: movement_allocations is an auxiliary table, physical delete is acceptable
+  // The parent financial_entry is protected by anti-delete triggers
   const saveAllocations = useCallback(
     async (
       movementId: string,
@@ -73,7 +75,7 @@ export function useMovementAllocations() {
       }
 
       try {
-        // Delete existing allocations first
+        // Delete existing allocations first (safe - this is auxiliary data)
         const { error: deleteError } = await supabase
           .from("movement_allocations")
           .delete()
@@ -118,6 +120,7 @@ export function useMovementAllocations() {
   );
 
   // Delete allocations for a movement
+  // Note: This is auxiliary data, physical delete is acceptable here
   const deleteAllocations = useCallback(
     async (movementId: string): Promise<boolean> => {
       if (!currentCompanyId) return false;

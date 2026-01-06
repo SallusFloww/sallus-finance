@@ -179,13 +179,16 @@ export function useFinancialEntries() {
     };
   }, [fetchEntries, currentCompanyId]);
 
-  // Add new entry with optimistic update
+  // Add new entry with optimistic update and idempotency support
   const addEntry = useCallback(
-    async (entry: FinancialEntryInsert): Promise<FinancialEntry | null> => {
+    async (entry: FinancialEntryInsert, requestId?: string): Promise<FinancialEntry | null> => {
       if (!currentCompanyId || !user) {
         toast.error("Usuário ou empresa não identificados");
         return null;
       }
+
+      // Generate request_id for idempotency if not provided
+      const idempotencyKey = requestId || crypto.randomUUID();
 
       try {
         const { data, error: insertError } = await supabase
@@ -194,15 +197,36 @@ export function useFinancialEntries() {
             ...entry,
             company_id: currentCompanyId,
             created_by: user.id,
+            request_id: idempotencyKey,
           })
           .select()
           .single();
 
-        if (insertError) throw insertError;
+        if (insertError) {
+          // Check if it's a duplicate (idempotency conflict)
+          if (insertError.code === '23505' && insertError.message?.includes('request_id')) {
+            // Already exists - fetch the existing entry
+            const { data: existing } = await supabase
+              .from("financial_entries")
+              .select("*")
+              .eq("company_id", currentCompanyId)
+              .eq("request_id", idempotencyKey)
+              .single();
+            
+            if (existing) {
+              toast.info("Movimentação já registrada anteriormente");
+              return existing;
+            }
+          }
+          throw insertError;
+        }
 
         // Optimistic update - add to local state immediately
         if (data) {
-          setEntries(prev => [data, ...prev]);
+          setEntries(prev => {
+            if (prev.some(e => e.id === data.id)) return prev;
+            return [data, ...prev];
+          });
         }
 
         toast.success(`${entry.type === "entrada" ? "Entrada" : "Saída"} registrada com sucesso`);

@@ -356,6 +356,7 @@ export type Database = {
           operadora: string | null
           payment_method: string | null
           receipt_type: string | null
+          request_id: string | null
           specialty: string | null
           status: Database["public"]["Enums"]["financial_entry_status"]
           type: Database["public"]["Enums"]["financial_entry_type"]
@@ -380,13 +381,14 @@ export type Database = {
           operadora?: string | null
           payment_method?: string | null
           receipt_type?: string | null
+          request_id?: string | null
           specialty?: string | null
           status?: Database["public"]["Enums"]["financial_entry_status"]
           type: Database["public"]["Enums"]["financial_entry_type"]
           unit_id?: string | null
           updated_at?: string
           updated_by?: string | null
-          valor: number
+          valor?: number
         }
         Update: {
           cancel_reason?: string | null
@@ -404,6 +406,7 @@ export type Database = {
           operadora?: string | null
           payment_method?: string | null
           receipt_type?: string | null
+          request_id?: string | null
           specialty?: string | null
           status?: Database["public"]["Enums"]["financial_entry_status"]
           type?: Database["public"]["Enums"]["financial_entry_type"]
@@ -696,7 +699,7 @@ export type Database = {
           appeal_start_date?: string | null
           appeal_status?: string | null
           appeal_transaction_id?: string | null
-          billed_amount: number
+          billed_amount?: number
           billing_date: string
           company_id: string
           competencia?: string | null
