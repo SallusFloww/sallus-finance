@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, type ReactNode } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,14 +28,14 @@ import {
   Ban
 } from "lucide-react";
 import { format } from "date-fns";
-import { formatCurrency, formatUnitDisplayName, formatConvenioDisplayName } from "@/utils/formatters";
+import { formatCurrency } from "@/utils/formatters";
 import type { Divergence, DivergenceType } from "@/hooks/useConciliation";
 
 interface ConciliationDivergencesProps {
   divergences: Divergence[];
 }
 
-const DIVERGENCE_CONFIG: Record<DivergenceType, { label: string; icon: React.ReactNode; color: string }> = {
+const DIVERGENCE_CONFIG: Record<DivergenceType, { label: string; icon: ReactNode; color: string }> = {
   VALOR_DIFERENTE: { 
     label: "Valor Diferente", 
     icon: <ArrowLeftRight className="h-4 w-4" />,
@@ -80,25 +80,29 @@ export function ConciliationDivergences({ divergences }: ConciliationDivergences
   const [selectedDivergence, setSelectedDivergence] = useState<Divergence | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // Count by type
-  const countByType = divergences.reduce((acc, div) => {
-    acc[div.type] = (acc[div.type] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
+  // Count by type (memoized)
+  const countByType = useMemo(() => {
+    return divergences.reduce((acc, div) => {
+      acc[div.type] = (acc[div.type] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+  }, [divergences]);
 
-  // Filter divergences
-  const filteredDivergences = divergences.filter(div => {
-    if (typeFilter !== "all" && div.type !== typeFilter) return false;
-    if (searchTerm) {
-      const search = searchTerm.toLowerCase();
-      return (
-        div.description.toLowerCase().includes(search) ||
-        div.item.sourceLabel.toLowerCase().includes(search) ||
-        div.item.unitLabel.toLowerCase().includes(search)
-      );
-    }
-    return true;
-  });
+  // Filter divergences (memoized)
+  const filteredDivergences = useMemo(() => {
+    return divergences.filter(div => {
+      if (typeFilter !== "all" && div.type !== typeFilter) return false;
+      if (searchTerm) {
+        const search = searchTerm.toLowerCase();
+        return (
+          div.description.toLowerCase().includes(search) ||
+          div.item.sourceLabel.toLowerCase().includes(search) ||
+          div.item.unitLabel.toLowerCase().includes(search)
+        );
+      }
+      return true;
+    });
+  }, [divergences, typeFilter, searchTerm]);
 
   const handleViewDivergence = (div: Divergence) => {
     setSelectedDivergence(div);
@@ -120,6 +124,9 @@ export function ConciliationDivergences({ divergences }: ConciliationDivergences
           {Object.entries(DIVERGENCE_CONFIG).map(([type, config]) => {
             const count = countByType[type] || 0;
             if (count === 0) return null;
+            const labelTruncated = config.label.length > 18 
+              ? `${config.label.substring(0, 15)}…` 
+              : config.label;
             return (
               <Button
                 key={type}
@@ -129,7 +136,7 @@ export function ConciliationDivergences({ divergences }: ConciliationDivergences
                 className="gap-1"
               >
                 {config.icon}
-                {config.label.substring(0, 15)}... ({count})
+                {labelTruncated} ({count})
               </Button>
             );
           })}
@@ -231,7 +238,11 @@ export function ConciliationDivergences({ divergences }: ConciliationDivergences
                       <TableCell>{div.item.unitLabel}</TableCell>
                       <TableCell>{div.item.sourceLabel}</TableCell>
                       <TableCell className="text-right font-medium">
-                        {formatCurrency(div.item.billedAmount || div.item.receivedAmount)}
+                        {formatCurrency(
+                          div.item.type === "receivable" 
+                            ? div.item.billedAmount 
+                            : div.item.receivedAmount
+                        )}
                       </TableCell>
                       <TableCell className="text-center">
                         <Badge variant="secondary">{div.item.ageInDays}d</Badge>
@@ -244,6 +255,7 @@ export function ConciliationDivergences({ divergences }: ConciliationDivergences
                           variant="ghost"
                           size="icon"
                           onClick={() => handleViewDivergence(div)}
+                          aria-label="Ver detalhes da divergência"
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
