@@ -4,3 +4,4 @@ export { SettingsPayers } from "./SettingsPayers";
 export { SettingsParameters } from "./SettingsParameters";
 export { SettingsCategories } from "./SettingsCategories";
 export { SettingsUnits } from "./SettingsUnits";
+export { SettingsPackagePricing } from "./SettingsPackagePricing";
