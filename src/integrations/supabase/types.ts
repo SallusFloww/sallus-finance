@@ -1300,15 +1300,24 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
-      link_receivable_to_existing_entry: {
-        Args: {
-          p_company_id: string
-          p_entry_id: string
-          p_receivable_id: string
-          p_user_id: string
-        }
-        Returns: Json
-      }
+      link_receivable_to_existing_entry:
+        | {
+            Args: {
+              p_company_id: string
+              p_entry_id: string
+              p_receivable_id: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_company_id: string
+              p_entry_id: string
+              p_receivable_id: string
+              p_user_id: string
+            }
+            Returns: Json
+          }
       log_access_denied: {
         Args: {
           _action: string
