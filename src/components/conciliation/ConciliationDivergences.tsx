@@ -1,4 +1,4 @@
-import { useState, useMemo, type ReactNode } from "react";
+import { useState, useMemo, useCallback, type ReactNode } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,14 +25,17 @@ import {
   FileX2,
   ArrowLeftRight,
   Clock,
-  Ban
+  Ban,
+  Link2
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatCurrency } from "@/utils/formatters";
-import type { Divergence, DivergenceType } from "@/hooks/useConciliation";
+import type { Divergence, DivergenceType, ConciliationItem } from "@/hooks/useConciliation";
+import { LinkReceivableModal } from "./LinkReceivableModal";
 
 interface ConciliationDivergencesProps {
   divergences: Divergence[];
+  onRefresh?: () => void;
 }
 
 const DIVERGENCE_CONFIG: Record<DivergenceType, { label: string; icon: ReactNode; color: string }> = {
@@ -74,11 +77,12 @@ const SEVERITY_VARIANT: Record<string, "destructive" | "outline" | "secondary"> 
   BAIXA: "secondary",
 };
 
-export function ConciliationDivergences({ divergences }: ConciliationDivergencesProps) {
+export function ConciliationDivergences({ divergences, onRefresh }: ConciliationDivergencesProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState<DivergenceType | "all">("all");
   const [selectedDivergence, setSelectedDivergence] = useState<Divergence | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [linkModalOpen, setLinkModalOpen] = useState(false);
 
   // Count by type (memoized)
   const countByType = useMemo(() => {
@@ -104,10 +108,20 @@ export function ConciliationDivergences({ divergences }: ConciliationDivergences
     });
   }, [divergences, typeFilter, searchTerm]);
 
-  const handleViewDivergence = (div: Divergence) => {
+  const handleViewDivergence = useCallback((div: Divergence) => {
     setSelectedDivergence(div);
     setDrawerOpen(true);
-  };
+  }, []);
+
+  const handleOpenLinkModal = useCallback(() => {
+    setLinkModalOpen(true);
+  }, []);
+
+  const handleLinked = useCallback(() => {
+    setDrawerOpen(false);
+    setSelectedDivergence(null);
+    onRefresh?.();
+  }, [onRefresh]);
 
   return (
     <div className="space-y-4">
@@ -368,10 +382,33 @@ export function ConciliationDivergences({ divergences }: ConciliationDivergences
                   )}
                 </div>
               </div>
+
+              {/* Action Buttons for RECEBIDO_SEM_FATURAMENTO */}
+              {selectedDivergence.type === "RECEBIDO_SEM_FATURAMENTO" && (
+                <div className="space-y-2 pt-4 border-t">
+                  <h4 className="font-medium">Ações</h4>
+                  <Button 
+                    onClick={handleOpenLinkModal} 
+                    className="w-full"
+                    aria-label="Vincular este recebimento a um faturamento existente"
+                  >
+                    <Link2 className="mr-2 h-4 w-4" />
+                    Vincular ao Faturamento
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Link Receivable Modal */}
+      <LinkReceivableModal
+        open={linkModalOpen}
+        onOpenChange={setLinkModalOpen}
+        financialEntry={selectedDivergence?.item ?? null}
+        onLinked={handleLinked}
+      />
     </div>
   );
 }
