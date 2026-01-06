@@ -431,14 +431,18 @@ export default function Users() {
     },
   });
 
-  // Remove user mutation
+  // Remove user mutation (soft-delete: set is_active = false instead of physical delete)
   const removeMutation = useMutation({
     mutationFn: async (userId: string) => {
       if (!currentCompany?.id) throw new Error("Empresa não selecionada");
 
+      // Soft-delete: inactivate the user-company role instead of deleting
       const { error } = await supabase
         .from("user_company_roles")
-        .delete()
+        .update({ 
+          is_active: false,
+          updated_at: new Date().toISOString()
+        })
         .eq("user_id", userId)
         .eq("company_id", currentCompany.id);
 
