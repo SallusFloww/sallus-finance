@@ -62,7 +62,7 @@ const STATUS_CONFIG: Record<ConciliationStatus, { label: string; variant: "defau
   EM_ANALISE: { label: "Em Análise", variant: "default" },
 };
 
-type FilterSegment = "all" | "critical15" | "critical30" | "sem_vinculo" | "parcial" | "glosado";
+type FilterSegment = "all" | "critical15" | "critical30" | "parcial" | "glosado";
 
 export function ConciliationPending({
   pendingItems,
@@ -86,8 +86,6 @@ export function ConciliationPending({
     // Segment filter
     if (segment === "critical15" && item.ageInDays <= 15) return false;
     if (segment === "critical30" && item.ageInDays <= 30) return false;
-    if (segment === "sem_vinculo" && item.status !== "SEM_VINCULO" && !item.linkedTransactionId) return true;
-    if (segment === "sem_vinculo" && item.linkedTransactionId) return false;
     if (segment === "parcial" && item.status !== "PARCIAL") return false;
     if (segment === "glosado" && item.status !== "GLOSADO") return false;
 
@@ -212,7 +210,11 @@ export function ConciliationPending({
                 filteredItems.slice(0, 50).map((item) => {
                   const config = STATUS_CONFIG[item.status];
                   return (
-                    <TableRow key={item.id} className="cursor-pointer hover:bg-muted/50">
+                    <TableRow 
+                      key={item.id} 
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleViewItem(item)}
+                    >
                       <TableCell className="font-mono text-sm">
                         {format(new Date(item.date), "dd/MM/yy")}
                       </TableCell>
@@ -242,7 +244,11 @@ export function ConciliationPending({
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => handleViewItem(item)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleViewItem(item);
+                          }}
+                          aria-label="Ver detalhes da pendência"
                         >
                           <Eye className="h-4 w-4" />
                         </Button>

@@ -84,7 +84,12 @@ export function ConciliationFilters({
                 mode="single"
                 selected={filters.startDate}
                 onSelect={(date) => {
-                  onFiltersChange({ ...filters, startDate: date });
+                  // If endDate exists and new startDate > endDate, adjust endDate
+                  if (date && filters.endDate && date > filters.endDate) {
+                    onFiltersChange({ ...filters, startDate: date, endDate: date });
+                  } else {
+                    onFiltersChange({ ...filters, startDate: date });
+                  }
                   setStartDateOpen(false);
                 }}
                 locale={ptBR}
@@ -119,7 +124,12 @@ export function ConciliationFilters({
                 mode="single"
                 selected={filters.endDate}
                 onSelect={(date) => {
-                  onFiltersChange({ ...filters, endDate: date });
+                  // If startDate exists and new endDate < startDate, adjust startDate
+                  if (date && filters.startDate && date < filters.startDate) {
+                    onFiltersChange({ ...filters, startDate: date, endDate: date });
+                  } else {
+                    onFiltersChange({ ...filters, endDate: date });
+                  }
                   setEndDateOpen(false);
                 }}
                 locale={ptBR}

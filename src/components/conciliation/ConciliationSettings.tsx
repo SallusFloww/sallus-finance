@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,48 +56,47 @@ export function ConciliationSettings({
   const [hasChanges, setHasChanges] = useState(false);
   const [localSettings, setLocalSettings] = useState(settings);
 
-  // Run audit checks
-  const runLabelAudit = (): AuditFinding[] => {
+  // Run audit checks - audit unitLabel/sourceLabel (display values)
+  const labelFindings = useMemo((): AuditFinding[] => {
     const findings: AuditFinding[] = [];
-    const slugPattern = /[A-Z_]{3,}/;
     const underscorePattern = /_/;
 
-    // Check for slugs in units (use unitLabel which should already be formatted)
-    const unitsWithSlugs = conciliationItems
-      .filter(item => slugPattern.test(item.unitKey) || underscorePattern.test(item.unitKey))
-      .map(item => item.unitKey);
+    // Check for underscores in unitLabel (display value should NOT have underscores)
+    const unitsWithUnderscores = conciliationItems
+      .filter(item => underscorePattern.test(item.unitLabel))
+      .map(item => item.unitLabel);
     
-    const uniqueUnitsWithSlugs = [...new Set(unitsWithSlugs)];
-    if (uniqueUnitsWithSlugs.length > 0) {
+    const uniqueUnitsWithUnderscores = [...new Set(unitsWithUnderscores)];
+    if (uniqueUnitsWithUnderscores.length > 0) {
       findings.push({
         type: "label",
         severity: "warning",
-        message: "Unidades com formato de slug detectadas",
-        count: uniqueUnitsWithSlugs.length,
-        details: uniqueUnitsWithSlugs.slice(0, 5).map(u => `${u} → ${formatUnitDisplayName(u)}`),
+        message: "Unidades com underscore no label de exibição",
+        count: uniqueUnitsWithUnderscores.length,
+        details: uniqueUnitsWithUnderscores.slice(0, 5).map(u => `"${u}" → esperado sem underscore`),
       });
     }
 
-    // Check for slugs in convenios
-    const conveniosWithSlugs = conciliationItems
-      .filter(item => slugPattern.test(item.source) || underscorePattern.test(item.source))
-      .map(item => item.source);
+    // Check for underscores in sourceLabel (display value should NOT have underscores)
+    const conveniosWithUnderscores = conciliationItems
+      .filter(item => underscorePattern.test(item.sourceLabel))
+      .map(item => item.sourceLabel);
     
-    const uniqueConveniosWithSlugs = [...new Set(conveniosWithSlugs)];
-    if (uniqueConveniosWithSlugs.length > 0) {
+    const uniqueConveniosWithUnderscores = [...new Set(conveniosWithUnderscores)];
+    if (uniqueConveniosWithUnderscores.length > 0) {
       findings.push({
         type: "label",
         severity: "warning",
-        message: "Convênios com formato de slug detectados",
-        count: uniqueConveniosWithSlugs.length,
-        details: uniqueConveniosWithSlugs.slice(0, 5).map(c => `${c} → ${formatConvenioDisplayName(c)}`),
+        message: "Convênios com underscore no label de exibição",
+        count: uniqueConveniosWithUnderscores.length,
+        details: uniqueConveniosWithUnderscores.slice(0, 5).map(c => `"${c}" → esperado sem underscore`),
       });
     }
 
     return findings;
-  };
+  }, [conciliationItems]);
 
-  const runIntegrityAudit = (): AuditFinding[] => {
+  const integrityFindings = useMemo((): AuditFinding[] => {
     const findings: AuditFinding[] = [];
 
     // Items without unit
@@ -158,26 +157,23 @@ export function ConciliationSettings({
     }
 
     return findings;
-  };
+  }, [conciliationItems, divergences]);
+  const allFindings = useMemo(() => [...labelFindings, ...integrityFindings], [labelFindings, integrityFindings]);
 
-  const labelFindings = runLabelAudit();
-  const integrityFindings = runIntegrityAudit();
-  const allFindings = [...labelFindings, ...integrityFindings];
-
-  const handleSettingChange = (key: keyof SettingsType, value: any) => {
+  const handleSettingChange = useCallback((key: keyof SettingsType, value: any) => {
     setLocalSettings(prev => ({ ...prev, [key]: value }));
     setHasChanges(true);
-  };
+  }, []);
 
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     onUpdateSettings(localSettings);
     setHasChanges(false);
-  };
+  }, [onUpdateSettings, localSettings]);
 
-  const handleReset = () => {
+  const handleReset = useCallback(() => {
     setLocalSettings(settings);
     setHasChanges(false);
-  };
+  }, [settings]);
 
   return (
     <div className="space-y-6">
