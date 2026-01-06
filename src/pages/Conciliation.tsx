@@ -54,6 +54,7 @@ export default function Conciliation() {
     filters,
     setFilters,
     loading,
+    refresh,
   } = useConciliation();
 
   // Show guide on first visit
@@ -225,7 +226,7 @@ export default function Conciliation() {
           </TabsContent>
 
           <TabsContent value="divergences" className="mt-6">
-            <ConciliationDivergences divergences={divergences} />
+            <ConciliationDivergences divergences={divergences} onRefresh={refresh} />
           </TabsContent>
 
           <TabsContent value="settings" className="mt-6">

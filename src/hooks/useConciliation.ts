@@ -164,8 +164,8 @@ interface OfflineNote extends ConciliationNote {
 // ============================================
 
 export function useConciliation() {
-  const { receivables, loading: loadingReceivables } = useReceivablesDB();
-  const { entries: financialEntries, loading: loadingEntries } = useFinancialEntries();
+  const { receivables, loading: loadingReceivables, refetch: refetchReceivables } = useReceivablesDB();
+  const { entries: financialEntries, loading: loadingEntries, refetch: refetchEntries } = useFinancialEntries();
   const { user, profile, currentCompany } = useAuth();
   const { settings: companySettings } = useCompanySettings();
   const currentCompanyId = currentCompany?.id;
@@ -912,6 +912,11 @@ export function useConciliation() {
     setSettings(prev => ({ ...prev, ...updates }));
   }, []);
 
+  // Refresh data from both sources
+  const refresh = useCallback(async () => {
+    await Promise.all([refetchReceivables(), refetchEntries()]);
+  }, [refetchReceivables, refetchEntries]);
+
   return {
     // Data
     conciliationItems,
@@ -946,5 +951,8 @@ export function useConciliation() {
     // State
     loading: loading || loadingPersistence,
     isOfflineMode,
+    
+    // Actions
+    refresh,
   };
 }
