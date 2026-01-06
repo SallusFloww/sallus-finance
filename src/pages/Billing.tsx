@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { format, parseISO, differenceInDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -143,7 +143,17 @@ export default function Billing() {
     filterReceivables,
     uniqueSources,
     loading: receivablesLoading,
+    refetch: refetchReceivables,
   } = useReceivablesDB();
+
+  // Refetch quando a página ganha foco (cinto + suspensório para realtime)
+  useEffect(() => {
+    const handleFocus = () => {
+      refetchReceivables?.();
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [refetchReceivables]);
 
   // Tab ativa
   const [activeTab, setActiveTab] = useState<string>("pendentes");
