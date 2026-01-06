@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -80,8 +80,8 @@ export function LinkReceivableModal({
     }
   }, [currentCompany?.id, financialEntry]);
 
-  // Fetch quando modal abre
-  useMemo(() => {
+  // Fetch quando modal abre (useEffect, não useMemo - side effects)
+  useEffect(() => {
     if (open && !fetched) {
       fetchReceivables();
     }
@@ -89,8 +89,19 @@ export function LinkReceivableModal({
       setFetched(false);
       setSelectedId(null);
       setSearchTerm("");
+      setReceivables([]); // limpa lista ao fechar (evita cache confuso)
     }
   }, [open, fetched, fetchReceivables]);
+
+  // Normalizador robusto para comparação de unidade/convênio
+  const norm = useCallback((s?: string) =>
+    (s ?? "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/\p{Diacritic}/gu, "")
+      .replace(/[_\s]+/g, " ")
+      .trim()
+  , []);
 
   // Score e ordenar sugestões
   const sortedReceivables = useMemo(() => {
@@ -98,8 +109,8 @@ export function LinkReceivableModal({
 
     const entryValue = financialEntry.receivedAmount;
     const entryDate = parseISO(financialEntry.date);
-    const entryUnit = financialEntry.unitKey.toLowerCase();
-    const entrySource = financialEntry.sourceKey.toLowerCase();
+    const entryUnit = norm(financialEntry.unitKey);
+    const entrySource = norm(financialEntry.sourceKey);
 
     return receivables
       .filter((r) => {
@@ -116,8 +127,8 @@ export function LinkReceivableModal({
         // Scoring: menor diferença de valor, data mais próxima, mesma unidade/source
         const valueDiff = Math.abs(r.billed_amount - entryValue);
         const dateDiff = Math.abs(differenceInDays(parseISO(r.billing_date), entryDate));
-        const unitMatch = r.unit.toLowerCase().replace(/_/g, " ") === entryUnit.replace(/_/g, " ");
-        const sourceMatch = r.source.toLowerCase().replace(/_/g, " ") === entrySource.replace(/_/g, " ");
+        const unitMatch = norm(r.unit) === entryUnit;
+        const sourceMatch = norm(r.source) === entrySource;
 
         // Score: menor é melhor
         let score = valueDiff / 100 + dateDiff * 10;
@@ -127,11 +138,11 @@ export function LinkReceivableModal({
         return { ...r, score, valueDiff, unitMatch, sourceMatch };
       })
       .sort((a, b) => a.score - b.score);
-  }, [receivables, financialEntry, searchTerm]);
+  }, [receivables, financialEntry, searchTerm, norm]);
 
-  // Vincular
+  // Vincular (sem p_user_id - RPC usa auth.uid())
   const handleLink = async () => {
-    if (!selectedId || !financialEntry || !currentCompany?.id || !profile?.id) return;
+    if (!selectedId || !financialEntry || !currentCompany?.id) return;
 
     setLinking(true);
     try {
@@ -139,7 +150,6 @@ export function LinkReceivableModal({
         p_company_id: currentCompany.id,
         p_receivable_id: selectedId,
         p_entry_id: financialEntry.id,
-        p_user_id: profile.id,
       });
 
       if (error) throw error;

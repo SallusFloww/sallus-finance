@@ -343,11 +343,11 @@ export function ConciliationDivergences({ divergences, onRefresh }: Conciliation
                   <hr className="my-2" />
                   <div className="flex justify-between font-medium">
                     <span>Faturado:</span>
-                    <span>{formatCurrency(selectedDivergence.item.billedAmount)}</span>
+                    <span>{formatCurrency(selectedDivergence.item.billedAmount ?? 0)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Recebido:</span>
-                    <span className="text-success">{formatCurrency(selectedDivergence.item.receivedAmount)}</span>
+                    <span className="text-success">{formatCurrency(selectedDivergence.item.receivedAmount ?? 0)}</span>
                   </div>
                   {selectedDivergence.valueDiff !== undefined && (
                     <div className="flex justify-between text-destructive">
