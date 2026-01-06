@@ -214,6 +214,8 @@ export function useReceivablesDB() {
       return null;
     }
 
+    // Refetch para garantir sincronização (cinto + suspensório)
+    await fetchReceivables();
     toast.success("Recebível criado com sucesso");
     return toReceivable(inserted as unknown as DBReceivable);
   }, [currentCompany?.id, profile]);
@@ -273,8 +275,10 @@ export function useReceivablesDB() {
       return;
     }
 
+    // Refetch para garantir sincronização
+    await fetchReceivables();
     toast.success("Recebível atualizado");
-  }, [receivables, profile]);
+  }, [receivables, profile, fetchReceivables]);
 
   // Mark as received - CRIA MOVIMENTAÇÃO NO CAIXA AUTOMATICAMENTE
   const markAsReceived = useCallback(async (
@@ -386,6 +390,8 @@ export function useReceivablesDB() {
         return null;
       }
 
+      // Refetch para garantir sincronização
+      await fetchReceivables();
       // Sucesso completo
       return { id, transactionId: createdTransactionId };
 
@@ -408,7 +414,7 @@ export function useReceivablesDB() {
       toast.error("Erro inesperado ao processar recebimento");
       return null;
     }
-  }, [receivables, currentCompany?.id, profile?.id]);
+  }, [receivables, currentCompany?.id, profile?.id, fetchReceivables]);
 
   // Mark as glossed
   const markAsGlossed = useCallback(async (
@@ -473,9 +479,11 @@ export function useReceivablesDB() {
       return null;
     }
 
+    // Refetch para garantir sincronização
+    await fetchReceivables();
     toast.success("Glosa registrada");
     return { id };
-  }, [receivables]);
+  }, [receivables, fetchReceivables]);
 
   // Initiate appeal
   const initiateAppeal = useCallback(async (
@@ -512,8 +520,10 @@ export function useReceivablesDB() {
       return;
     }
 
+    // Refetch para garantir sincronização
+    await fetchReceivables();
     toast.success("Recurso iniciado");
-  }, [receivables]);
+  }, [receivables, fetchReceivables]);
 
   // Approve appeal
   const approveAppeal = useCallback(async (
@@ -560,9 +570,11 @@ export function useReceivablesDB() {
       return null;
     }
 
+    // Refetch para garantir sincronização
+    await fetchReceivables();
     toast.success("Recurso deferido");
     return { id, recoveredAmount };
-  }, [receivables]);
+  }, [receivables, fetchReceivables]);
 
   // Reject appeal
   const rejectAppeal = useCallback(async (
@@ -595,8 +607,10 @@ export function useReceivablesDB() {
       return;
     }
 
+    // Refetch para garantir sincronização
+    await fetchReceivables();
     toast.success("Recurso indeferido");
-  }, [receivables]);
+  }, [receivables, fetchReceivables]);
 
   // Filter receivables
   const filterReceivables = useCallback((filters: ReceivablesFilters): Receivable[] => {

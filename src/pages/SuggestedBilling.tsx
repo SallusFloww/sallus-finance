@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { format, parseISO, min, max } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -136,8 +136,19 @@ export default function SuggestedBilling() {
     openProductions,
     linkToReceivable,
     uniqueConvenios,
+    refetch: refetchProductions,
   } = useProductionDB();
-  const { addReceivable, receivables } = useReceivablesDB();
+  const { addReceivable, receivables, refetch: refetchReceivables } = useReceivablesDB();
+
+  // Refetch quando a página ganha foco (cinto + suspensório para realtime)
+  useEffect(() => {
+    const handleFocus = () => {
+      refetchProductions?.();
+      refetchReceivables?.();
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [refetchProductions, refetchReceivables]);
 
   // Filtros
   const [selectedUnit, setSelectedUnit] = useState<string>("all");

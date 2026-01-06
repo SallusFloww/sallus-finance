@@ -284,9 +284,11 @@ export function useProductionDB() {
       return [realProduction, ...withoutOptimistic];
     });
 
+    // Refetch para garantir sincronização (cinto + suspensório)
+    await fetchProductions();
     toast.success("Produção registrada com sucesso");
     return realProduction;
-  }, [currentCompany?.id, profile]);
+  }, [currentCompany?.id, profile, fetchProductions]);
 
   // Update production
   const updateProduction = useCallback(async (
@@ -336,8 +338,10 @@ export function useProductionDB() {
       return;
     }
 
+    // Refetch para garantir sincronização
+    await fetchProductions();
     toast.success("Produção atualizada");
-  }, [productions]);
+  }, [productions, fetchProductions]);
 
   // Delete production
   const deleteProduction = useCallback(async (id: string) => {
@@ -383,8 +387,10 @@ export function useProductionDB() {
         .eq("id", id);
     }
 
+    // Refetch para garantir sincronização
+    await fetchProductions();
     toast.success("Produções vinculadas ao faturamento");
-  }, [productions]);
+  }, [productions, fetchProductions]);
 
   // Mark as received
   const markAsReceived = useCallback(async (
@@ -410,8 +416,10 @@ export function useProductionDB() {
         .eq("id", id);
     }
 
+    // Refetch para garantir sincronização
+    await fetchProductions();
     toast.success("Produções marcadas como recebidas");
-  }, [productions]);
+  }, [productions, fetchProductions]);
 
   // Mark as glossed
   const markAsGlossed = useCallback(async (
@@ -437,8 +445,10 @@ export function useProductionDB() {
         .eq("id", id);
     }
 
+    // Refetch para garantir sincronização
+    await fetchProductions();
     toast.success("Produções marcadas como glosadas");
-  }, [productions]);
+  }, [productions, fetchProductions]);
 
   // Filter productions
   const filterProductions = useCallback((filters: ProductionFilters): Production[] => {
