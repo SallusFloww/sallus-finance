@@ -134,14 +134,19 @@ export function ProductionList({
     );
   }
 
-  // Calculate totals (quantity-focused)
+  // AUDIT_FIX: Calculate totals using effectiveQty for packages
   // Nota: ProductionStatus não tem "CANCELADO" - todos os status são válidos para contagem
+  // effectiveQty = packageQty (se pacote) ?? quantity (padrão) para consistência com relatórios
   const totals = productions.reduce(
-    (acc, p) => ({
-      quantity: acc.quantity + p.quantity,
-      estimatedValue: acc.estimatedValue + p.estimatedValue,
-      records: acc.records + 1,
-    }),
+    (acc, p) => {
+      const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";
+      const effectiveQty = isPackage ? (p.packageQty ?? p.quantity ?? 1) : p.quantity;
+      return {
+        quantity: acc.quantity + effectiveQty,
+        estimatedValue: acc.estimatedValue + p.estimatedValue,
+        records: acc.records + 1,
+      };
+    },
     { quantity: 0, estimatedValue: 0, records: 0 }
   );
 
@@ -210,9 +215,16 @@ export function ProductionList({
                       </div>
                     </TableCell>
                     <TableCell className="text-center">
-                      <span className="text-lg font-bold text-violet-600">
-                        {production.quantity}
-                      </span>
+                      {/* AUDIT_FIX: Exibir effectiveQty para pacotes */}
+                      {(() => {
+                        const isPackage = production.isPackage || production.productionType === "PACOTE_BOX" || production.productionType === "PACOTE_GTA";
+                        const displayQty = isPackage ? (production.packageQty ?? production.quantity ?? 1) : production.quantity;
+                        return (
+                          <span className="text-lg font-bold text-violet-600">
+                            {displayQty}
+                          </span>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell className="text-center">
                       <Tooltip>
