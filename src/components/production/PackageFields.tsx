@@ -123,20 +123,17 @@ export function PackageFields({
       }
     : autoComponents;
 
+  // Mostrar aviso se total é 0
+  const showTotalWarning = totalValue <= 0;
+
   return (
     <div className="space-y-4 p-4 rounded-lg border border-primary/20 bg-primary/5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Package className="h-5 w-5 text-primary" />
           <span className="font-medium text-sm">
-            Componentes do Pacote
+            Componentes do Pacote (Convênio)
           </span>
-          {effectiveRule && (
-            <Badge variant="outline" className="text-xs">
-              Regra vigente: {effectiveRule.planId} desde{" "}
-              {new Date(effectiveRule.effectiveFrom).toLocaleDateString("pt-BR")}
-            </Badge>
-          )}
         </div>
         
         <div className="flex items-center gap-2">
@@ -152,17 +149,37 @@ export function PackageFields({
         </div>
       </div>
 
-      {!effectiveRule && !isManualOverride && (
-        <div className="flex items-center gap-2 p-2 rounded bg-warning/10 border border-warning/20 text-warning text-sm">
+      {/* Regra vigente badge */}
+      {effectiveRule && (
+        <Badge variant="outline" className="text-xs">
+          Regra vigente: {effectiveRule.planId} desde{" "}
+          {new Date(effectiveRule.effectiveFrom).toLocaleDateString("pt-BR")}
+        </Badge>
+      )}
+
+      {/* Aviso se não tem valor total */}
+      {showTotalWarning && (
+        <div className="flex items-center gap-2 p-2 rounded bg-amber-500/10 border border-amber-500/20 text-amber-700 text-sm">
           <AlertCircle className="h-4 w-4" />
           <span>
-            Nenhuma regra configurada para {planId || "este plano"}. 
-            Valores podem ser editados manualmente ou configurar em Configurações → Pacotes Convênio.
+            Informe o "Valor Total Estimado" abaixo para calcular os componentes.
           </span>
         </div>
       )}
 
-      {!validation.valid && (
+      {/* Aviso se não tem regra configurada */}
+      {!effectiveRule && !isManualOverride && !showTotalWarning && (
+        <div className="flex items-center gap-2 p-2 rounded bg-amber-500/10 border border-amber-500/20 text-amber-700 text-sm">
+          <AlertCircle className="h-4 w-4" />
+          <span>
+            Sem regra para {planId || "este plano"}. 
+            Configure em Configurações → Pacotes ou edite manualmente.
+          </span>
+        </div>
+      )}
+
+      {/* Erro de validação */}
+      {!validation.valid && !showTotalWarning && (
         <div className="flex items-center gap-2 p-2 rounded bg-destructive/10 border border-destructive/20 text-destructive text-sm">
           <AlertCircle className="h-4 w-4" />
           <span>{validation.message}</span>
@@ -172,7 +189,7 @@ export function PackageFields({
       <div className="grid grid-cols-3 gap-4">
         {/* Consulta */}
         <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">Consulta</Label>
+          <Label className="text-xs text-muted-foreground">Consulta (R$)</Label>
           {isManualOverride ? (
             <Input
               type="number"
@@ -182,17 +199,19 @@ export function PackageFields({
               onChange={(e) => setManualConsult(e.target.value)}
               disabled={disabled}
               className="h-9"
+              placeholder="0,00"
             />
           ) : (
             <div className="h-9 flex items-center px-3 bg-muted rounded-md font-medium text-sm">
               {formatCurrency(displayComponents.consultAmount)}
             </div>
           )}
+          <p className="text-xs text-muted-foreground">Qtd: 1</p>
         </div>
 
-        {/* Taxa/Box */}
+        {/* Taxa/Box do Pacote */}
         <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">Taxa/Box</Label>
+          <Label className="text-xs text-muted-foreground">Box do Pacote (R$)</Label>
           {isManualOverride ? (
             <Input
               type="number"
@@ -202,17 +221,19 @@ export function PackageFields({
               onChange={(e) => setManualFee(e.target.value)}
               disabled={disabled}
               className="h-9"
+              placeholder="0,00"
             />
           ) : (
             <div className="h-9 flex items-center px-3 bg-muted rounded-md font-medium text-sm">
               {formatCurrency(displayComponents.feeAmount)}
             </div>
           )}
+          <p className="text-xs text-muted-foreground">Qtd: 1</p>
         </div>
 
         {/* Mat/Med */}
         <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">Mat/Med</Label>
+          <Label className="text-xs text-muted-foreground">Mat/Med (R$)</Label>
           {isManualOverride ? (
             <Input
               type="number"
@@ -222,12 +243,16 @@ export function PackageFields({
               onChange={(e) => setManualMatmed(e.target.value)}
               disabled={disabled}
               className="h-9"
+              placeholder="0,00"
             />
           ) : (
             <div className="h-9 flex items-center px-3 bg-muted rounded-md font-medium text-sm">
               {formatCurrency(displayComponents.matmedAmount)}
             </div>
           )}
+          <p className="text-xs text-muted-foreground">
+            Qtd: {displayComponents.matmedAmount > 0 ? 1 : 0}
+          </p>
         </div>
       </div>
 

@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/popover";
 import { ProductionType, UnitConfig, BASE_PRODUCTION_TYPES } from "@/types";
 import { toast } from "sonner";
-import { Activity, Check, ChevronsUpDown, Plus, Calculator, Package } from "lucide-react";
+import { Activity, Check, ChevronsUpDown, Plus, Calculator, Package, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCompanySettings } from "@/hooks/useCompanySettings";
 import { usePackagePricing } from "@/hooks/usePackagePricing";
@@ -597,7 +597,7 @@ export function ProductionForm({
 
       case "PACOTE_BOX":
       case "PACOTE_GTA":
-        // Pacotes Convênio - exibir campos de componentes
+        // Pacotes Convênio - SEMPRE exibir campos de componentes
         return (
           <div className="space-y-4">
             <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
@@ -610,12 +610,20 @@ export function ProductionForm({
                 </p>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                Consulta + Taxa/Box + Mat/Med em pacote único
+                Consulta + Taxa/Box + Mat/Med em pacote único. Valor Total é obrigatório.
               </p>
             </div>
             
-            {/* Mostrar componentes após preencher convênio e valor */}
-            {formData.convenio && parseFloat(formData.totalValue) > 0 && (
+            {/* Aviso se não selecionou convênio */}
+            {!formData.convenio && (
+              <div className="p-3 rounded bg-amber-500/10 border border-amber-500/20 text-amber-700 text-sm flex items-center gap-2">
+                <AlertCircle className="h-4 w-4" />
+                Selecione o convênio acima para calcular automaticamente os componentes do pacote.
+              </div>
+            )}
+            
+            {/* SEMPRE mostrar PackageFields quando temos convênio selecionado */}
+            {formData.convenio && (
               <PackageFields
                 packageType={formData.productionType as "PACOTE_BOX" | "PACOTE_GTA"}
                 planId={formData.convenio}
@@ -631,12 +639,6 @@ export function ProductionForm({
                   }));
                 }}
               />
-            )}
-            
-            {!formData.convenio && (
-              <div className="p-3 rounded bg-amber-500/10 border border-amber-500/20 text-amber-700 text-sm">
-                Selecione o convênio para calcular os componentes do pacote.
-              </div>
             )}
           </div>
         );
