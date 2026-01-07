@@ -55,6 +55,13 @@ interface DBProduction {
     editedAt: string;
     editedBy: string;
   }>;
+  // Campos de pacote convênio
+  is_package: boolean;
+  package_type: string | null;
+  consult_amount: number;
+  fee_amount: number;
+  matmed_amount: number;
+  package_qty: number;
 }
 
 // Converter de DB para domínio
@@ -83,6 +90,13 @@ function toProduction(db: DBProduction): Production {
     updatedAt: db.updated_at,
     history: db.history || [],
     editLogs: db.edit_logs || [],
+    // Campos de pacote convênio
+    isPackage: db.is_package || false,
+    packageType: db.package_type as "PACOTE_BOX" | "PACOTE_GTA" | undefined,
+    consultAmount: Number(db.consult_amount) || 0,
+    feeAmount: Number(db.fee_amount) || 0,
+    matmedAmount: Number(db.matmed_amount) || 0,
+    packageQty: Number(db.package_qty) || 1,
   };
 }
 
@@ -510,6 +524,10 @@ export function useProductionDB() {
       byProductionType: {} as Record<string, { count: number; quantity: number; value: number }>,
       byPayerType: { convenio: 0, particular: 0 },
       byPayerTypeQuantity: { convenio: 0, particular: 0 },
+      // Métricas consolidadas avulsos + pacotes
+      consolidatedConsultas: { value: 0, quantity: 0 },
+      consolidatedBoxTaxas: { value: 0, quantity: 0 },
+      consolidatedMatMed: { value: 0 },
     };
 
     filtered.forEach((p) => {
@@ -530,6 +548,31 @@ export function useProductionDB() {
       } else {
         stats.byPayerType.particular += p.estimatedValue;
         stats.byPayerTypeQuantity.particular += p.quantity;
+      }
+
+      // ============= CONSOLIDAÇÃO AVULSOS + PACOTES =============
+      const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";
+      
+      if (isPackage) {
+        // Pacote: somar componentes individuais
+        stats.consolidatedConsultas.value += p.consultAmount || 0;
+        stats.consolidatedConsultas.quantity += 1; // Cada pacote = 1 consulta
+        
+        stats.consolidatedBoxTaxas.value += p.feeAmount || 0;
+        stats.consolidatedBoxTaxas.quantity += 1; // Cada pacote = 1 box/taxa
+        
+        stats.consolidatedMatMed.value += p.matmedAmount || 0;
+        // Não contamos quantidade de mat/med conforme solicitado
+      } else {
+        // Avulso: classificar por tipo
+        if (p.productionType === "CONSULTA") {
+          stats.consolidatedConsultas.value += p.estimatedValue;
+          stats.consolidatedConsultas.quantity += p.quantity;
+        } else if (p.productionType === "BOX_PS") {
+          stats.consolidatedBoxTaxas.value += p.estimatedValue;
+          stats.consolidatedBoxTaxas.quantity += p.quantity;
+        }
+        // Mat/Med avulso não existe como tipo separado, então não agregamos aqui
       }
 
       switch (p.status) {

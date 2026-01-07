@@ -170,6 +170,8 @@ export default function Production() {
   const handleAddProduction = async (data: ProductionFormData) => {
     await addProduction({
       ...data,
+      // Cast packageType para o tipo correto
+      packageType: data.packageType as "PACOTE_BOX" | "PACOTE_GTA" | undefined,
       estimatedValue: data.quantity * data.unitValue,
     });
   };
