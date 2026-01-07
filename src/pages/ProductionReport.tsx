@@ -637,8 +637,12 @@ export default function ProductionReport() {
           });
         } else if (evolutionBreakdown === "especialidade") {
           uniqueSpecialties.forEach(spec => {
-            dataPoint[formatUnitName(spec)] = weekProductions
-              .filter(p => (p.specialty || p.unit) === spec)
+            const specLabel = spec === "__SEM_ESPECIALIDADE__" ? "Sem especialidade" : formatSpecialtyDisplayName(spec);
+            dataPoint[specLabel] = weekProductions
+              .filter(p => {
+                if (spec === "__SEM_ESPECIALIDADE__") return !p.specialty || p.specialty.trim() === "";
+                return p.specialty === spec;
+              })
               .reduce((sum, p) => sum + p.quantity, 0);
           });
         }
@@ -671,8 +675,12 @@ export default function ProductionReport() {
           });
         } else if (evolutionBreakdown === "especialidade") {
           uniqueSpecialties.forEach(spec => {
-            dataPoint[formatUnitName(spec)] = dayProductions
-              .filter(p => (p.specialty || p.unit) === spec)
+            const specLabel = spec === "__SEM_ESPECIALIDADE__" ? "Sem especialidade" : formatSpecialtyDisplayName(spec);
+            dataPoint[specLabel] = dayProductions
+              .filter(p => {
+                if (spec === "__SEM_ESPECIALIDADE__") return !p.specialty || p.specialty.trim() === "";
+                return p.specialty === spec;
+              })
               .reduce((sum, p) => sum + p.quantity, 0);
           });
         }
@@ -1083,9 +1091,10 @@ export default function ProductionReport() {
                           let quantity = 0;
                           filtered.forEach((p) => {
                             const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";
+                            const baseQty = isPackage ? (p.packageQty ?? p.quantity ?? 1) : 0;
                             if (isPackage) {
                               value += p.consultAmount || 0;
-                              quantity += 1;
+                              quantity += baseQty;
                             } else if (p.productionType === "CONSULTA") {
                               value += p.estimatedValue;
                               quantity += p.quantity;
@@ -1136,8 +1145,9 @@ export default function ProductionReport() {
                         let quantity = 0;
                         filtered.forEach((p) => {
                           const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";
+                          const baseQty = isPackage ? (p.packageQty ?? p.quantity ?? 1) : 0;
                           if (isPackage) {
-                            quantity += 1;
+                            quantity += baseQty;
                           } else if (p.productionType === "BOX_PS") {
                             quantity += p.quantity;
                           }
