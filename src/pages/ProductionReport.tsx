@@ -154,12 +154,13 @@ function toReportItems(productions: Production[]): ReportItem[] {
     };
 
     if (isPackage) {
-      // Explodir pacote em 3 componentes
+      // Explodir pacote em 3 componentes - respeitando packageQty
+      const baseQty = p.packageQty ?? p.quantity ?? 1;
       items.push({
         ...baseItem,
         id: `${p.id}:CONSULTA`,
         reportType: "CONSULTA",
-        quantity: 1,
+        quantity: baseQty,
         amount: p.consultAmount || 0,
         description: "Consulta (Pacote)",
         isFromPackage: true,
@@ -168,7 +169,7 @@ function toReportItems(productions: Production[]): ReportItem[] {
         ...baseItem,
         id: `${p.id}:BOX`,
         reportType: "BOX_TAXA",
-        quantity: 1,
+        quantity: baseQty,
         amount: p.feeAmount || 0,
         description: "Box/Taxa (Pacote)",
         isFromPackage: true,

@@ -584,19 +584,21 @@ export function useProductionDB() {
 
       // ============= DETECÇÃO PACOTE =============
       const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";
+      // Quantidade base do pacote (respeita campo quantidade)
+      const baseQty = isPackage ? (p.packageQty ?? p.quantity ?? 1) : 0;
 
       // ============= byProductionType: EXPLODIR PACOTE EM COMPONENTES =============
       if (isPackage) {
         // CONSULTA do pacote
         ensureType("CONSULTA");
         stats.byProductionType["CONSULTA"].count += 1;
-        stats.byProductionType["CONSULTA"].quantity += 1;
+        stats.byProductionType["CONSULTA"].quantity += baseQty;
         stats.byProductionType["CONSULTA"].value += p.consultAmount || 0;
 
         // BOX_PS do pacote (unificado com avulso)
         ensureType("BOX_PS");
         stats.byProductionType["BOX_PS"].count += 1;
-        stats.byProductionType["BOX_PS"].quantity += 1;
+        stats.byProductionType["BOX_PS"].quantity += baseQty;
         stats.byProductionType["BOX_PS"].value += p.feeAmount || 0;
 
         // MAT_MED do pacote (sem quantidade)
@@ -625,12 +627,12 @@ export function useProductionDB() {
 
       // ============= CONSOLIDAÇÃO AVULSOS + PACOTES (cards) =============
       if (isPackage) {
-        // Pacote: somar componentes individuais
+        // Pacote: somar componentes individuais respeitando quantidade
         stats.consolidatedConsultas.value += p.consultAmount || 0;
-        stats.consolidatedConsultas.quantity += 1; // Cada pacote = 1 consulta
+        stats.consolidatedConsultas.quantity += baseQty;
         
         stats.consolidatedBoxTaxas.value += p.feeAmount || 0;
-        stats.consolidatedBoxTaxas.quantity += 1; // Cada pacote = 1 box/taxa
+        stats.consolidatedBoxTaxas.quantity += baseQty;
         
         stats.consolidatedMatMed.value += p.matmedAmount || 0;
         // Não contamos quantidade de mat/med conforme solicitado
