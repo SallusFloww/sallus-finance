@@ -34,25 +34,20 @@ import {
 } from "@/components/ui/popover";
 import { ProductionType, UnitConfig, BASE_PRODUCTION_TYPES } from "@/types";
 import { toast } from "sonner";
-import { Activity, Check, ChevronsUpDown, Plus, Calculator } from "lucide-react";
+import { Activity, Check, ChevronsUpDown, Plus, Calculator, Package } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCompanySettings } from "@/hooks/useCompanySettings";
-
-// Labels para tipos de produção OFICIAIS
-const PRODUCTION_TYPE_LABELS: Record<string, string> = {
-  "CONSULTA": "Consulta",
-  "EXAME": "Exame",
-  "QUIMIOTERAPIA": "Quimioterapia",
-  "BOX_PS": "Box / Atendimento PS",
-  "SESSAO_TERAPEUTICA": "Sessão Terapêutica",
-  "INTERNACAO": "Internação",
-  "OUTRO": "Outro",
-};
+import { usePackagePricing } from "@/hooks/usePackagePricing";
+import { PackageFields } from "./PackageFields";
+import { PRODUCTION_TYPE_LABELS } from "@/utils/constants";
 
 // Função para obter label de tipo de produção
 const getProductionTypeLabel = (type: string): string => {
   return PRODUCTION_TYPE_LABELS[type] || type;
 };
+
+// Tipos de pacote convênio
+const PACKAGE_PRODUCTION_TYPES = ["PACOTE_BOX", "PACOTE_GTA"];
 
 const CONVENIOS = ["IPASGO", "UNIMED", "BRADESCO", "GEAP", "SUS"];
 
@@ -105,6 +100,12 @@ export interface ProductionFormData {
   // Campos dinâmicos
   examType?: string;
   therapySessionType?: string;
+  // Campos de pacote convênio
+  isPackage?: boolean;
+  packageType?: string;
+  consultAmount?: number;
+  feeAmount?: number;
+  matmedAmount?: number;
 }
 
 export function ProductionForm({ 
@@ -127,6 +128,9 @@ export function ProductionForm({
     addProductionType 
   } = useCompanySettings();
   
+  // Pricing hook para pacotes
+  const { validateTotal } = usePackagePricing();
+  
   // Combinar sugestões padrão com salvas do banco
   const savedExamTypes = getSavedExamTypes();
   const savedTherapyTypes = getSavedTherapyTypes();
@@ -134,7 +138,8 @@ export function ProductionForm({
   
   const examTypes = [...new Set([...DEFAULT_EXAM_TYPES, ...savedExamTypes])].sort();
   const therapyTypes = [...new Set([...DEFAULT_THERAPY_TYPES, ...savedTherapyTypes])].sort();
-  const productionTypes = [...new Set([...BASE_PRODUCTION_TYPES, ...savedProductionTypes])];
+  // Incluir pacotes convênio na lista de tipos
+  const productionTypes = [...new Set([...BASE_PRODUCTION_TYPES, ...PACKAGE_PRODUCTION_TYPES, ...savedProductionTypes])];
   
   const [formData, setFormData] = useState({
     productionDate: format(new Date(), "yyyy-MM-dd"),
@@ -153,6 +158,11 @@ export function ProductionForm({
     // Campos dinâmicos
     examType: "",
     therapySessionType: "",
+    // Campos pacote convênio
+    consultAmount: 0,
+    feeAmount: 0,
+    matmedAmount: 0,
+    isManualOverride: false,
   });
 
   // Popovers state
@@ -175,12 +185,21 @@ export function ProductionForm({
 
   // Reset campos dinâmicos quando muda o tipo de produção
   useEffect(() => {
+    const isPackage = PACKAGE_PRODUCTION_TYPES.includes(formData.productionType);
     setFormData(prev => ({
       ...prev,
       examType: "",
       therapySessionType: "",
       procedureCode: "",
       description: getDefaultDescription(prev.productionType),
+      // Se for pacote, forçar payerType para CONVENIO
+      payerType: isPackage ? "CONVENIO" : prev.payerType,
+      paymentMethod: isPackage ? "" : prev.paymentMethod,
+      // Reset componentes do pacote
+      consultAmount: 0,
+      feeAmount: 0,
+      matmedAmount: 0,
+      isManualOverride: false,
     }));
   }, [formData.productionType]);
 
@@ -191,6 +210,8 @@ export function ProductionForm({
       case "QUIMIOTERAPIA": return "Sessão de Quimioterapia";
       case "BOX_PS": return "Atendimento Box/PS";
       case "INTERNACAO": return "Internação";
+      case "PACOTE_BOX": return "Pacote Box (Convênio)";
+      case "PACOTE_GTA": return "Pacote GTA (Convênio)";
       default: return "";
     }
   };
@@ -284,6 +305,29 @@ export function ProductionForm({
       return;
     }
 
+    // Validação específica para pacotes: valor deve cobrir consulta + taxa
+    const isPackageType = PACKAGE_PRODUCTION_TYPES.includes(formData.productionType);
+    if (isPackageType) {
+      if (totalValue <= 0) {
+        toast.error("Informe o valor total do pacote");
+        return;
+      }
+      if (formData.payerType !== "CONVENIO") {
+        toast.error("Pacotes Convênio só podem ser registrados para pagador Convênio");
+        return;
+      }
+      const validation = validateTotal(
+        totalValue,
+        formData.convenio,
+        formData.productionType as "PACOTE_BOX" | "PACOTE_GTA",
+        formData.productionDate
+      );
+      if (!validation.valid) {
+        toast.error(validation.message);
+        return;
+      }
+    }
+
     // Definir description baseado no tipo (AUTO-PREENCHIMENTO)
     let description = formData.description;
     
@@ -291,6 +335,8 @@ export function ProductionForm({
       description = formData.examType || formData.description;
     } else if (formData.productionType === "SESSAO_TERAPEUTICA") {
       description = formData.therapySessionType || formData.description;
+    } else if (isPackageType) {
+      description = getProductionTypeLabel(formData.productionType);
     }
     
     // FALLBACK: Se ainda não tem descrição, usar o próprio tipo de produção
@@ -317,6 +363,12 @@ export function ProductionForm({
       createdBy: userName,
       examType: formData.examType || undefined,
       therapySessionType: formData.therapySessionType || undefined,
+      // Dados de pacote convênio
+      isPackage: isPackageType,
+      packageType: isPackageType ? formData.productionType : undefined,
+      consultAmount: isPackageType ? formData.consultAmount : undefined,
+      feeAmount: isPackageType ? formData.feeAmount : undefined,
+      matmedAmount: isPackageType ? formData.matmedAmount : undefined,
     });
 
     // Reset form
@@ -336,6 +388,10 @@ export function ProductionForm({
       notes: "",
       examType: "",
       therapySessionType: "",
+      consultAmount: 0,
+      feeAmount: 0,
+      matmedAmount: 0,
+      isManualOverride: false,
     });
     onOpenChange(false);
   };
@@ -539,6 +595,52 @@ export function ProductionForm({
           </div>
         );
 
+      case "PACOTE_BOX":
+      case "PACOTE_GTA":
+        // Pacotes Convênio - exibir campos de componentes
+        return (
+          <div className="space-y-4">
+            <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
+              <div className="flex items-center gap-2">
+                <Package className="h-5 w-5 text-primary" />
+                <p className="text-sm text-primary font-medium">
+                  {formData.productionType === "PACOTE_BOX" 
+                    ? "📦 Pacote Box (Convênio)" 
+                    : "📦 Pacote GTA (Convênio)"}
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Consulta + Taxa/Box + Mat/Med em pacote único
+              </p>
+            </div>
+            
+            {/* Mostrar componentes após preencher convênio e valor */}
+            {formData.convenio && parseFloat(formData.totalValue) > 0 && (
+              <PackageFields
+                packageType={formData.productionType as "PACOTE_BOX" | "PACOTE_GTA"}
+                planId={formData.convenio}
+                referenceDate={formData.productionDate}
+                totalValue={parseFloat(formData.totalValue) || 0}
+                onChange={(components) => {
+                  setFormData(prev => ({
+                    ...prev,
+                    consultAmount: components.consultAmount,
+                    feeAmount: components.feeAmount,
+                    matmedAmount: components.matmedAmount,
+                    isManualOverride: components.isManualOverride,
+                  }));
+                }}
+              />
+            )}
+            
+            {!formData.convenio && (
+              <div className="p-3 rounded bg-amber-500/10 border border-amber-500/20 text-amber-700 text-sm">
+                Selecione o convênio para calcular os componentes do pacote.
+              </div>
+            )}
+          </div>
+        );
+
       default:
         // Para tipos dinâmicos (cadastrados pelo usuário)
         return (
@@ -549,6 +651,9 @@ export function ProductionForm({
         );
     }
   };
+
+  // Determinar se é pacote convênio
+  const isPackageType = PACKAGE_PRODUCTION_TYPES.includes(formData.productionType);
 
   // Determinar label de quantidade por tipo
   const getQuantityLabel = (): string => {

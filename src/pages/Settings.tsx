@@ -61,9 +61,11 @@ import {
   SettingsExamTypes,
   SettingsPayers,
   SettingsParameters,
+  SettingsPackagePricing,
 } from "@/components/settings";
 import { useReceivablesDB } from "@/hooks/useReceivablesDB";
 import { useProductionDB } from "@/hooks/useProductionDB";
+import { Boxes } from "lucide-react";
 
 export default function Settings() {
   const { transactions, auditLog } = useApp();
@@ -808,7 +810,7 @@ export default function Settings() {
         </div>
 
         <Tabs defaultValue="units" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
+          <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7">
             <TabsTrigger value="units" className="gap-1 text-xs lg:text-sm">
               <Building2 className="h-4 w-4" />
               <span className="hidden sm:inline">Unidades</span>
@@ -828,6 +830,10 @@ export default function Settings() {
             <TabsTrigger value="payers" className="gap-1 text-xs lg:text-sm">
               <Users className="h-4 w-4" />
               <span className="hidden sm:inline">Pagadores</span>
+            </TabsTrigger>
+            <TabsTrigger value="packages" className="gap-1 text-xs lg:text-sm">
+              <Boxes className="h-4 w-4" />
+              <span className="hidden sm:inline">Pacotes</span>
             </TabsTrigger>
             <TabsTrigger value="parameters" className="gap-1 text-xs lg:text-sm">
               <Settings2 className="h-4 w-4" />
@@ -1347,6 +1353,11 @@ export default function Settings() {
               onUpdate={(payers) => setExtendedSettings(prev => ({ ...prev, payers }))}
               onAddLog={addAuditLog}
             />
+          </TabsContent>
+
+          {/* ============= PACKAGES TAB ============= */}
+          <TabsContent value="packages" className="space-y-4">
+            <SettingsPackagePricing />
           </TabsContent>
 
           {/* ============= PARAMETERS TAB ============= */}

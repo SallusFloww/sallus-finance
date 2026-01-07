@@ -43,6 +43,31 @@ export const FINANCIAL_CATEGORIES: { id: FinancialCategory; name: string; icon: 
   },
 ];
 
+// ============= LABELS PARA TIPOS DE PRODUÇÃO =============
+export const PRODUCTION_TYPE_LABELS: Record<string, string> = {
+  "CONSULTA": "Consulta",
+  "EXAME": "Exame",
+  "QUIMIOTERAPIA": "Quimioterapia",
+  "BOX_PS": "Box / Atendimento PS",
+  "SESSAO_TERAPEUTICA": "Sessão Terapêutica",
+  "INTERNACAO": "Internação",
+  "OUTRO": "Outro",
+  // Pacotes Convênio
+  "PACOTE_BOX": "Pacote Box (Convênio)",
+  "PACOTE_GTA": "Pacote GTA (Convênio)",
+};
+
+// ============= TIPOS DE PACOTE CONVÊNIO =============
+export const PACKAGE_TYPES = [
+  { id: "PACOTE_BOX", name: "Pacote Box (Convênio)", description: "Consulta + Taxa Box + Mat/Med em pacote" },
+  { id: "PACOTE_GTA", name: "Pacote GTA (Convênio)", description: "Consulta + Taxa GTA + Mat/Med em pacote" },
+] as const;
+
+export const PACKAGE_TYPE_LABELS: Record<string, string> = {
+  PACOTE_BOX: "Pacote Box (Convênio)",
+  PACOTE_GTA: "Pacote GTA (Convênio)",
+};
+
 // ============= CRITÉRIOS DE RATEIO (informativo) =============
 export const APPORTIONMENT_CRITERIA: { id: ApportionmentCriteria; name: string; description: string; auto?: boolean }[] = [
   { id: "IGUAL", name: "Igual entre unidades", description: "Divide igualmente entre todas as unidades", auto: true },
