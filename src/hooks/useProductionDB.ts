@@ -209,25 +209,37 @@ export function useProductionDB() {
   }, [currentCompany?.id, fetchProductions]);
 
   // AUDIT_FIX: Auto-refresh quando aba ganha foco (visibilitychange)
+  // Usa ref para evitar re-renders desnecessários e problemas de timing
   useEffect(() => {
+    let isMounted = true;
     const handleVisibilityChange = () => {
-      if (!document.hidden && currentCompany?.id) {
-        fetchProductions();
+      if (!document.hidden && currentCompany?.id && isMounted) {
+        // Pequeno delay para evitar conflitos com render cycle
+        setTimeout(() => {
+          if (isMounted) fetchProductions();
+        }, 100);
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      isMounted = false;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [fetchProductions, currentCompany?.id]);
 
   // AUDIT_FIX: Polling leve como fallback (45s), só quando aba visível
   useEffect(() => {
     if (!currentCompany?.id) return;
+    let isMounted = true;
     const intervalId = window.setInterval(() => {
-      if (!document.hidden) {
+      if (!document.hidden && isMounted) {
         fetchProductions();
       }
     }, 45000);
-    return () => window.clearInterval(intervalId);
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
   }, [fetchProductions, currentCompany?.id]);
 
   // Add production with optimistic update
