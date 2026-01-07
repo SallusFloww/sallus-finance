@@ -170,6 +170,28 @@ export function useReceivablesDB() {
     };
   }, [currentCompany?.id, fetchReceivables]);
 
+  // AUDIT_FIX: Auto-refresh quando aba ganha foco (visibilitychange)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && currentCompany?.id) {
+        fetchReceivables();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [fetchReceivables, currentCompany?.id]);
+
+  // AUDIT_FIX: Polling leve como fallback (45s), só quando aba visível
+  useEffect(() => {
+    if (!currentCompany?.id) return;
+    const intervalId = window.setInterval(() => {
+      if (!document.hidden) {
+        fetchReceivables();
+      }
+    }, 45000);
+    return () => window.clearInterval(intervalId);
+  }, [fetchReceivables, currentCompany?.id]);
+
   // Add receivable
   const addReceivable = useCallback(async (
     data: Omit<Receivable, "id" | "createdAt" | "receivedAmount" | "glossedAmount">

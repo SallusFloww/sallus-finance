@@ -208,6 +208,28 @@ export function useProductionDB() {
     };
   }, [currentCompany?.id, fetchProductions]);
 
+  // AUDIT_FIX: Auto-refresh quando aba ganha foco (visibilitychange)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && currentCompany?.id) {
+        fetchProductions();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [fetchProductions, currentCompany?.id]);
+
+  // AUDIT_FIX: Polling leve como fallback (45s), só quando aba visível
+  useEffect(() => {
+    if (!currentCompany?.id) return;
+    const intervalId = window.setInterval(() => {
+      if (!document.hidden) {
+        fetchProductions();
+      }
+    }, 45000);
+    return () => window.clearInterval(intervalId);
+  }, [fetchProductions, currentCompany?.id]);
+
   // Add production with optimistic update
   const addProduction = useCallback(async (
     data: Omit<Production, "id" | "createdAt" | "status" | "history">
