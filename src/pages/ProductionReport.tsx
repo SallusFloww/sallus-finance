@@ -948,6 +948,157 @@ export default function ProductionReport() {
         </section>
 
         {/* ══════════════════════════════════════════════════════════════════
+            2.5️⃣ CONSOLIDADO POR COMPONENTES (AVULSO + PACOTES)
+        ══════════════════════════════════════════════════════════════════ */}
+        <section>
+          <div className="flex items-center gap-2 mb-4">
+            <Layers className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-semibold text-foreground">Consolidado por Componentes</h2>
+            <Badge variant="outline" className="text-[10px] px-1.5">Avulso + Pacotes</Badge>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {/* Consultas */}
+            <Card className="shadow-sm border-border/60 bg-gradient-to-br from-blue-50/50 to-transparent dark:from-blue-950/20">
+              <CardContent className="pt-5 pb-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      Consultas
+                    </p>
+                    <p className="text-2xl font-bold text-foreground mt-2 tabular-nums">
+                      {(() => {
+                        const stats = (() => {
+                          const filtered = filteredProductions;
+                          let value = 0;
+                          let quantity = 0;
+                          filtered.forEach((p) => {
+                            const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";
+                            if (isPackage) {
+                              value += p.consultAmount || 0;
+                              quantity += 1;
+                            } else if (p.productionType === "CONSULTA") {
+                              value += p.estimatedValue;
+                              quantity += p.quantity;
+                            }
+                          });
+                          return { value, quantity };
+                        })();
+                        return stats.quantity.toLocaleString("pt-BR");
+                      })()}
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {(() => {
+                        const filtered = filteredProductions;
+                        let value = 0;
+                        filtered.forEach((p) => {
+                          const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";
+                          if (isPackage) {
+                            value += p.consultAmount || 0;
+                          } else if (p.productionType === "CONSULTA") {
+                            value += p.estimatedValue;
+                          }
+                        });
+                        return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+                      })()}
+                    </p>
+                  </div>
+                  <div className="p-2.5 bg-blue-100 dark:bg-blue-900/30 rounded-xl">
+                    <Stethoscope className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-2 italic">
+                  Avulso CONSULTA + Pacotes (consult_amount)
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Box/Taxas */}
+            <Card className="shadow-sm border-border/60 bg-gradient-to-br from-amber-50/50 to-transparent dark:from-amber-950/20">
+              <CardContent className="pt-5 pb-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      Box / Taxas
+                    </p>
+                    <p className="text-2xl font-bold text-foreground mt-2 tabular-nums">
+                      {(() => {
+                        const filtered = filteredProductions;
+                        let quantity = 0;
+                        filtered.forEach((p) => {
+                          const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";
+                          if (isPackage) {
+                            quantity += 1;
+                          } else if (p.productionType === "BOX_PS") {
+                            quantity += p.quantity;
+                          }
+                        });
+                        return quantity.toLocaleString("pt-BR");
+                      })()}
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {(() => {
+                        const filtered = filteredProductions;
+                        let value = 0;
+                        filtered.forEach((p) => {
+                          const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";
+                          if (isPackage) {
+                            value += p.feeAmount || 0;
+                          } else if (p.productionType === "BOX_PS") {
+                            value += p.estimatedValue;
+                          }
+                        });
+                        return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+                      })()}
+                    </p>
+                  </div>
+                  <div className="p-2.5 bg-amber-100 dark:bg-amber-900/30 rounded-xl">
+                    <Heart className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-2 italic">
+                  Avulso BOX_PS + Pacotes (fee_amount)
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Mat/Med */}
+            <Card className="shadow-sm border-border/60 bg-gradient-to-br from-emerald-50/50 to-transparent dark:from-emerald-950/20">
+              <CardContent className="pt-5 pb-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      Mat/Med
+                    </p>
+                    <p className="text-2xl font-bold text-foreground mt-2 tabular-nums">
+                      {(() => {
+                        const filtered = filteredProductions;
+                        let value = 0;
+                        filtered.forEach((p) => {
+                          const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";
+                          if (isPackage) {
+                            value += p.matmedAmount || 0;
+                          }
+                        });
+                        return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+                      })()}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Somente valor (sem quantidade)
+                    </p>
+                  </div>
+                  <div className="p-2.5 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl">
+                    <Syringe className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-2 italic">
+                  Pacotes (matmed_amount)
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+
+        {/* ══════════════════════════════════════════════════════════════════
             3️⃣ RESUMO EXECUTIVO (NOVO - TEXTO AUTOMÁTICO)
         ══════════════════════════════════════════════════════════════════ */}
         {totalQuantity > 0 && (

@@ -19,7 +19,7 @@ interface PackageFieldsProps {
     matmedAmount: number;
     consultQty: number;
     feeQty: number;
-    matmedQty: number;
+    matmedQty: number; // Sempre 0, mantido para compatibilidade
     isManualOverride: boolean;
   }) => void;
   disabled?: boolean;
@@ -39,10 +39,6 @@ export function PackageFields({
   const [manualConsult, setManualConsult] = useState("");
   const [manualFee, setManualFee] = useState("");
   const [manualMatmed, setManualMatmed] = useState("");
-  
-  // Quantitativos - matmedQty é editável
-  const [matmedQty, setMatmedQty] = useState<number>(0);
-  const [matmedQtyManual, setMatmedQtyManual] = useState(false);
 
   // Regra vigente
   const effectiveRule = useMemo(() => {
@@ -71,24 +67,6 @@ export function PackageFields({
     return validateTotal(totalValue, planId, packageType, referenceDate);
   }, [totalValue, planId, packageType, referenceDate, validateTotal]);
 
-  // Calcular matmedQty automático (se não for manual)
-  useEffect(() => {
-    if (!matmedQtyManual) {
-      const autoMatmedAmount = isManualOverride 
-        ? (parseFloat(manualMatmed) || 0)
-        : autoComponents.matmedAmount;
-      setMatmedQty(autoMatmedAmount > 0 ? 1 : 0);
-    }
-  }, [autoComponents.matmedAmount, manualMatmed, isManualOverride, matmedQtyManual]);
-
-  // Reset matmedQty manual quando muda plano/tipo/totalValue zerado
-  useEffect(() => {
-    if (totalValue <= 0) {
-      setMatmedQtyManual(false);
-      setMatmedQty(0);
-    }
-  }, [totalValue, planId, packageType]);
-
   // Callback estável para notificar parent
   const notifyParent = useCallback(() => {
     if (isManualOverride) {
@@ -104,7 +82,7 @@ export function PackageFields({
         matmedAmount: matmed,
         consultQty: 1,
         feeQty: 1,
-        matmedQty: matmedQty,
+        matmedQty: 0, // Sempre 0 - não controlamos quantidade de Mat/Med
         isManualOverride: true,
       });
     } else {
@@ -115,7 +93,7 @@ export function PackageFields({
         matmedAmount: autoComponents.matmedAmount,
         consultQty: 1,
         feeQty: 1,
-        matmedQty: matmedQty,
+        matmedQty: 0, // Sempre 0 - não controlamos quantidade de Mat/Med
         isManualOverride: false,
       });
     }
@@ -125,7 +103,6 @@ export function PackageFields({
     manualFee,
     manualMatmed,
     autoComponents,
-    matmedQty,
     onChange,
   ]);
 
@@ -268,7 +245,7 @@ export function PackageFields({
           <p className="text-xs text-muted-foreground">Qtd: 1</p>
         </div>
 
-        {/* Mat/Med */}
+        {/* Mat/Med - Somente valor, sem quantidade */}
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">Mat/Med (R$)</Label>
           {isManualOverride ? (
@@ -287,21 +264,7 @@ export function PackageFields({
               {formatCurrency(displayComponents.matmedAmount)}
             </div>
           )}
-          {/* Mat/Med Qty editável */}
-          <div className="flex items-center gap-1">
-            <span className="text-xs text-muted-foreground">Qtd:</span>
-            <Input
-              type="number"
-              min="0"
-              value={matmedQty}
-              onChange={(e) => {
-                setMatmedQtyManual(true);
-                setMatmedQty(parseInt(e.target.value) || 0);
-              }}
-              disabled={disabled}
-              className="h-6 w-14 text-xs px-1"
-            />
-          </div>
+          <p className="text-xs text-muted-foreground italic">Somente valor</p>
         </div>
       </div>
 
