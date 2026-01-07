@@ -103,6 +103,7 @@ export interface ProductionFormData {
   // Campos de pacote convênio
   isPackage?: boolean;
   packageType?: string;
+  packageQty?: number; // Quantidade de pacotes (explícito)
   consultAmount?: number;
   feeAmount?: number;
   matmedAmount?: number;
@@ -377,6 +378,7 @@ export function ProductionForm({
       // Dados de pacote convênio
       isPackage: isPackageType,
       packageType: isPackageType ? formData.productionType : undefined,
+      packageQty: isPackageType ? quantity : undefined, // Quantidade de pacotes explícita
       consultAmount: isPackageType ? formData.consultAmount : undefined,
       feeAmount: isPackageType ? formData.feeAmount : undefined,
       matmedAmount: isPackageType ? formData.matmedAmount : undefined,

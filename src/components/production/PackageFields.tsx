@@ -35,8 +35,8 @@ export function PackageFields({
   onChange,
   disabled = false,
 }: PackageFieldsProps) {
-  // Quantidade efetiva do pacote para exibição
-  const displayQty = packageQty ?? 1;
+  // Quantidade efetiva do pacote para exibição (hardening: sempre inteiro >= 1)
+  const displayQty = Math.max(1, Math.floor(Number(packageQty) || 1));
   const { calculateComponents, validateTotal, getEffectiveRule } = usePackagePricing();
 
   const [isManualOverride, setIsManualOverride] = useState(false);

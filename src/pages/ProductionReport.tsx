@@ -58,6 +58,7 @@ import {
   TrendingDown as TrendDown,
 } from "lucide-react";
 import { useProductionDB } from "@/hooks/useProductionDB";
+import { usePackagePricing, PackagePricingRule } from "@/hooks/usePackagePricing";
 import { 
   startOfMonth, 
   endOfMonth, 
@@ -137,8 +138,15 @@ interface ReportItem {
  * - Pacotes (PACOTE_BOX/PACOTE_GTA) são "explodidos" em 3 itens: CONSULTA, BOX_TAXA, MAT_MED
  * - BOX_PS avulso é normalizado para BOX_TAXA
  * - Demais tipos mantêm seu reportType original
+ * 
+ * NORMALIZAÇÃO DE LEGADOS:
+ * Registros antigos podem ter consultAmount/feeAmount unitários (não multiplicados pela quantidade).
+ * Se detectarmos que os valores batem exatamente com a regra unitária, recalculamos.
  */
-function toReportItems(productions: Production[]): ReportItem[] {
+function toReportItems(
+  productions: Production[],
+  getRule?: (planId: string, packageType: "PACOTE_BOX" | "PACOTE_GTA", referenceDate: string) => PackagePricingRule | null
+): ReportItem[] {
   const items: ReportItem[] = [];
 
   for (const p of productions) {
@@ -155,13 +163,38 @@ function toReportItems(productions: Production[]): ReportItem[] {
 
     if (isPackage) {
       // Explodir pacote em 3 componentes - respeitando packageQty
-      const baseQty = p.packageQty ?? p.quantity ?? 1;
+      const total = Number(p.estimatedValue || ((p.quantity ?? 1) * (p.unitValue ?? 0)) || 0);
+      const baseQty = Math.max(1, Math.floor(Number(p.packageQty ?? p.quantity ?? 1)));
+      
+      // Valores atuais do registro
+      let consult = Number(p.consultAmount || 0);
+      let fee = Number(p.feeAmount || 0);
+      let matmed = Number(p.matmedAmount || 0);
+      
+      // Detectar e normalizar registros legados (unitários)
+      if (getRule && p.convenio && p.packageType && baseQty > 1) {
+        const rule = getRule(p.convenio, p.packageType as "PACOTE_BOX" | "PACOTE_GTA", p.productionDate);
+        if (rule) {
+          // Detectar "legacy": valores batem com regra unitária (tolerância 0.06)
+          const isLegacy =
+            Math.abs(consult - Number(rule.consultDefaultAmount)) < 0.06 &&
+            Math.abs(fee - Number(rule.feeDefaultAmount)) < 0.06;
+          
+          if (isLegacy) {
+            // Recalcular com multiplicação pela quantidade
+            consult = Math.round(Number(rule.consultDefaultAmount) * baseQty * 100) / 100;
+            fee = Math.round(Number(rule.feeDefaultAmount) * baseQty * 100) / 100;
+            matmed = Math.round(Math.max(0, total - consult - fee) * 100) / 100;
+          }
+        }
+      }
+      
       items.push({
         ...baseItem,
         id: `${p.id}:CONSULTA`,
         reportType: "CONSULTA",
         quantity: baseQty,
-        amount: p.consultAmount || 0,
+        amount: consult,
         description: "Consulta (Pacote)",
         isFromPackage: true,
       });
@@ -170,7 +203,7 @@ function toReportItems(productions: Production[]): ReportItem[] {
         id: `${p.id}:BOX`,
         reportType: "BOX_TAXA",
         quantity: baseQty,
-        amount: p.feeAmount || 0,
+        amount: fee,
         description: "Box/Taxa (Pacote)",
         isFromPackage: true,
       });
@@ -179,7 +212,7 @@ function toReportItems(productions: Production[]): ReportItem[] {
         id: `${p.id}:MATMED`,
         reportType: "MAT_MED",
         quantity: 0, // Mat/Med não tem quantidade
-        amount: p.matmedAmount || 0,
+        amount: matmed,
         description: "Mat/Med (Pacote)",
         isFromPackage: true,
       });
@@ -273,6 +306,7 @@ interface TimeSeriesData {
 
 export default function ProductionReport() {
   const { productions, filterProductions, uniqueConvenios } = useProductionDB();
+  const { getEffectiveRule } = usePackagePricing();
 
   // Filtros
   const [startDate, setStartDate] = useState<string>(
@@ -760,10 +794,13 @@ export default function ProductionReport() {
 
   // ═══════════════════════════════════════════════════════════════════════════
   // VISÃO POR COMPONENTES: Transformar produções em ReportItems
+  // (com normalização de pacotes legados via regra de pricing)
   // ═══════════════════════════════════════════════════════════════════════════
   const reportItems = useMemo(() => {
-    return toReportItems(filteredProductions);
-  }, [filteredProductions]);
+    return toReportItems(filteredProductions, (planId, packageType, referenceDate) =>
+      getEffectiveRule(planId, packageType, referenceDate)
+    );
+  }, [filteredProductions, getEffectiveRule]);
 
   // Calcular totalAmount para % por valor
   const totalAmount = useMemo(() => {
@@ -1075,7 +1112,7 @@ export default function ProductionReport() {
             <Badge variant="outline" className="text-[10px] px-1.5">Avulso + Pacotes</Badge>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            {/* Consultas */}
+            {/* Consultas - usando reportItems (já normalizados para legados) */}
             <Card className="shadow-sm border-border/60 bg-gradient-to-br from-blue-50/50 to-transparent dark:from-blue-950/20">
               <CardContent className="pt-5 pb-5">
                 <div className="flex items-start justify-between">
@@ -1085,38 +1122,20 @@ export default function ProductionReport() {
                     </p>
                     <p className="text-2xl font-bold text-foreground mt-2 tabular-nums">
                       {(() => {
-                        const stats = (() => {
-                          const filtered = filteredProductions;
-                          let value = 0;
-                          let quantity = 0;
-                          filtered.forEach((p) => {
-                            const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";
-                            const baseQty = isPackage ? (p.packageQty ?? p.quantity ?? 1) : 0;
-                            if (isPackage) {
-                              value += p.consultAmount || 0;
-                              quantity += baseQty;
-                            } else if (p.productionType === "CONSULTA") {
-                              value += p.estimatedValue;
-                              quantity += p.quantity;
-                            }
-                          });
-                          return { value, quantity };
-                        })();
+                        const stats = reportItems
+                          .filter(item => item.reportType === "CONSULTA")
+                          .reduce((acc, item) => ({
+                            value: acc.value + item.amount,
+                            quantity: acc.quantity + item.quantity,
+                          }), { value: 0, quantity: 0 });
                         return stats.quantity.toLocaleString("pt-BR");
                       })()}
                     </p>
                     <p className="text-sm text-muted-foreground mt-1">
                       {(() => {
-                        const filtered = filteredProductions;
-                        let value = 0;
-                        filtered.forEach((p) => {
-                          const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";
-                          if (isPackage) {
-                            value += p.consultAmount || 0;
-                          } else if (p.productionType === "CONSULTA") {
-                            value += p.estimatedValue;
-                          }
-                        });
+                        const value = reportItems
+                          .filter(item => item.reportType === "CONSULTA")
+                          .reduce((sum, item) => sum + item.amount, 0);
                         return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
                       })()}
                     </p>
@@ -1131,7 +1150,7 @@ export default function ProductionReport() {
               </CardContent>
             </Card>
 
-            {/* Box/Taxas */}
+            {/* Box/Taxas - usando reportItems (já normalizados para legados) */}
             <Card className="shadow-sm border-border/60 bg-gradient-to-br from-amber-50/50 to-transparent dark:from-amber-950/20">
               <CardContent className="pt-5 pb-5">
                 <div className="flex items-start justify-between">
@@ -1141,32 +1160,17 @@ export default function ProductionReport() {
                     </p>
                     <p className="text-2xl font-bold text-foreground mt-2 tabular-nums">
                       {(() => {
-                        const filtered = filteredProductions;
-                        let quantity = 0;
-                        filtered.forEach((p) => {
-                          const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";
-                          const baseQty = isPackage ? (p.packageQty ?? p.quantity ?? 1) : 0;
-                          if (isPackage) {
-                            quantity += baseQty;
-                          } else if (p.productionType === "BOX_PS") {
-                            quantity += p.quantity;
-                          }
-                        });
+                        const quantity = reportItems
+                          .filter(item => item.reportType === "BOX_TAXA")
+                          .reduce((sum, item) => sum + item.quantity, 0);
                         return quantity.toLocaleString("pt-BR");
                       })()}
                     </p>
                     <p className="text-sm text-muted-foreground mt-1">
                       {(() => {
-                        const filtered = filteredProductions;
-                        let value = 0;
-                        filtered.forEach((p) => {
-                          const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";
-                          if (isPackage) {
-                            value += p.feeAmount || 0;
-                          } else if (p.productionType === "BOX_PS") {
-                            value += p.estimatedValue;
-                          }
-                        });
+                        const value = reportItems
+                          .filter(item => item.reportType === "BOX_TAXA")
+                          .reduce((sum, item) => sum + item.amount, 0);
                         return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
                       })()}
                     </p>
@@ -1181,7 +1185,7 @@ export default function ProductionReport() {
               </CardContent>
             </Card>
 
-            {/* Mat/Med */}
+            {/* Mat/Med - usando reportItems (já normalizados para legados) */}
             <Card className="shadow-sm border-border/60 bg-gradient-to-br from-emerald-50/50 to-transparent dark:from-emerald-950/20">
               <CardContent className="pt-5 pb-5">
                 <div className="flex items-start justify-between">
@@ -1191,14 +1195,9 @@ export default function ProductionReport() {
                     </p>
                     <p className="text-2xl font-bold text-foreground mt-2 tabular-nums">
                       {(() => {
-                        const filtered = filteredProductions;
-                        let value = 0;
-                        filtered.forEach((p) => {
-                          const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";
-                          if (isPackage) {
-                            value += p.matmedAmount || 0;
-                          }
-                        });
+                        const value = reportItems
+                          .filter(item => item.reportType === "MAT_MED")
+                          .reduce((sum, item) => sum + item.amount, 0);
                         return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
                       })()}
                     </p>
