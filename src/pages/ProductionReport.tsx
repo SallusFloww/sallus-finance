@@ -79,23 +79,27 @@ import { UnbilledItemsPanel } from "@/components/production/UnbilledItemsPanel";
 import { ProductionReportExport, ProductionReportExportData } from "@/components/production/ProductionReportExport";
 import { formatUnitDisplayName, formatSpecialtyDisplayName, formatConvenioDisplayName, displayLabel } from "@/utils/formatters";
 
-// Labels para tipos de produção OFICIAIS
+// Labels para tipos de produção OFICIAIS (incluindo visão por componentes)
 const PRODUCTION_TYPE_LABELS: Record<string, string> = {
   CONSULTA: "Consulta",
   EXAME: "Exame",
   QUIMIOTERAPIA: "Quimioterapia",
   BOX_PS: "Box / Atendimento PS",
+  BOX_TAXA: "Box / Taxa",
+  MAT_MED: "Mat/Med",
   SESSAO_TERAPEUTICA: "Sessão Terapêutica",
   INTERNACAO: "Internação",
   OUTRO: "Outro",
 };
 
-// Ícones para tipos de produção
+// Ícones para tipos de produção (incluindo visão por componentes)
 const PRODUCTION_TYPE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   CONSULTA: Stethoscope,
   EXAME: FlaskConical,
   QUIMIOTERAPIA: Syringe,
   BOX_PS: Heart,
+  BOX_TAXA: Heart,
+  MAT_MED: Syringe,
   SESSAO_TERAPEUTICA: Activity,
   INTERNACAO: Bed,
   OUTRO: HelpCircle,
@@ -109,19 +113,107 @@ function getProductionTypeIcon(type: string) {
   return PRODUCTION_TYPE_ICONS[type] || Activity;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Interface ReportItem para visão por componentes (explode pacotes)
+// ═══════════════════════════════════════════════════════════════════════════
+interface ReportItem {
+  id: string;
+  sourceId: string;
+  reportType: string; // CONSULTA | BOX_TAXA | MAT_MED | EXAME | etc
+  unit: string;
+  specialty?: string;
+  convenio: string;
+  productionDate: string;
+  competencia: string;
+  quantity: number;
+  amount: number;
+  description: string;
+  status: string;
+  isFromPackage: boolean;
+}
+
+/**
+ * Transforma produções em ReportItems para visão por componentes.
+ * - Pacotes (PACOTE_BOX/PACOTE_GTA) são "explodidos" em 3 itens: CONSULTA, BOX_TAXA, MAT_MED
+ * - BOX_PS avulso é normalizado para BOX_TAXA
+ * - Demais tipos mantêm seu reportType original
+ */
+function toReportItems(productions: Production[]): ReportItem[] {
+  const items: ReportItem[] = [];
+
+  for (const p of productions) {
+    const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";
+    const baseItem = {
+      sourceId: p.id,
+      unit: p.unit,
+      specialty: p.specialty,
+      convenio: p.convenio || "PARTICULAR",
+      productionDate: p.productionDate,
+      competencia: p.competencia,
+      status: p.status,
+    };
+
+    if (isPackage) {
+      // Explodir pacote em 3 componentes
+      items.push({
+        ...baseItem,
+        id: `${p.id}:CONSULTA`,
+        reportType: "CONSULTA",
+        quantity: 1,
+        amount: p.consultAmount || 0,
+        description: "Consulta (Pacote)",
+        isFromPackage: true,
+      });
+      items.push({
+        ...baseItem,
+        id: `${p.id}:BOX`,
+        reportType: "BOX_TAXA",
+        quantity: 1,
+        amount: p.feeAmount || 0,
+        description: "Box/Taxa (Pacote)",
+        isFromPackage: true,
+      });
+      items.push({
+        ...baseItem,
+        id: `${p.id}:MATMED`,
+        reportType: "MAT_MED",
+        quantity: 0, // Mat/Med não tem quantidade
+        amount: p.matmedAmount || 0,
+        description: "Mat/Med (Pacote)",
+        isFromPackage: true,
+      });
+    } else {
+      // Produção normal
+      const reportType = p.productionType === "BOX_PS" ? "BOX_TAXA" : p.productionType;
+      items.push({
+        ...baseItem,
+        id: p.id,
+        reportType,
+        quantity: p.quantity,
+        amount: p.estimatedValue || (p.quantity * p.unitValue),
+        description: p.description,
+        isFromPackage: false,
+      });
+    }
+  }
+
+  return items;
+}
+
 // Formatação de nome de unidade para leitura humana (usa utilitário centralizado)
 function formatUnitName(unit: string): string {
   return formatUnitDisplayName(unit);
 }
 
 interface AggregatedRow {
-  productionType: string;
+  reportType: string;
   unit: string;
   convenio: string;
   specialty: string;
   quantity: number;
-  percentage: number;
-  productions: Production[];
+  amount: number;
+  percentage: number; // % by amount
+  items: ReportItem[];
 }
 
 interface ManagementAlert {
@@ -197,7 +289,7 @@ export default function ProductionReport() {
   const [evolutionGranularity, setEvolutionGranularity] = useState<"daily" | "weekly">("daily");
   const [evolutionBreakdown, setEvolutionBreakdown] = useState<"geral" | "unidade" | "convenio" | "especialidade">("geral");
   const [drilldownOpen, setDrilldownOpen] = useState(false);
-  const [drilldownData, setDrilldownData] = useState<{title: string; productions: Production[]}>({ title: "", productions: [] });
+  const [drilldownData, setDrilldownData] = useState<{title: string; items: ReportItem[]}>({ title: "", items: [] });
 
   // Unidades únicas das produções
   const uniqueUnits = useMemo(() => {
@@ -657,38 +749,51 @@ export default function ProductionReport() {
     return alerts;
   }, [convenioRanking, specialtyRanking, filteredProductions, variationData]);
 
-  // Tabela consolidada (CORREÇÃO: sem fallback unit→specialty)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // VISÃO POR COMPONENTES: Transformar produções em ReportItems
+  // ═══════════════════════════════════════════════════════════════════════════
+  const reportItems = useMemo(() => {
+    return toReportItems(filteredProductions);
+  }, [filteredProductions]);
+
+  // Calcular totalAmount para % por valor
+  const totalAmount = useMemo(() => {
+    return reportItems.reduce((sum, item) => sum + item.amount, 0);
+  }, [reportItems]);
+
+  // Tabela consolidada por componentes (sem PACOTE_BOX/PACOTE_GTA)
   const consolidatedTable: AggregatedRow[] = useMemo(() => {
     const aggregation: Record<string, AggregatedRow> = {};
 
-    filteredProductions.forEach((p) => {
-      // CORREÇÃO: usar especialidade real ou vazio (sem fallback para unit)
-      const specialty = (p.specialty && p.specialty.trim() !== "") ? p.specialty : "";
-      const key = `${p.productionType}|${p.unit}|${p.convenio || "PARTICULAR"}|${specialty}`;
+    reportItems.forEach((item) => {
+      const specialty = (item.specialty && item.specialty.trim() !== "") ? item.specialty : "";
+      const key = `${item.reportType}|${item.unit}|${item.convenio}|${specialty}`;
 
       if (!aggregation[key]) {
         aggregation[key] = {
-          productionType: p.productionType,
-          unit: p.unit,
-          convenio: p.convenio || "PARTICULAR",
+          reportType: item.reportType,
+          unit: item.unit,
+          convenio: item.convenio,
           specialty,
           quantity: 0,
+          amount: 0,
           percentage: 0,
-          productions: [],
+          items: [],
         };
       }
 
-      aggregation[key].quantity += p.quantity;
-      aggregation[key].productions.push(p);
+      aggregation[key].quantity += item.quantity;
+      aggregation[key].amount += item.amount;
+      aggregation[key].items.push(item);
     });
 
     return Object.values(aggregation)
       .map((row) => ({
         ...row,
-        percentage: totalQuantity > 0 ? (row.quantity / totalQuantity) * 100 : 0,
+        percentage: totalAmount > 0 ? (row.amount / totalAmount) * 100 : 0,
       }))
-      .sort((a, b) => b.quantity - a.quantity);
-  }, [filteredProductions, totalQuantity]);
+      .sort((a, b) => b.amount - a.amount);
+  }, [reportItems, totalAmount]);
 
   // Tipos únicos de produção
   const uniqueProductionTypes = useMemo(() => {
@@ -707,8 +812,8 @@ export default function ProductionReport() {
   }, [startDate, periodDays]);
 
   // Handlers
-  const handleOpenDrilldown = useCallback((title: string, productions: Production[]) => {
-    setDrilldownData({ title, productions });
+  const handleOpenDrilldown = useCallback((title: string, items: ReportItem[]) => {
+    setDrilldownData({ title, items });
     setDrilldownOpen(true);
   }, []);
 
@@ -717,23 +822,27 @@ export default function ProductionReport() {
   }, [selectedSpecialty]);
 
   const handleExportCSV = useCallback(() => {
-    const headers = ["Tipo", "Unidade", "Especialidade", "Convênio", "Quantidade", "% do Total"];
-    const rows = consolidatedTable.map(row => [
-      getProductionTypeLabel(row.productionType),
-      formatUnitName(row.unit),
-      row.specialty ? formatSpecialtyDisplayName(row.specialty) : "Sem especialidade",
-      formatConvenioDisplayName(row.convenio),
-      row.quantity,
-      row.percentage.toFixed(2)
-    ]);
+    const headers = ["Tipo", "Unidade", "Especialidade", "Convênio", "Qtd", "Valor (R$)", "% Valor", "Origem"];
+    const rows = consolidatedTable.flatMap(row => 
+      row.items.map(item => [
+        getProductionTypeLabel(item.reportType),
+        formatUnitName(item.unit),
+        item.specialty ? formatSpecialtyDisplayName(item.specialty) : "Sem especialidade",
+        formatConvenioDisplayName(item.convenio),
+        item.reportType === "MAT_MED" ? "—" : item.quantity,
+        item.amount.toFixed(2),
+        totalAmount > 0 ? ((item.amount / totalAmount) * 100).toFixed(2) : "0",
+        item.isFromPackage ? "PACOTE" : "AVULSO",
+      ])
+    );
     
     const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `relatorio-producao-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    link.download = `relatorio-producao-componentes-${format(new Date(), "yyyy-MM-dd")}.csv`;
     link.click();
-  }, [consolidatedTable]);
+  }, [consolidatedTable, totalAmount]);
 
   // Check if specialty field exists (real specialties, not unit fallback)
   const hasRealSpecialty = useMemo(() => {
@@ -790,7 +899,7 @@ export default function ProductionReport() {
     
     // Consolidated table
     consolidatedTable: consolidatedTable.map(c => ({
-      productionType: c.productionType,
+      productionType: c.reportType,
       unit: c.unit,
       specialty: c.specialty,
       convenio: c.convenio,
@@ -1362,8 +1471,8 @@ export default function ProductionReport() {
                       size="sm" 
                       className="text-xs h-8"
                       onClick={() => {
-                        const unbilledProductions = filteredProductions.filter(p => p.status === "PRODUZIDO");
-                        handleOpenDrilldown("Itens pendentes de faturamento", unbilledProductions);
+                        const unbilledItems = toReportItems(filteredProductions.filter(p => p.status === "PRODUZIDO"));
+                        handleOpenDrilldown("Itens pendentes de faturamento", unbilledItems);
                       }}
                     >
                       <Eye className="h-3 w-3 mr-1.5" />
@@ -1873,10 +1982,10 @@ export default function ProductionReport() {
                 <div>
                   <CardTitle className="text-sm font-semibold flex items-center gap-2">
                     <FileText className="h-4 w-4" />
-                    Tabela Consolidada
+                    Tabela Consolidada por Componentes
                   </CardTitle>
                   <CardDescription className="text-xs">
-                    Visão analítica por tipo, unidade, especialidade e convênio — somente leitura
+                    Visão unificada: pacotes explodidos em Consulta + Box + Mat/Med, somados com avulsos
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1906,37 +2015,41 @@ export default function ProductionReport() {
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/50">
-                        <TableHead className="font-semibold">Tipo</TableHead>
+                        <TableHead className="font-semibold">Componente</TableHead>
                         <TableHead className="font-semibold">Unidade</TableHead>
                         <TableHead className="font-semibold">
                           Especialidade {!hasRealSpecialty && <span className="text-muted-foreground text-[10px]">(proxy)</span>}
                         </TableHead>
                         <TableHead className="font-semibold">Convênio</TableHead>
                         <TableHead className="text-right font-semibold">Qtd</TableHead>
+                        <TableHead className="text-right font-semibold">Valor</TableHead>
                         <TableHead className="text-right font-semibold">%</TableHead>
                         <TableHead className="w-[60px]"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {consolidatedTable.slice(0, 20).map((row, idx) => {
-                        const Icon = getProductionTypeIcon(row.productionType);
+                        const Icon = getProductionTypeIcon(row.reportType);
                         return (
                           <TableRow key={idx} className="hover:bg-muted/30">
                             <TableCell>
                               <div className="flex items-center gap-2">
                                 <Icon className="h-4 w-4 text-muted-foreground" />
-                                <span className="text-xs">{getProductionTypeLabel(row.productionType)}</span>
+                                <span className="text-xs">{getProductionTypeLabel(row.reportType)}</span>
                               </div>
                             </TableCell>
                             <TableCell className="text-xs">{formatUnitName(row.unit)}</TableCell>
-                            <TableCell className="text-xs">{formatUnitName(row.specialty)}</TableCell>
+                            <TableCell className="text-xs">{row.specialty ? formatSpecialtyDisplayName(row.specialty) : "—"}</TableCell>
                             <TableCell>
                               <Badge variant={row.convenio === "PARTICULAR" ? "secondary" : "outline"} className="text-xs">
-                                {row.convenio}
+                                {formatConvenioDisplayName(row.convenio)}
                               </Badge>
                             </TableCell>
                             <TableCell className="text-right font-medium text-xs">
-                              {row.quantity.toLocaleString("pt-BR")}
+                              {row.reportType === "MAT_MED" ? "—" : row.quantity.toLocaleString("pt-BR")}
+                            </TableCell>
+                            <TableCell className="text-right text-xs tabular-nums">
+                              {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(row.amount)}
                             </TableCell>
                             <TableCell className="text-right text-xs">
                               <span className="text-muted-foreground">{row.percentage.toFixed(1)}%</span>
@@ -1947,8 +2060,8 @@ export default function ProductionReport() {
                                 size="sm"
                                 className="h-7 w-7 p-0"
                                 onClick={() => handleOpenDrilldown(
-                                  `${getProductionTypeLabel(row.productionType)} - ${formatUnitName(row.unit)} - ${row.convenio}`,
-                                  row.productions
+                                  `${getProductionTypeLabel(row.reportType)} - ${formatUnitName(row.unit)} - ${row.convenio}`,
+                                  row.items
                                 )}
                               >
                                 <Eye className="h-3.5 w-3.5" />
@@ -1961,8 +2074,11 @@ export default function ProductionReport() {
                     <TableFooter>
                       <TableRow className="bg-muted/70 font-semibold">
                         <TableCell colSpan={4}>Total Geral</TableCell>
-                        <TableCell className="text-right text-lg">
-                          {totalQuantity.toLocaleString("pt-BR")}
+                        <TableCell className="text-right">
+                          {reportItems.filter(i => i.reportType !== "MAT_MED").reduce((s, i) => s + i.quantity, 0).toLocaleString("pt-BR")}
+                        </TableCell>
+                        <TableCell className="text-right text-lg font-semibold tabular-nums">
+                          {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(totalAmount)}
                         </TableCell>
                         <TableCell className="text-right">100%</TableCell>
                         <TableCell></TableCell>
@@ -2187,29 +2303,42 @@ export default function ProductionReport() {
           <SheetHeader>
             <SheetTitle className="text-base">{drilldownData.title}</SheetTitle>
             <SheetDescription className="text-xs">
-              Detalhamento dos registros que compõem esta linha ({drilldownData.productions.length} registros)
+              Detalhamento dos registros que compõem esta linha ({drilldownData.items.length} itens)
             </SheetDescription>
           </SheetHeader>
           <ScrollArea className="h-[calc(100vh-140px)] mt-4">
             <div className="space-y-2 pr-4">
-              {drilldownData.productions.map((prod, idx) => (
-                <div key={prod.id} className="p-3 border rounded-lg bg-muted/20">
+              {drilldownData.items.map((item, idx) => (
+                <div key={item.id} className="p-3 border rounded-lg bg-muted/20">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{prod.description}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium truncate">{item.description}</p>
+                        {item.isFromPackage && (
+                          <Badge variant="outline" className="text-[9px] h-4 px-1.5 bg-primary/5 border-primary/20">
+                            Pacote
+                          </Badge>
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {format(parseISO(prod.productionDate), "dd/MM/yyyy", { locale: ptBR })}
-                        {prod.procedureCode && ` • Cód: ${prod.procedureCode}`}
+                        {format(parseISO(item.productionDate), "dd/MM/yyyy", { locale: ptBR })}
+                        {" • "}
+                        {getProductionTypeLabel(item.reportType)}
                       </p>
                     </div>
-                    <Badge variant="secondary" className="text-xs flex-shrink-0">
-                      {prod.quantity}x
-                    </Badge>
+                    <div className="flex flex-col items-end gap-1">
+                      <Badge variant="secondary" className="text-xs flex-shrink-0">
+                        {item.reportType === "MAT_MED" ? "—" : `${item.quantity}x`}
+                      </Badge>
+                      <span className="text-xs font-medium tabular-nums">
+                        {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(item.amount)}
+                      </span>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 mt-2">
-                    <Badge variant="outline" className="text-[10px]">{prod.status}</Badge>
-                    {prod.convenio && (
-                      <Badge variant="outline" className="text-[10px]">{prod.convenio}</Badge>
+                    <Badge variant="outline" className="text-[10px]">{item.status}</Badge>
+                    {item.convenio && (
+                      <Badge variant="outline" className="text-[10px]">{formatConvenioDisplayName(item.convenio)}</Badge>
                     )}
                   </div>
                 </div>
