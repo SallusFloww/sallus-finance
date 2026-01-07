@@ -488,6 +488,8 @@ export interface Production {
   payerType: "CONVENIO" | "PARTICULAR";
   // Convênio específico (se payerType = CONVENIO)
   convenio?: string;
+  // AUDIT_FIX: Forma de pagamento (se payerType = PARTICULAR)
+  paymentMethod?: string;
   // Tipo de produção
   productionType: ProductionType;
   // Procedimento/Exame realizado

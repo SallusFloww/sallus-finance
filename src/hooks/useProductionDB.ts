@@ -33,6 +33,7 @@ interface DBProduction {
   specialty: string | null;
   payer_type: string;
   convenio: string | null;
+  payment_method: string | null; // AUDIT_FIX: Forma de pagamento para PARTICULAR
   production_type: string;
   description: string;
   procedure_code: string | null;
@@ -74,6 +75,7 @@ function toProduction(db: DBProduction): Production {
     specialty: db.specialty || undefined,
     payerType: db.payer_type as "CONVENIO" | "PARTICULAR",
     convenio: db.convenio || undefined,
+    paymentMethod: db.payment_method || undefined, // AUDIT_FIX
     productionType: db.production_type,
     description: db.description,
     procedureCode: db.procedure_code || undefined,
@@ -277,6 +279,7 @@ export function useProductionDB() {
       specialty: data.specialty,
       payerType: data.payerType,
       convenio: data.convenio,
+      paymentMethod: data.paymentMethod, // AUDIT_FIX
       productionType: data.productionType,
       description: data.description,
       procedureCode: data.procedureCode,
@@ -312,6 +315,7 @@ export function useProductionDB() {
         specialty: data.specialty || null,
         payer_type: data.payerType,
         convenio: data.convenio || null,
+        payment_method: data.paymentMethod || null, // AUDIT_FIX
         production_type: data.productionType,
         description: data.description,
         procedure_code: data.procedureCode || null,
