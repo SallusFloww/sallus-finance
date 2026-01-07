@@ -171,16 +171,19 @@ function toReportItems(
       let fee = Number(p.feeAmount || 0);
       let matmed = Number(p.matmedAmount || 0);
       
-      // Detectar e normalizar registros legados (unitários)
-      if (getRule && p.convenio && p.packageType && baseQty > 1) {
+      // AUDIT_FIX: Normalizar registros legados - "unitário" OU "ausente/zerado"
+      if (getRule && p.convenio && p.packageType) {
         const rule = getRule(p.convenio, p.packageType as "PACOTE_BOX" | "PACOTE_GTA", p.productionDate);
         if (rule) {
-          // Detectar "legacy": valores batem com regra unitária (tolerância 0.06)
-          const isLegacy =
+          // Caso 1: Legacy "unitário" - valores batem com regra unitária mas qty > 1
+          const isLegacyUnitario = baseQty > 1 &&
             Math.abs(consult - Number(rule.consultDefaultAmount)) < 0.06 &&
             Math.abs(fee - Number(rule.feeDefaultAmount)) < 0.06;
           
-          if (isLegacy) {
+          // Caso 2: Legacy "missing" - componentes zerados/ausentes mas total existe
+          const isLegacyMissing = (consult === 0 && fee === 0 && total > 0);
+          
+          if (isLegacyUnitario || isLegacyMissing) {
             // Recalcular com multiplicação pela quantidade
             consult = Math.round(Number(rule.consultDefaultAmount) * baseQty * 100) / 100;
             fee = Math.round(Number(rule.feeDefaultAmount) * baseQty * 100) / 100;
@@ -266,7 +269,9 @@ interface UnitRanking {
   variation: number | null;
 }
 
+// AUDIT_FIX: Added 'key' field to avoid fragile reverse-lookup by name
 interface SpecialtyRanking {
+  key: string; // original specialty value for filtering
   name: string;
   quantity: number;
   percentage: number;
@@ -514,6 +519,7 @@ export default function ProductionReport() {
       bySpecialty[spec] = (bySpecialty[spec] || 0) + p.quantity;
     });
 
+    // AUDIT_FIX: Added 'key' field to each ranking entry for direct filtering
     return Object.entries(bySpecialty)
       .sort((a, b) => {
         // "Sem especialidade" sempre por último
@@ -527,12 +533,12 @@ export default function ProductionReport() {
         if (percentage > 70) concentrationLevel = "alta";
         else if (percentage < 10) concentrationLevel = "baixa";
         
-        // CORREÇÃO: usar formatSpecialtyDisplayName para labels bonitos
         const displayName = specialty === "__SEM_ESPECIALIDADE__" 
           ? "Sem especialidade"
           : formatSpecialtyDisplayName(specialty);
         
         return {
+          key: specialty, // AUDIT_FIX: store original value for filtering
           name: displayName,
           quantity: qty,
           percentage,
@@ -541,7 +547,12 @@ export default function ProductionReport() {
       });
   }, [filteredProductions, totalQuantity]);
 
-  // Breakdown por tipo assistencial
+  // AUDIT_FIX: Moved before managementAlerts to avoid forward reference
+  // Check if specialty field exists (real specialties, not unit fallback)
+  const hasRealSpecialty = useMemo(() => {
+    return productions.some(p => p.specialty && p.specialty.trim() !== "");
+  }, [productions]);
+
   const typeBreakdown: TypeBreakdown[] = useMemo(() => {
     return strategicKPIs.mixAssistencial;
   }, [strategicKPIs.mixAssistencial]);
@@ -742,9 +753,14 @@ export default function ProductionReport() {
       });
     }
 
-    // Especialidade concentrada (>70%)
+    // AUDIT_FIX: Especialidade concentrada (>70%) - não disparar se for "Sem especialidade" ou sem especialidades reais
     const topSpecialty = specialtyRanking[0];
-    if (topSpecialty && topSpecialty.percentage > 70) {
+    const isRealSpecialtyConcentration = topSpecialty && 
+      topSpecialty.percentage > 70 && 
+      hasRealSpecialty && 
+      topSpecialty.key !== "__SEM_ESPECIALIDADE__";
+    
+    if (isRealSpecialtyConcentration) {
       alerts.push({
         type: "specialty",
         severity: "warning",
@@ -790,7 +806,7 @@ export default function ProductionReport() {
     }
 
     return alerts;
-  }, [convenioRanking, specialtyRanking, filteredProductions, variationData]);
+  }, [convenioRanking, specialtyRanking, filteredProductions, variationData, hasRealSpecialty]);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // VISÃO POR COMPONENTES: Transformar produções em ReportItems
@@ -867,33 +883,28 @@ export default function ProductionReport() {
     setSelectedSpecialty(specialty === selectedSpecialty ? "all" : specialty);
   }, [selectedSpecialty]);
 
+  // AUDIT_FIX: CSV now exports consolidated rows (not flatMap of items)
   const handleExportCSV = useCallback(() => {
-    const headers = ["Tipo", "Unidade", "Especialidade", "Convênio", "Qtd", "Valor (R$)", "% Valor", "Origem"];
-    const rows = consolidatedTable.flatMap(row => 
-      row.items.map(item => [
-        getProductionTypeLabel(item.reportType),
-        formatUnitName(item.unit),
-        item.specialty ? formatSpecialtyDisplayName(item.specialty) : "Sem especialidade",
-        formatConvenioDisplayName(item.convenio),
-        item.reportType === "MAT_MED" ? "—" : item.quantity,
-        item.amount.toFixed(2),
-        totalAmount > 0 ? ((item.amount / totalAmount) * 100).toFixed(2) : "0",
-        item.isFromPackage ? "PACOTE" : "AVULSO",
-      ])
-    );
+    const headers = ["Componente", "Unidade", "Especialidade", "Convênio", "Qtd", "Valor (R$)", "% Valor"];
+    const rows = consolidatedTable.map(row => [
+      getProductionTypeLabel(row.reportType),
+      formatUnitName(row.unit),
+      row.specialty ? formatSpecialtyDisplayName(row.specialty) : "Sem especialidade",
+      formatConvenioDisplayName(row.convenio),
+      row.reportType === "MAT_MED" ? "—" : row.quantity.toString(),
+      row.amount.toFixed(2),
+      row.percentage.toFixed(2),
+    ]);
     
     const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `relatorio-producao-componentes-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    link.download = `relatorio-producao-consolidado-${format(new Date(), "yyyy-MM-dd")}.csv`;
     link.click();
-  }, [consolidatedTable, totalAmount]);
+  }, [consolidatedTable]);
 
-  // Check if specialty field exists (real specialties, not unit fallback)
-  const hasRealSpecialty = useMemo(() => {
-    return productions.some(p => p.specialty && p.specialty.trim() !== "");
-  }, [productions]);
+  // NOTE: hasRealSpecialty moved above managementAlerts (line ~548)
 
   // Top procedure for executive summary
   const topProcedure = topProcedures[0];
@@ -1744,12 +1755,10 @@ export default function ProductionReport() {
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
                   <Award className="h-4 w-4 text-purple-600" />
                   Produção por Especialidade
-                  {!hasRealSpecialty && (
-                    <Badge variant="outline" className="text-[10px] ml-1">proxy</Badge>
-                  )}
                 </CardTitle>
+                {/* AUDIT_FIX: Removed proxy badge/text - using real specialties only */}
                 <CardDescription className="text-xs">
-                  Clique para filtrar • {hasRealSpecialty ? "Campo especialidade" : "Usando unidade como proxy"}
+                  Clique para filtrar{hasRealSpecialty ? "" : " • Sem especialidades registradas"}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
@@ -1757,20 +1766,16 @@ export default function ProductionReport() {
                   <p className="text-sm text-muted-foreground text-center py-4">Sem dados</p>
                 ) : (
                   specialtyRanking.map((spec, idx) => {
-                    // Find the original specialty value to use for filtering
-                    const originalSpecValue = spec.name === "Sem especialidade" 
-                      ? "__SEM_ESPECIALIDADE__"
-                      : uniqueSpecialties.find(s => s !== "__SEM_ESPECIALIDADE__" && formatSpecialtyDisplayName(s) === spec.name) || "";
-                    
+                    // AUDIT_FIX: Use spec.key directly instead of fragile reverse-lookup
                     return (
                       <div 
-                        key={spec.name} 
+                        key={spec.key} 
                         className={`flex items-center justify-between py-1.5 px-2 rounded-md cursor-pointer transition-colors ${
-                          selectedSpecialty === originalSpecValue
+                          selectedSpecialty === spec.key
                             ? "bg-primary/10 border border-primary/20"
                             : "hover:bg-muted/50"
                         }`}
-                        onClick={() => handleSpecialtyFilter(originalSpecValue)}
+                        onClick={() => handleSpecialtyFilter(spec.key)}
                       >
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-medium text-muted-foreground w-5">{idx + 1}.</span>
@@ -2027,9 +2032,8 @@ export default function ProductionReport() {
                       <TableRow className="bg-muted/50">
                         <TableHead className="font-semibold">Componente</TableHead>
                         <TableHead className="font-semibold">Unidade</TableHead>
-                        <TableHead className="font-semibold">
-                          Especialidade {!hasRealSpecialty && <span className="text-muted-foreground text-[10px]">(proxy)</span>}
-                        </TableHead>
+                        {/* AUDIT_FIX: Removed proxy text */}
+                        <TableHead className="font-semibold">Especialidade</TableHead>
                         <TableHead className="font-semibold">Convênio</TableHead>
                         <TableHead className="text-right font-semibold">Qtd</TableHead>
                         <TableHead className="text-right font-semibold">Valor</TableHead>
