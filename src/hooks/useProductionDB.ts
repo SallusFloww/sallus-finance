@@ -227,6 +227,11 @@ export function useProductionDB() {
       ),
     ];
 
+    // Determinar se é pacote
+    const isPackage = data.isPackage === true || 
+      data.productionType === "PACOTE_BOX" || 
+      data.productionType === "PACOTE_GTA";
+    
     // Create optimistic production for immediate UI update
     const optimisticId = crypto.randomUUID();
     const now = new Date().toISOString();
@@ -251,6 +256,13 @@ export function useProductionDB() {
       updatedAt: now,
       history: history,
       editLogs: [],
+      // Campos de pacote
+      isPackage: isPackage,
+      packageType: isPackage ? (data.packageType || data.productionType as "PACOTE_BOX" | "PACOTE_GTA") : undefined,
+      consultAmount: isPackage ? (data.consultAmount || 0) : 0,
+      feeAmount: isPackage ? (data.feeAmount || 0) : 0,
+      matmedAmount: isPackage ? (data.matmedAmount || 0) : 0,
+      packageQty: isPackage ? (data.packageQty || data.quantity) : 1,
     };
 
     // Optimistic update - add to state immediately
@@ -275,6 +287,13 @@ export function useProductionDB() {
         status: "PRODUZIDO",
         created_by: profile.id,
         history: JSON.parse(JSON.stringify(history)),
+        // Campos de pacote convênio
+        is_package: isPackage,
+        package_type: isPackage ? (data.packageType || data.productionType) : null,
+        consult_amount: isPackage ? (data.consultAmount || 0) : 0,
+        fee_amount: isPackage ? (data.feeAmount || 0) : 0,
+        matmed_amount: isPackage ? (data.matmedAmount || 0) : 0,
+        package_qty: isPackage ? (data.packageQty || data.quantity) : 1,
       }])
       .select()
       .single();
