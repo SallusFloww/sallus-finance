@@ -521,6 +521,20 @@ export interface Production {
   // Valor glosado (quando glosado)
   glossedValue?: number;
   
+  // ============= CAMPOS DE PACOTE CONVÊNIO =============
+  // Indica se é um pacote (PACOTE_BOX ou PACOTE_GTA)
+  isPackage?: boolean;
+  // Tipo de pacote (se isPackage = true)
+  packageType?: "PACOTE_BOX" | "PACOTE_GTA";
+  // Valor da consulta do pacote
+  consultAmount?: number;
+  // Valor da taxa/box do pacote
+  feeAmount?: number;
+  // Valor de mat/med do pacote
+  matmedAmount?: number;
+  // Quantidade do pacote (geralmente 1)
+  packageQty?: number;
+  
   // ============= AUDITORIA =============
   notes?: string;
   createdBy: string;
@@ -567,6 +581,14 @@ export interface ProductionStats {
   // Por pagador (por quantidade)
   byPayerType: { convenio: number; particular: number };
   byPayerTypeQuantity: { convenio: number; particular: number };
+  
+  // ============= CONSOLIDAÇÃO AVULSOS + PACOTES =============
+  // Consultas: avulsos CONSULTA + pacotes.consult_amount
+  consolidatedConsultas: { value: number; quantity: number };
+  // Box/Taxas: avulsos BOX_PS + pacotes.fee_amount
+  consolidatedBoxTaxas: { value: number; quantity: number };
+  // Mat/Med: matmed_amount dos pacotes (avulsos não têm mat/med separado)
+  consolidatedMatMed: { value: number };
 }
 
 // ============= CONFIGURAÇÕES DO SISTEMA =============
