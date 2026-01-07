@@ -913,6 +913,7 @@ export function ProductionForm({
                   planId={formData.convenio}
                   referenceDate={formData.productionDate}
                   totalValue={parseFloat(formData.totalValue) || 0}
+                  packageQty={parseInt(formData.quantity, 10) || 1}
                   onChange={(components) => {
                     setFormData(prev => ({
                       ...prev,

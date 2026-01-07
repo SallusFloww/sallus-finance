@@ -12,6 +12,7 @@ interface PackageFieldsProps {
   planId: string;
   referenceDate: string;
   totalValue: number;
+  packageQty?: number; // Quantidade de pacotes (para exibir Qtd dinâmica)
   onChange: (components: {
     totalAmount: number;
     consultAmount: number;
@@ -30,9 +31,12 @@ export function PackageFields({
   planId,
   referenceDate,
   totalValue,
+  packageQty = 1,
   onChange,
   disabled = false,
 }: PackageFieldsProps) {
+  // Quantidade efetiva do pacote para exibição
+  const displayQty = packageQty ?? 1;
   const { calculateComponents, validateTotal, getEffectiveRule } = usePackagePricing();
 
   const [isManualOverride, setIsManualOverride] = useState(false);
@@ -220,7 +224,7 @@ export function PackageFields({
               {formatCurrency(displayComponents.consultAmount)}
             </div>
           )}
-          <p className="text-xs text-muted-foreground">Qtd: 1</p>
+          <p className="text-xs text-muted-foreground">Qtd: {displayQty}</p>
         </div>
 
         {/* Taxa/Box do Pacote */}
@@ -242,7 +246,7 @@ export function PackageFields({
               {formatCurrency(displayComponents.feeAmount)}
             </div>
           )}
-          <p className="text-xs text-muted-foreground">Qtd: 1</p>
+          <p className="text-xs text-muted-foreground">Qtd: {displayQty}</p>
         </div>
 
         {/* Mat/Med - Somente valor, sem quantidade */}
