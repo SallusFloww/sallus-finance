@@ -625,6 +625,7 @@ export type Database = {
           package_qty: number
           package_type: string | null
           payer_type: string
+          payment_method: string | null
           procedure_code: string | null
           production_date: string
           production_type: string
@@ -658,6 +659,7 @@ export type Database = {
           package_qty?: number
           package_type?: string | null
           payer_type: string
+          payment_method?: string | null
           procedure_code?: string | null
           production_date: string
           production_type: string
@@ -691,6 +693,7 @@ export type Database = {
           package_qty?: number
           package_type?: string | null
           payer_type?: string
+          payment_method?: string | null
           procedure_code?: string | null
           production_date?: string
           production_type?: string

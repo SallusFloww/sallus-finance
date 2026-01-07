@@ -90,6 +90,8 @@ export interface ProductionFormData {
   specialty?: string;
   payerType: "CONVENIO" | "PARTICULAR";
   convenio?: string;
+  // AUDIT_FIX: Campo forma de pagamento para PARTICULAR
+  paymentMethod?: string;
   productionType: ProductionType;
   description: string;
   procedureCode?: string;
@@ -366,6 +368,8 @@ export function ProductionForm({
       specialty: formData.specialty || undefined,
       payerType: formData.payerType,
       convenio: formData.payerType === "CONVENIO" ? formData.convenio : undefined,
+      // AUDIT_FIX: Persistir paymentMethod para produções PARTICULAR
+      paymentMethod: formData.payerType === "PARTICULAR" ? formData.paymentMethod : undefined,
       productionType: formData.productionType,
       description,
       procedureCode: formData.procedureCode || undefined,
