@@ -84,8 +84,8 @@ export function PackageFields({
         consultAmount: consult,
         feeAmount: fee,
         matmedAmount: matmed,
-        consultQty: 1,
-        feeQty: 1,
+        consultQty: displayQty,
+        feeQty: displayQty,
         matmedQty: 0, // Sempre 0 - não controlamos quantidade de Mat/Med
         isManualOverride: true,
       });
@@ -95,8 +95,8 @@ export function PackageFields({
         consultAmount: autoComponents.consultAmount,
         feeAmount: autoComponents.feeAmount,
         matmedAmount: autoComponents.matmedAmount,
-        consultQty: 1,
-        feeQty: 1,
+        consultQty: displayQty,
+        feeQty: displayQty,
         matmedQty: 0, // Sempre 0 - não controlamos quantidade de Mat/Med
         isManualOverride: false,
       });
@@ -108,6 +108,7 @@ export function PackageFields({
     manualMatmed,
     autoComponents,
     onChange,
+    displayQty,
   ]);
 
   // Quando muda qualquer valor, notificar o parent

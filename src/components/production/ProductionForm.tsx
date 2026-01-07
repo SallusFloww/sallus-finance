@@ -191,13 +191,14 @@ export function ProductionForm({
 
   // Reset campos dinâmicos quando muda o tipo de produção
   useEffect(() => {
-    const isPackage = PACKAGE_PRODUCTION_TYPES.includes(formData.productionType);
+    const newType = formData.productionType;
+    const isPackage = PACKAGE_PRODUCTION_TYPES.includes(newType);
     setFormData(prev => ({
       ...prev,
       examType: "",
       therapySessionType: "",
       procedureCode: "",
-      description: getDefaultDescription(prev.productionType),
+      description: getDefaultDescription(newType),
       // Se for pacote, forçar payerType para CONVENIO
       payerType: isPackage ? "CONVENIO" : prev.payerType,
       paymentMethod: isPackage ? "" : prev.paymentMethod,
