@@ -1492,7 +1492,11 @@ export default function ProductionReport() {
                       size="sm" 
                       className="text-xs h-8"
                       onClick={() => {
-                        const unbilledItems = toReportItems(filteredProductions.filter(p => p.status === "PRODUZIDO"));
+                        // AUDIT_FIX: Passar getEffectiveRule para normalizar pacotes legados
+                        const unbilledItems = toReportItems(
+                          filteredProductions.filter(p => p.status === "PRODUZIDO"),
+                          (planId, packageType, referenceDate) => getEffectiveRule(planId, packageType, referenceDate)
+                        );
                         handleOpenDrilldown("Itens pendentes de faturamento", unbilledItems);
                       }}
                     >
