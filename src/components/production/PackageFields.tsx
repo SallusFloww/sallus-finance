@@ -50,7 +50,7 @@ export function PackageFields({
     return getEffectiveRule(planId, packageType, referenceDate);
   }, [planId, packageType, referenceDate, getEffectiveRule]);
 
-  // Componentes calculados automaticamente
+  // Componentes calculados automaticamente (passando displayQty para multiplicar)
   const autoComponents = useMemo((): PackageComponents => {
     if (!planId || !referenceDate || totalValue <= 0) {
       return {
@@ -60,16 +60,16 @@ export function PackageFields({
         totalAmount: 0,
       };
     }
-    return calculateComponents(totalValue, planId, packageType, referenceDate);
-  }, [totalValue, planId, packageType, referenceDate, calculateComponents]);
+    return calculateComponents(totalValue, planId, packageType, referenceDate, displayQty);
+  }, [totalValue, planId, packageType, referenceDate, displayQty, calculateComponents]);
 
-  // Validação
+  // Validação (passando displayQty para considerar quantidade)
   const validation = useMemo(() => {
     if (!planId || !referenceDate || totalValue <= 0) {
       return { valid: true };
     }
-    return validateTotal(totalValue, planId, packageType, referenceDate);
-  }, [totalValue, planId, packageType, referenceDate, validateTotal]);
+    return validateTotal(totalValue, planId, packageType, referenceDate, displayQty);
+  }, [totalValue, planId, packageType, referenceDate, displayQty, validateTotal]);
 
   // Callback estável para notificar parent
   const notifyParent = useCallback(() => {
@@ -170,10 +170,17 @@ export function PackageFields({
 
       {/* Regra vigente badge */}
       {effectiveRule && (
-        <Badge variant="outline" className="text-xs">
-          Regra vigente: {effectiveRule.planId} desde{" "}
-          {new Date(effectiveRule.effectiveFrom).toLocaleDateString("pt-BR")}
-        </Badge>
+        <div className="flex flex-col gap-1">
+          <Badge variant="outline" className="text-xs w-fit">
+            Regra vigente: {effectiveRule.planId} desde{" "}
+            {new Date(effectiveRule.effectiveFrom).toLocaleDateString("pt-BR")}
+          </Badge>
+          {displayQty > 1 && (
+            <p className="text-xs text-muted-foreground">
+              Valores abaixo já estão multiplicados pela Qtd ({displayQty}).
+            </p>
+          )}
+        </div>
       )}
 
       {/* Aviso se não tem valor total */}

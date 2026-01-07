@@ -115,14 +115,17 @@ export function usePackagePricing() {
     [rules]
   );
 
-  // Calculate package components from total
+  // Calculate package components from total (VALORES TOTALIZADOS PELA QUANTIDADE)
   const calculateComponents = useCallback(
     (
       totalAmount: number,
       planId: string,
       packageType: PackageType,
-      referenceDate: string
+      referenceDate: string,
+      packageQty: number = 1
     ): PackageComponents => {
+      const qty = Math.max(1, Math.floor(Number(packageQty) || 1));
+      const safeTotal = Number(totalAmount) || 0;
       const rule = getEffectiveRule(planId, packageType, referenceDate);
 
       if (!rule) {
@@ -130,19 +133,18 @@ export function usePackagePricing() {
         return {
           consultAmount: 0,
           feeAmount: 0,
-          matmedAmount: totalAmount,
-          totalAmount,
+          matmedAmount: Math.round(safeTotal * 100) / 100,
+          totalAmount: Math.round(safeTotal * 100) / 100,
         };
       }
 
-      const consultAmount = rule.consultDefaultAmount;
-      const feeAmount = rule.feeDefaultAmount;
-      let matmedAmount = totalAmount - consultAmount - feeAmount;
-
-      // Arredondar para 2 casas decimais
+      // TOTALIZAR pela quantidade
+      const consultAmount = Math.round(rule.consultDefaultAmount * qty * 100) / 100;
+      const feeAmount = Math.round(rule.feeDefaultAmount * qty * 100) / 100;
+      let matmedAmount = safeTotal - consultAmount - feeAmount;
       matmedAmount = Math.round(matmedAmount * 100) / 100;
 
-      // Se Mat/Med ficou negativo, há problema
+      // Se Mat/Med ficou negativo, há problema — trava no zero
       if (matmedAmount < 0) {
         matmedAmount = 0;
       }
@@ -151,32 +153,36 @@ export function usePackagePricing() {
         consultAmount,
         feeAmount,
         matmedAmount,
-        totalAmount,
+        totalAmount: Math.round(safeTotal * 100) / 100,
       };
     },
     [getEffectiveRule]
   );
 
-  // Validate if total is sufficient
+  // Validate if total is sufficient (considera quantidade)
   const validateTotal = useCallback(
     (
       totalAmount: number,
       planId: string,
       packageType: PackageType,
-      referenceDate: string
+      referenceDate: string,
+      packageQty: number = 1
     ): { valid: boolean; message?: string; minRequired?: number } => {
+      const qty = Math.max(1, Math.floor(Number(packageQty) || 1));
+      const safeTotal = Number(totalAmount) || 0;
       const rule = getEffectiveRule(planId, packageType, referenceDate);
 
       if (!rule) {
         return { valid: true }; // Sem regra, qualquer valor é válido
       }
 
-      const minRequired = rule.consultDefaultAmount + rule.feeDefaultAmount;
+      const minRequired =
+        Math.round((rule.consultDefaultAmount + rule.feeDefaultAmount) * qty * 100) / 100;
 
-      if (totalAmount < minRequired) {
+      if (safeTotal < minRequired) {
         return {
           valid: false,
-          message: `Total menor que Consulta + Taxa do pacote. Mínimo: R$ ${minRequired.toFixed(2)}`,
+          message: `Total menor que (Consulta + Taxa) × Qtd (${qty}). Mínimo: R$ ${minRequired.toFixed(2)}`,
           minRequired,
         };
       }

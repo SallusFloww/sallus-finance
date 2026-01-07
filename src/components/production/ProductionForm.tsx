@@ -330,7 +330,8 @@ export function ProductionForm({
         totalValue,
         formData.convenio,
         formData.productionType as "PACOTE_BOX" | "PACOTE_GTA",
-        formData.productionDate
+        formData.productionDate,
+        quantity
       );
       if (!validation.valid) {
         toast.error(validation.message);
