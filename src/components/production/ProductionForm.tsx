@@ -106,6 +106,9 @@ export interface ProductionFormData {
   consultAmount?: number;
   feeAmount?: number;
   matmedAmount?: number;
+  consultQty?: number;
+  feeQty?: number;
+  matmedQty?: number;
 }
 
 export function ProductionForm({ 
@@ -162,6 +165,9 @@ export function ProductionForm({
     consultAmount: 0,
     feeAmount: 0,
     matmedAmount: 0,
+    consultQty: 1,
+    feeQty: 1,
+    matmedQty: 0,
     isManualOverride: false,
   });
 
@@ -199,6 +205,9 @@ export function ProductionForm({
       consultAmount: 0,
       feeAmount: 0,
       matmedAmount: 0,
+      consultQty: 1,
+      feeQty: 1,
+      matmedQty: 0,
       isManualOverride: false,
     }));
   }, [formData.productionType]);
@@ -369,6 +378,9 @@ export function ProductionForm({
       consultAmount: isPackageType ? formData.consultAmount : undefined,
       feeAmount: isPackageType ? formData.feeAmount : undefined,
       matmedAmount: isPackageType ? formData.matmedAmount : undefined,
+      consultQty: isPackageType ? formData.consultQty : undefined,
+      feeQty: isPackageType ? formData.feeQty : undefined,
+      matmedQty: isPackageType ? formData.matmedQty : undefined,
     });
 
     // Reset form
@@ -391,6 +403,9 @@ export function ProductionForm({
       consultAmount: 0,
       feeAmount: 0,
       matmedAmount: 0,
+      consultQty: 1,
+      feeQty: 1,
+      matmedQty: 0,
       isManualOverride: false,
     });
     onOpenChange(false);
@@ -597,49 +612,20 @@ export function ProductionForm({
 
       case "PACOTE_BOX":
       case "PACOTE_GTA":
-        // Pacotes Convênio - SEMPRE exibir campos de componentes
+        // Pacotes Convênio - apenas mensagem informativa (campos vão aparecer após Valor Total)
         return (
-          <div className="space-y-4">
-            <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
-              <div className="flex items-center gap-2">
-                <Package className="h-5 w-5 text-primary" />
-                <p className="text-sm text-primary font-medium">
-                  {formData.productionType === "PACOTE_BOX" 
-                    ? "📦 Pacote Box (Convênio)" 
-                    : "📦 Pacote GTA (Convênio)"}
-                </p>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Consulta + Taxa/Box + Mat/Med em pacote único. Valor Total é obrigatório.
+          <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
+            <div className="flex items-center gap-2">
+              <Package className="h-5 w-5 text-primary" />
+              <p className="text-sm text-primary font-medium">
+                {formData.productionType === "PACOTE_BOX" 
+                  ? "📦 Pacote Box (Convênio)" 
+                  : "📦 Pacote GTA (Convênio)"}
               </p>
             </div>
-            
-            {/* Aviso se não selecionou convênio */}
-            {!formData.convenio && (
-              <div className="p-3 rounded bg-amber-500/10 border border-amber-500/20 text-amber-700 text-sm flex items-center gap-2">
-                <AlertCircle className="h-4 w-4" />
-                Selecione o convênio acima para calcular automaticamente os componentes do pacote.
-              </div>
-            )}
-            
-            {/* SEMPRE mostrar PackageFields quando temos convênio selecionado */}
-            {formData.convenio && (
-              <PackageFields
-                packageType={formData.productionType as "PACOTE_BOX" | "PACOTE_GTA"}
-                planId={formData.convenio}
-                referenceDate={formData.productionDate}
-                totalValue={parseFloat(formData.totalValue) || 0}
-                onChange={(components) => {
-                  setFormData(prev => ({
-                    ...prev,
-                    consultAmount: components.consultAmount,
-                    feeAmount: components.feeAmount,
-                    matmedAmount: components.matmedAmount,
-                    isManualOverride: components.isManualOverride,
-                  }));
-                }}
-              />
-            )}
+            <p className="text-xs text-muted-foreground mt-1">
+              Consulta + Taxa/Box + Mat/Med em pacote único. Preencha convênio e valor total abaixo.
+            </p>
           </div>
         );
 
@@ -912,6 +898,41 @@ export function ProductionForm({
               </div>
             )}
           </div>
+
+          {/* BLOCO DE PACOTES CONVÊNIO - LOGO APÓS O VALOR TOTAL */}
+          {isPackageType && (
+            <div className="space-y-4">
+              {!formData.convenio ? (
+                <div className="p-3 rounded bg-amber-500/10 border border-amber-500/20 text-amber-700 text-sm flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4" />
+                  Selecione o convênio para calcular automaticamente os componentes do pacote.
+                </div>
+              ) : (
+                <PackageFields
+                  packageType={formData.productionType as "PACOTE_BOX" | "PACOTE_GTA"}
+                  planId={formData.convenio}
+                  referenceDate={formData.productionDate}
+                  totalValue={parseFloat(formData.totalValue) || 0}
+                  onChange={(components) => {
+                    setFormData(prev => ({
+                      ...prev,
+                      consultAmount: components.consultAmount,
+                      feeAmount: components.feeAmount,
+                      matmedAmount: components.matmedAmount,
+                      consultQty: components.consultQty,
+                      feeQty: components.feeQty,
+                      matmedQty: components.matmedQty,
+                      isManualOverride: components.isManualOverride,
+                      // Se modo manual, sincronizar o TOTAL do formulário
+                      totalValue: components.isManualOverride 
+                        ? components.totalAmount.toFixed(2) 
+                        : prev.totalValue,
+                    }));
+                  }}
+                />
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
