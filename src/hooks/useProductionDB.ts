@@ -55,13 +55,13 @@ interface DBProduction {
     editedAt: string;
     editedBy: string;
   }>;
-  // Campos de pacote convênio
-  is_package: boolean;
+  // Campos de pacote convênio (nullable para dados antigos)
+  is_package: boolean | null;
   package_type: string | null;
-  consult_amount: number;
-  fee_amount: number;
-  matmed_amount: number;
-  package_qty: number;
+  consult_amount: number | null;
+  fee_amount: number | null;
+  matmed_amount: number | null;
+  package_qty: number | null;
 }
 
 // Converter de DB para domínio
@@ -90,13 +90,13 @@ function toProduction(db: DBProduction): Production {
     updatedAt: db.updated_at,
     history: db.history || [],
     editLogs: db.edit_logs || [],
-    // Campos de pacote convênio
-    isPackage: db.is_package || false,
-    packageType: db.package_type as "PACOTE_BOX" | "PACOTE_GTA" | undefined,
-    consultAmount: Number(db.consult_amount) || 0,
-    feeAmount: Number(db.fee_amount) || 0,
-    matmedAmount: Number(db.matmed_amount) || 0,
-    packageQty: Number(db.package_qty) || 1,
+    // Campos de pacote convênio (blindagem null)
+    isPackage: db.is_package ?? false,
+    packageType: (db.package_type ?? undefined) as "PACOTE_BOX" | "PACOTE_GTA" | undefined,
+    consultAmount: Number(db.consult_amount ?? 0),
+    feeAmount: Number(db.fee_amount ?? 0),
+    matmedAmount: Number(db.matmed_amount ?? 0),
+    packageQty: Number(db.package_qty ?? 1),
   };
 }
 
@@ -361,6 +361,27 @@ export function useProductionDB() {
       updateData.total_value = qty * val;
     }
 
+    // Detectar se é pacote (existente ou via data)
+    const isPackage = (data.isPackage ?? production.isPackage) ?? 
+      (production.productionType === "PACOTE_BOX" || production.productionType === "PACOTE_GTA");
+
+    // Atualizar campos de pacote se aplicável
+    const hasPackageFields = data.consultAmount !== undefined || 
+      data.feeAmount !== undefined || 
+      data.matmedAmount !== undefined || 
+      data.packageQty !== undefined || 
+      data.packageType !== undefined || 
+      data.isPackage !== undefined;
+
+    if (isPackage || hasPackageFields) {
+      updateData.is_package = data.isPackage ?? production.isPackage ?? isPackage;
+      updateData.package_type = data.packageType ?? production.packageType ?? production.productionType;
+      updateData.consult_amount = data.consultAmount ?? production.consultAmount ?? 0;
+      updateData.fee_amount = data.feeAmount ?? production.feeAmount ?? 0;
+      updateData.matmed_amount = data.matmedAmount ?? production.matmedAmount ?? 0;
+      updateData.package_qty = data.packageQty ?? production.packageQty ?? production.quantity ?? 1;
+    }
+
     const { error: updateError } = await supabase
       .from("productions")
       .update(updateData)
@@ -549,17 +570,50 @@ export function useProductionDB() {
       consolidatedMatMed: { value: 0 },
     };
 
+    // Helper para inicializar tipo em byProductionType
+    const ensureType = (type: string) => {
+      if (!stats.byProductionType[type]) {
+        stats.byProductionType[type] = { count: 0, quantity: 0, value: 0 };
+      }
+    };
+
     filtered.forEach((p) => {
       stats.totalProduced += p.estimatedValue;
       stats.totalQuantityProduced += p.quantity;
       stats.countProduced++;
 
-      if (!stats.byProductionType[p.productionType]) {
-        stats.byProductionType[p.productionType] = { count: 0, quantity: 0, value: 0 };
+      // ============= DETECÇÃO PACOTE =============
+      const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";
+
+      // ============= byProductionType: EXPLODIR PACOTE EM COMPONENTES =============
+      if (isPackage) {
+        // CONSULTA do pacote
+        ensureType("CONSULTA");
+        stats.byProductionType["CONSULTA"].count += 1;
+        stats.byProductionType["CONSULTA"].quantity += 1;
+        stats.byProductionType["CONSULTA"].value += p.consultAmount || 0;
+
+        // BOX_PS do pacote (unificado com avulso)
+        ensureType("BOX_PS");
+        stats.byProductionType["BOX_PS"].count += 1;
+        stats.byProductionType["BOX_PS"].quantity += 1;
+        stats.byProductionType["BOX_PS"].value += p.feeAmount || 0;
+
+        // MAT_MED do pacote (sem quantidade)
+        ensureType("MAT_MED");
+        stats.byProductionType["MAT_MED"].count += 1;
+        stats.byProductionType["MAT_MED"].quantity += 0; // Não contamos quantidade
+        stats.byProductionType["MAT_MED"].value += p.matmedAmount || 0;
+        
+        // NÃO somar em PACOTE_BOX/PACOTE_GTA
+      } else {
+        // Avulso: agregar normalmente (normalizando BOX_PS)
+        const reportType = p.productionType === "BOX_PS" ? "BOX_PS" : p.productionType;
+        ensureType(reportType);
+        stats.byProductionType[reportType].count++;
+        stats.byProductionType[reportType].quantity += p.quantity;
+        stats.byProductionType[reportType].value += p.estimatedValue;
       }
-      stats.byProductionType[p.productionType].count++;
-      stats.byProductionType[p.productionType].quantity += p.quantity;
-      stats.byProductionType[p.productionType].value += p.estimatedValue;
 
       if (p.payerType === "CONVENIO") {
         stats.byPayerType.convenio += p.estimatedValue;
@@ -569,9 +623,7 @@ export function useProductionDB() {
         stats.byPayerTypeQuantity.particular += p.quantity;
       }
 
-      // ============= CONSOLIDAÇÃO AVULSOS + PACOTES =============
-      const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";
-      
+      // ============= CONSOLIDAÇÃO AVULSOS + PACOTES (cards) =============
       if (isPackage) {
         // Pacote: somar componentes individuais
         stats.consolidatedConsultas.value += p.consultAmount || 0;
