@@ -63,9 +63,10 @@ import {
   SettingsParameters,
   SettingsPackagePricing,
 } from "@/components/settings";
+import { DemoSettings } from "@/components/settings/DemoSettings";
 import { useReceivablesDB } from "@/hooks/useReceivablesDB";
 import { useProductionDB } from "@/hooks/useProductionDB";
-import { Boxes } from "lucide-react";
+import { Boxes, FlaskConical } from "lucide-react";
 
 export default function Settings() {
   const { transactions, auditLog } = useApp();
@@ -810,7 +811,7 @@ export default function Settings() {
         </div>
 
         <Tabs defaultValue="units" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7">
+          <TabsList className="grid w-full grid-cols-4 lg:grid-cols-8">
             <TabsTrigger value="units" className="gap-1 text-xs lg:text-sm">
               <Building2 className="h-4 w-4" />
               <span className="hidden sm:inline">Unidades</span>
@@ -839,6 +840,12 @@ export default function Settings() {
               <Settings2 className="h-4 w-4" />
               <span className="hidden sm:inline">Parâmetros</span>
             </TabsTrigger>
+            {isAdmin() && (
+              <TabsTrigger value="demo" className="gap-1 text-xs lg:text-sm text-amber-600">
+                <FlaskConical className="h-4 w-4" />
+                <span className="hidden sm:inline">DEMO</span>
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {/* ============= UNITS TAB ============= */}
@@ -1374,6 +1381,13 @@ export default function Settings() {
               userName={user?.name || "Sistema"}
             />
           </TabsContent>
+
+          {/* ============= DEMO TAB (Admin only) ============= */}
+          {isAdmin() && (
+            <TabsContent value="demo" className="space-y-4">
+              <DemoSettings />
+            </TabsContent>
+          )}
         </Tabs>
       </div>
     </DashboardLayout>
