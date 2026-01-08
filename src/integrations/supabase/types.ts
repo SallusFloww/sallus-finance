@@ -70,6 +70,7 @@ export type Database = {
           cnpj: string | null
           created_at: string
           id: string
+          is_demo: boolean
           name: string
           status: string
           updated_at: string
@@ -78,6 +79,7 @@ export type Database = {
           cnpj?: string | null
           created_at?: string
           id?: string
+          is_demo?: boolean
           name: string
           status?: string
           updated_at?: string
@@ -86,6 +88,7 @@ export type Database = {
           cnpj?: string | null
           created_at?: string
           id?: string
+          is_demo?: boolean
           name?: string
           status?: string
           updated_at?: string
@@ -1425,6 +1428,7 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      is_demo_company: { Args: { p_company_id: string }; Returns: boolean }
       link_receivable_to_existing_entry:
         | {
             Args: {
@@ -1453,6 +1457,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      reset_demo_company: { Args: { p_confirm_text?: string }; Returns: Json }
       user_belongs_to_company: {
         Args: { _company_id: string; _user_id: string }
         Returns: boolean

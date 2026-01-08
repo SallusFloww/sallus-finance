@@ -18,6 +18,7 @@ interface Company {
   name: string;
   cnpj: string | null;
   status: string;
+  is_demo?: boolean;
 }
 
 interface Role {
@@ -60,6 +61,8 @@ interface AuthContextType extends AuthState {
   switchCompany: (companyId: string) => Promise<void>;
   hasPermission: (permissionCode: string) => boolean;
   isAdmin: () => boolean;
+  isDemo: () => boolean;
+  resetDemoCompany: (confirmText: string) => Promise<{ ok: boolean; error?: string; deleted?: Record<string, number>; seeded?: Record<string, number> }>;
   refreshPermissions: () => Promise<void>;
   reloadUserData: () => Promise<void>;
 }
@@ -108,7 +111,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .select(`
           is_primary,
           is_active,
-          company:companies(id, name, cnpj, status),
+          company:companies(id, name, cnpj, status, is_demo),
           role:roles(id, name, description)
         `)
         .eq("user_id", userId)
@@ -392,6 +395,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return state.currentRole?.name === "Admin";
   }, [state.currentRole]);
 
+  // Check if current company is DEMO
+  const isDemo = useCallback((): boolean => {
+    return state.currentCompany?.is_demo === true;
+  }, [state.currentCompany]);
+
+  // Reset DEMO company (Admin only)
+  const resetDemoCompany = useCallback(async (confirmText: string) => {
+    if (!state.user || !isAdmin()) {
+      return { ok: false, error: "Apenas Admin pode resetar a empresa DEMO" };
+    }
+
+    if (!isDemo()) {
+      return { ok: false, error: "Esta função só pode ser usada na empresa DEMO" };
+    }
+
+    try {
+      const { data, error } = await supabase.rpc("reset_demo_company", {
+        p_confirm_text: confirmText,
+      });
+
+      if (error) {
+        console.error("Reset DEMO error:", error);
+        return { ok: false, error: error.message };
+      }
+
+      const result = data as { ok: boolean; error?: string; deleted?: Record<string, number>; seeded?: Record<string, number>; message?: string };
+      
+      if (!result.ok) {
+        return { ok: false, error: result.error || "Erro ao resetar DEMO" };
+      }
+
+      return { 
+        ok: true, 
+        deleted: result.deleted, 
+        seeded: result.seeded 
+      };
+    } catch (err) {
+      console.error("Reset DEMO exception:", err);
+      return { ok: false, error: "Erro inesperado ao resetar DEMO" };
+    }
+  }, [state.user, isAdmin, isDemo]);
+
   // Refresh permissions
   const refreshPermissions = useCallback(async () => {
     if (!state.user) return;
@@ -410,6 +455,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     switchCompany,
     hasPermission,
     isAdmin,
+    isDemo,
+    resetDemoCompany,
     refreshPermissions,
     reloadUserData,
   };
