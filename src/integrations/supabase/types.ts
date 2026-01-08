@@ -1293,6 +1293,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      delete_demo_data_internal: {
+        Args: { p_demo_company_id: string }
+        Returns: Json
+      }
       get_accessible_modules: {
         Args: { _company_id: string; _user_id: string }
         Returns: {

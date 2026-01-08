@@ -5,10 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from "@/contexts/AuthContext";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 export function DemoSettings() {
   const { isAdmin, isDemo, switchCompany, companies, currentCompany, resetDemoCompany, reloadUserData } = useAuth();
+  const queryClient = useQueryClient();
   const [confirmText, setConfirmText] = useState("");
   const [isResetting, setIsResetting] = useState(false);
   const [lastResetResult, setLastResetResult] = useState<{
@@ -60,7 +62,10 @@ export function DemoSettings() {
         toast.success("Empresa DEMO resetada com sucesso!");
         setConfirmText("");
         
-        // Reload data to refresh views
+        // Invalidar todas as queries para forçar refetch dos dados
+        await queryClient.invalidateQueries();
+        
+        // Reload auth data
         await reloadUserData();
       } else {
         toast.error(result.error || "Erro ao resetar DEMO");
