@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { LogOut, User, Calendar, Building2, ChevronDown, Settings, Shield, Check } from "lucide-react";
+import { LogOut, User, Calendar, Building2, ChevronDown, Settings, Shield, Check, AlertTriangle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,10 +27,12 @@ export function Header() {
     companies, 
     signOut, 
     switchCompany,
-    isAuthenticated 
+    isAuthenticated,
+    isDemo 
   } = useAuth();
   
   const formattedDate = useMemo(() => formatDate(new Date().toISOString()), []);
+  const isDemoMode = isDemo();
 
   const handleLogout = async () => {
     await signOut();
@@ -38,7 +40,7 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+    <header className={`sticky ${isDemoMode ? 'top-[40px]' : 'top-0'} z-50 w-full border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60`}>
       <div className="container flex h-16 items-center justify-between px-4 md:px-6">
         <div className="flex items-center gap-3">
           <img src={sallusFinanceLogo} alt="Sallus Finance" className="h-10 w-auto" />
@@ -47,9 +49,24 @@ export function Header() {
         <div className="flex items-center gap-3">
           {/* Current Company Badge */}
           {currentCompany && (
-            <div className="hidden items-center gap-2 rounded-lg bg-primary/10 px-3 py-1.5 text-sm lg:flex">
-              <Building2 className="h-4 w-4 text-primary" />
-              <span className="font-medium text-primary">{currentCompany.name}</span>
+            <div className={`hidden items-center gap-2 rounded-lg px-3 py-1.5 text-sm lg:flex ${
+              isDemoMode 
+                ? "bg-amber-500/20 border border-amber-500/30" 
+                : "bg-primary/10"
+            }`}>
+              {isDemoMode ? (
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+              ) : (
+                <Building2 className="h-4 w-4 text-primary" />
+              )}
+              <span className={`font-medium ${isDemoMode ? "text-amber-700" : "text-primary"}`}>
+                {currentCompany.name}
+              </span>
+              {isDemoMode && (
+                <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500 text-amber-950 font-bold">
+                  DEMO
+                </span>
+              )}
             </div>
           )}
 
