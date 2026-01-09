@@ -178,35 +178,56 @@ export default function Users() {
     enabled: !!currentCompany?.id,
   });
 
-  // Fetch company users
+  // Fetch company users - separate queries since no FK between user_company_roles and profiles
   const { data: users = [], isLoading: isLoadingUsers } = useQuery({
     queryKey: ["company-users", currentCompany?.id],
     queryFn: async () => {
       if (!currentCompany?.id) return [];
       
-      const { data, error } = await supabase
+      // First get user_company_roles with roles
+      const { data: rolesData, error: rolesError } = await supabase
         .from("user_company_roles")
         .select(`
           user_id,
           role_id,
           is_active,
-          roles(name),
-          profiles(id, email, full_name, status, last_login)
+          roles(name)
         `)
         .eq("company_id", currentCompany.id);
 
-      if (error) throw error;
+      if (rolesError) throw rolesError;
+      if (!rolesData || rolesData.length === 0) return [];
 
-      return (data || []).map((item: any) => ({
-        id: item.profiles?.id || item.user_id,
-        email: item.profiles?.email || "",
-        full_name: item.profiles?.full_name,
-        status: item.profiles?.status || "active",
-        last_login: item.profiles?.last_login,
-        role_id: item.role_id,
-        role_name: item.roles?.name || "Sem perfil",
-        is_active: item.is_active ?? true,
-      })) as UserWithRole[];
+      // Get unique user IDs
+      const userIds = [...new Set(rolesData.map((r: any) => r.user_id))];
+
+      // Then fetch profiles for those users
+      const { data: profilesData, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id, email, full_name, status, last_login")
+        .in("id", userIds);
+
+      if (profilesError) throw profilesError;
+
+      // Create a map of profiles by id
+      const profilesMap = new Map(
+        (profilesData || []).map((p: any) => [p.id, p])
+      );
+
+      // Combine the data
+      return rolesData.map((item: any) => {
+        const profile = profilesMap.get(item.user_id);
+        return {
+          id: profile?.id || item.user_id,
+          email: profile?.email || "",
+          full_name: profile?.full_name,
+          status: profile?.status || "active",
+          last_login: profile?.last_login,
+          role_id: item.role_id,
+          role_name: item.roles?.name || "Sem perfil",
+          is_active: item.is_active ?? true,
+        };
+      }) as UserWithRole[];
     },
     enabled: !!currentCompany?.id,
   });
