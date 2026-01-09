@@ -63,6 +63,7 @@ export type Database = {
           cnpj: string | null
           created_at: string
           id: string
+          is_demo: boolean
           name: string
           status: string
           updated_at: string
@@ -71,6 +72,7 @@ export type Database = {
           cnpj?: string | null
           created_at?: string
           id?: string
+          is_demo?: boolean
           name: string
           status?: string
           updated_at?: string
@@ -79,6 +81,7 @@ export type Database = {
           cnpj?: string | null
           created_at?: string
           id?: string
+          is_demo?: boolean
           name?: string
           status?: string
           updated_at?: string
