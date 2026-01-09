@@ -105,6 +105,23 @@ export const ROLE_CONFIGS: Record<string, Omit<RoleConfig, "id">> = {
       { text: "Gerenciar usuários", allowed: false },
     ],
   },
+  Visualizador: {
+    name: "Visualizador",
+    description: "Acesso somente leitura",
+    badge: "LEITURA",
+    icon: Eye,
+    level: "basico",
+    colorClass: "border-role-leitura/30 bg-role-leitura/5 hover:bg-role-leitura/10",
+    badgeClass: "bg-role-leitura text-role-leitura-foreground",
+    iconBgClass: "bg-role-leitura text-role-leitura-foreground",
+    permissions: [
+      { text: "Visualiza dados básicos", allowed: true },
+      { text: "Consulta relatórios", allowed: true },
+      { text: "Criar, editar ou excluir dados", allowed: false },
+      { text: "Acessar configurações", allowed: false },
+      { text: "Gerenciar usuários", allowed: false },
+    ],
+  },
 };
 
 interface RoleCardProps {
