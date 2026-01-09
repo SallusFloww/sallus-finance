@@ -156,7 +156,7 @@ export default function Users() {
   const canManageUsers = hasPermission("CREATE_USERS") || hasPermission("EDIT_USERS");
   const canDeleteUsers = hasPermission("DELETE_USERS");
 
-  // Fetch system roles (Admin, Gestor, Operacional, Financeiro, Leitura)
+  // Fetch system roles (Admin, Gestor, Visualizador)
   const { data: roles = [] } = useQuery({
     queryKey: ["system-roles"],
     queryFn: async () => {
@@ -164,7 +164,6 @@ export default function Users() {
         .from("roles")
         .select("id, name, description")
         .eq("is_system", true)
-        .in("name", ["Admin", "Gestor", "Operacional", "Financeiro", "Leitura"])
         .order("name");
       if (error) throw error;
       // Filter to get unique roles by name (in case of duplicates)

@@ -28,7 +28,7 @@ export function RoleSelector({
 
   // Sort roles by access level
   const sortedRoles = [...roles].sort((a, b) => {
-    const order = ["Admin", "Gestor", "Operacional", "Financeiro", "Leitura"];
+    const order = ["Admin", "Gestor", "Operacional", "Financeiro", "Visualizador", "Leitura"];
     return order.indexOf(a.name) - order.indexOf(b.name);
   });
 
