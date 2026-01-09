@@ -48,14 +48,19 @@
 - Ignora `origin` do request (evita vazamento de preview URLs)
 - Validação de APP_URL: rejeita localhost, lovable, placeholder
 
+### Frontend `getAppBaseUrl()` (src/utils/appUrl.ts)
+- Centraliza a lógica de URL base para toda a aplicação
+- Sempre retorna domínio de produção, exceto em localhost
+- Usado por `generateInviteUrl(token)` para criar links `/i/<token>`
+
 ### Frontend `InviteRedirect`
 - Validação UUID v4 no cliente
 - Tela de erro amigável para tokens inválidos
 - Redirect imediato para `/auth?invite=<token>`
 
 ### Frontend `Users.tsx`
-- Validação do inviteUrl antes de copiar
-- Fallback para produção se URL inválida
+- Usa `generateInviteUrl()` para gerar links (sempre produção)
+- Extrai token do response da edge function para garantir formato correto
 
 ---
 

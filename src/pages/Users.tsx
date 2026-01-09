@@ -6,6 +6,7 @@ import { secureInvoke } from "@/hooks/useSecureInvoke";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { z } from "zod";
+import { generateInviteUrl, getAppBaseUrl } from "@/utils/appUrl";
 import {
   Users as UsersIcon,
   UserPlus,
@@ -131,9 +132,8 @@ export default function Users() {
   const [filterRole, setFilterRole] = useState<string | undefined>();
   const [filterStatus, setFilterStatus] = useState<string | undefined>();
 
-  // Copy invite link to clipboard
+  // Copy invite link to clipboard - uses centralized URL util
   const copyInviteLink = async (invite: PendingInvite) => {
-    const baseUrl = window.location.origin;
     // We need to get the token from the invite - fetch it
     const { data, error } = await supabase
       .from("user_invites")
@@ -146,7 +146,8 @@ export default function Users() {
       return;
     }
 
-    const inviteUrl = `${baseUrl}/auth?invite=${data.token}`;
+    // Use centralized invite URL generator (always uses production domain)
+    const inviteUrl = generateInviteUrl(data.token);
     await navigator.clipboard.writeText(inviteUrl);
     setCopiedInviteId(invite.id);
     toast.success("Link copiado!");
@@ -313,13 +314,13 @@ export default function Users() {
       // Check if email was sent or not (new invite flow)
       setActiveTab("invites");
       if (data?.emailSent === false && data?.inviteUrl) {
-        // Sanitize URL - fallback to window.location.origin if invalid
-        const safeInviteUrl =
-          data.inviteUrl && 
-          data.inviteUrl.startsWith("http") && 
-          !data.inviteUrl.includes("placeholder_value_to_be_replaced")
-            ? data.inviteUrl
-            : `${window.location.origin}/i/${data.inviteUrl?.split("/i/")[1] || data.inviteUrl?.split("invite=")[1] || ""}`;
+        // Extract token from the URL returned by edge function
+        const tokenMatch = data.inviteUrl.match(/\/i\/([a-f0-9-]+)/i) || 
+                          data.inviteUrl.match(/invite=([a-f0-9-]+)/i);
+        const token = tokenMatch?.[1];
+        
+        // Generate safe URL using centralized util (always production domain)
+        const safeInviteUrl = token ? generateInviteUrl(token) : data.inviteUrl;
         
         toast("Convite criado. Copie o link abaixo e envie no WhatsApp.", {
           description: "O e-mail não foi enviado pois o SMTP não está configurado.",
@@ -400,13 +401,13 @@ export default function Users() {
       
       // Check if email was sent or not
       if (data?.emailSent === false && data?.inviteUrl) {
-        // Sanitize URL - fallback to window.location.origin if invalid
-        const safeInviteUrl =
-          data.inviteUrl && 
-          data.inviteUrl.startsWith("http") && 
-          !data.inviteUrl.includes("placeholder_value_to_be_replaced")
-            ? data.inviteUrl
-            : `${window.location.origin}/auth?invite=${data.inviteUrl?.split("invite=")[1] || ""}`;
+        // Extract token from the URL returned by edge function
+        const tokenMatch = data.inviteUrl.match(/\/i\/([a-f0-9-]+)/i) || 
+                          data.inviteUrl.match(/invite=([a-f0-9-]+)/i);
+        const token = tokenMatch?.[1];
+        
+        // Generate safe URL using centralized util (always production domain)
+        const safeInviteUrl = token ? generateInviteUrl(token) : data.inviteUrl;
         
         toast("Convite reenviado. Copie o link abaixo e envie no WhatsApp.", {
           description: "O e-mail não foi enviado pois o SMTP não está configurado.",
