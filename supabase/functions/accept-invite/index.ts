@@ -36,7 +36,7 @@ serve(async (req) => {
 
     // 1) Validar token via RPC
     const { data: invite, error: inviteError } = await supabaseAdmin.rpc("validate_invite_token", {
-      invite_token: token,
+      _token: token,
     });
 
     if (inviteError || !invite) {
