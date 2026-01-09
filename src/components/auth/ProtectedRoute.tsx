@@ -39,7 +39,22 @@ export function ProtectedRoute({
     if (allowNoCompany) {
       return <>{children}</>;
     }
-    return <Navigate to="/onboarding" replace />;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="text-center max-w-md mx-auto p-6">
+          <h1 className="text-2xl font-bold text-foreground mb-2">Acesso Não Autorizado</h1>
+          <p className="text-muted-foreground mb-4">
+            Sua conta ainda não está vinculada a uma empresa. Entre em contato com o administrador para receber um convite.
+          </p>
+          <button
+            onClick={() => window.location.href = '/auth'}
+            className="text-primary hover:underline"
+          >
+            Voltar ao login
+          </button>
+        </div>
+      </div>
+    );
   }
 
   // Checar permissão só quando já existe empresa
