@@ -114,29 +114,27 @@ export interface ConciliationNote {
   createdByName: string;
 }
 
+// Interface alinhada com a tabela real conciliation_status
 interface DBConciliationStatus {
   id: string;
   company_id: string;
-  item_id: string;
-  item_type: string;
-  source_id: string;
+  receivable_id: string | null;
+  financial_entry_id: string | null;
   status: string;
-  previous_status: string | null;
-  updated_by: string | null;
-  updated_by_name: string | null;
+  matched_at: string | null;
+  matched_by: string | null;
   created_at: string;
   updated_at: string;
 }
 
+// Interface alinhada com a tabela real conciliation_notes
 interface DBConciliationNote {
   id: string;
   company_id: string;
-  item_id: string;
-  item_type: string;
-  source_id: string;
+  conciliation_status_id: string | null;
+  receivable_id: string | null;
   note: string;
   created_by: string | null;
-  created_by_name: string | null;
   created_at: string;
 }
 
@@ -219,8 +217,10 @@ export function useConciliation() {
         if (statusError) throw statusError;
 
         const statusMap: Record<string, ConciliationStatus> = {};
-        (statusData as DBConciliationStatus[] || []).forEach(s => {
-          statusMap[s.item_id] = s.status as ConciliationStatus;
+        ((statusData || []) as DBConciliationStatus[]).forEach(s => {
+          // Usa receivable_id como chave se existir
+          const itemId = s.receivable_id ? `recv-${s.receivable_id}` : (s.financial_entry_id ? `fe-${s.financial_entry_id}` : s.id);
+          statusMap[itemId] = s.status as ConciliationStatus;
         });
         setDbStatuses(statusMap);
 
@@ -233,15 +233,15 @@ export function useConciliation() {
 
         if (notesError) throw notesError;
 
-        const notes: ConciliationNote[] = (notesData as DBConciliationNote[] || []).map(n => ({
+        const notes: ConciliationNote[] = ((notesData || []) as DBConciliationNote[]).map(n => ({
           id: n.id,
-          itemId: n.item_id,
-          itemType: n.item_type,
-          sourceId: n.source_id,
+          itemId: n.receivable_id ? `recv-${n.receivable_id}` : n.id,
+          itemType: n.receivable_id ? "receivable" : "other",
+          sourceId: n.receivable_id || n.id,
           note: n.note,
           createdAt: n.created_at,
           createdBy: n.created_by || "",
-          createdByName: n.created_by_name || "Usuário",
+          createdByName: "Usuário",
         }));
         setDbNotes(notes);
 

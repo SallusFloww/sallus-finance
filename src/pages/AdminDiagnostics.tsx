@@ -127,20 +127,20 @@ export default function AdminDiagnostics() {
       });
     }
 
-    // 8. Check RLS Policies (via permission function)
+    // 8. Check RLS Policies (via has_role_in_company function)
     if (user && currentCompany) {
       try {
-        const { data, error } = await supabase.rpc("has_permission", {
+        const { data, error } = await supabase.rpc("has_role_in_company", {
           _user_id: user.id,
           _company_id: currentCompany.id,
-          _permission_code: "VIEW_DASHBOARD",
+          _role_name: "Admin",
         });
         newChecks.push({
           id: "rls",
           label: "RLS Policies",
           status: error ? "warning" : "success",
           message: error ? "Erro ao verificar RLS" : "Funções RPC funcionando",
-          details: error?.message || `has_permission: ${data ? "true" : "false"}`,
+          details: error?.message || `has_role_in_company(Admin): ${data ? "true" : "false"}`,
         });
       } catch {
         newChecks.push({

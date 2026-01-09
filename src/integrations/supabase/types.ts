@@ -182,6 +182,116 @@ export type Database = {
           },
         ]
       }
+      conciliation_notes: {
+        Row: {
+          company_id: string
+          conciliation_status_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          note: string
+          receivable_id: string | null
+        }
+        Insert: {
+          company_id: string
+          conciliation_status_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note: string
+          receivable_id?: string | null
+        }
+        Update: {
+          company_id?: string
+          conciliation_status_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string
+          receivable_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conciliation_notes_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conciliation_notes_conciliation_status_id_fkey"
+            columns: ["conciliation_status_id"]
+            isOneToOne: false
+            referencedRelation: "conciliation_status"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conciliation_notes_receivable_id_fkey"
+            columns: ["receivable_id"]
+            isOneToOne: false
+            referencedRelation: "receivables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conciliation_status: {
+        Row: {
+          company_id: string
+          created_at: string
+          financial_entry_id: string | null
+          id: string
+          matched_at: string | null
+          matched_by: string | null
+          receivable_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          financial_entry_id?: string | null
+          id?: string
+          matched_at?: string | null
+          matched_by?: string | null
+          receivable_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          financial_entry_id?: string | null
+          id?: string
+          matched_at?: string | null
+          matched_by?: string | null
+          receivable_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conciliation_status_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conciliation_status_financial_entry_id_fkey"
+            columns: ["financial_entry_id"]
+            isOneToOne: false
+            referencedRelation: "financial_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conciliation_status_receivable_id_fkey"
+            columns: ["receivable_id"]
+            isOneToOne: false
+            referencedRelation: "receivables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       financial_entries: {
         Row: {
           cancel_reason: string | null
@@ -199,6 +309,8 @@ export type Database = {
           operadora: string | null
           payment_method: string | null
           receipt_type: string | null
+          request_id: string | null
+          specialty: string | null
           status: Database["public"]["Enums"]["financial_entry_status"]
           type: Database["public"]["Enums"]["financial_entry_type"]
           unit_id: string | null
@@ -222,6 +334,8 @@ export type Database = {
           operadora?: string | null
           payment_method?: string | null
           receipt_type?: string | null
+          request_id?: string | null
+          specialty?: string | null
           status?: Database["public"]["Enums"]["financial_entry_status"]
           type: Database["public"]["Enums"]["financial_entry_type"]
           unit_id?: string | null
@@ -245,6 +359,8 @@ export type Database = {
           operadora?: string | null
           payment_method?: string | null
           receipt_type?: string | null
+          request_id?: string | null
+          specialty?: string | null
           status?: Database["public"]["Enums"]["financial_entry_status"]
           type?: Database["public"]["Enums"]["financial_entry_type"]
           unit_id?: string | null
@@ -700,14 +816,41 @@ export type Database = {
     }
     Functions: {
       get_user_companies: { Args: { _user_id: string }; Returns: string[] }
+      get_user_permissions: {
+        Args: { _user_id: string }
+        Returns: {
+          module: string
+          permission_code: string
+          permission_name: string
+        }[]
+      }
       has_role_in_company: {
         Args: { _company_id: string; _role_name: string; _user_id: string }
         Returns: boolean
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      link_receivable_to_existing_entry: {
+        Args: { _financial_entry_id: string; _receivable_id: string }
+        Returns: boolean
+      }
+      reset_demo_company: { Args: { _company_id: string }; Returns: boolean }
       user_belongs_to_company: {
         Args: { _company_id: string; _user_id: string }
         Returns: boolean
+      }
+      validate_invite_token: {
+        Args: { _token: string }
+        Returns: {
+          company_id: string
+          company_name: string
+          email: string
+          expires_at: string
+          full_name: string
+          id: string
+          role_id: string
+          role_name: string
+          status: string
+        }[]
       }
     }
     Enums: {

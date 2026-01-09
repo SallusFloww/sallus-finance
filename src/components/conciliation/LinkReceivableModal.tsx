@@ -147,17 +147,15 @@ export function LinkReceivableModal({
     setLinking(true);
     try {
       const { data, error } = await supabase.rpc("link_receivable_to_existing_entry", {
-        p_company_id: currentCompany.id,
-        p_receivable_id: selectedId,
-        p_entry_id: financialEntry.id,
+        _receivable_id: selectedId,
+        _financial_entry_id: financialEntry.id,
       });
 
       if (error) throw error;
 
-      const result = data as { ok: boolean; message: string };
-      
-      if (!result.ok) {
-        toast.error(result.message);
+      // A função retorna boolean diretamente
+      if (!data) {
+        toast.error("Falha ao criar vínculo");
         return;
       }
 
