@@ -136,9 +136,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Fetch permissions for current company
   const fetchPermissions = useCallback(async (userId: string, companyId: string): Promise<Permission[]> => {
     try {
+      // A RPC get_user_permissions só aceita _user_id (busca todas permissões do usuário)
       const { data, error } = await supabase.rpc("get_user_permissions", {
         _user_id: userId,
-        _company_id: companyId,
       });
 
       if (error) {
@@ -406,13 +406,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { ok: false, error: "Apenas Admin pode resetar a empresa DEMO" };
     }
 
-    if (!isDemo()) {
+    if (!isDemo() || !state.currentCompany) {
       return { ok: false, error: "Esta função só pode ser usada na empresa DEMO" };
     }
 
     try {
+      // A RPC reset_demo_company aceita _company_id e retorna boolean
       const { data, error } = await supabase.rpc("reset_demo_company", {
-        p_confirm_text: confirmText,
+        _company_id: state.currentCompany.id,
       });
 
       if (error) {
@@ -420,22 +421,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { ok: false, error: error.message };
       }
 
-      const result = data as { ok: boolean; error?: string; deleted?: Record<string, number>; seeded?: Record<string, number>; message?: string };
-      
-      if (!result.ok) {
-        return { ok: false, error: result.error || "Erro ao resetar DEMO" };
+      // A função retorna boolean diretamente
+      if (!data) {
+        return { ok: false, error: "Erro ao resetar DEMO" };
       }
 
-      return { 
-        ok: true, 
-        deleted: result.deleted, 
-        seeded: result.seeded 
-      };
+      return { ok: true };
     } catch (err) {
       console.error("Reset DEMO exception:", err);
       return { ok: false, error: "Erro inesperado ao resetar DEMO" };
     }
-  }, [state.user, isAdmin, isDemo]);
+  }, [state.user, state.currentCompany, isAdmin, isDemo]);
 
   // Refresh permissions
   const refreshPermissions = useCallback(async () => {

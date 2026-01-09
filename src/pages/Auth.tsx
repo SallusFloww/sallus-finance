@@ -95,21 +95,25 @@ export default function Auth() {
     setInviteLoading(true);
     try {
       const { data, error } = await supabase.rpc("validate_invite_token", {
-        invite_token: token,
+        _token: token,
       });
 
       if (error) throw error;
 
-      if (data && data.length > 0) {
-        const invite = data[0] as InviteData;
-        if (invite.is_valid) {
-          setInviteData(invite);
-        } else {
-          toast.error("Este convite expirou ou já foi utilizado");
-          setActiveTab("login");
-        }
+      if (data && Array.isArray(data) && data.length > 0) {
+        const inviteRow = data[0];
+        // Mapear para InviteData - a RPC retorna status/expires_at, consideramos válido se retornou
+        const invite: InviteData = {
+          id: inviteRow.id,
+          email: inviteRow.email,
+          full_name: inviteRow.full_name,
+          company_name: inviteRow.company_name,
+          role_name: inviteRow.role_name,
+          is_valid: true, // Se retornou, é válido (a query já filtra)
+        };
+        setInviteData(invite);
       } else {
-        toast.error("Convite não encontrado");
+        toast.error("Convite não encontrado ou expirado");
         setActiveTab("login");
       }
     } catch (err: any) {
