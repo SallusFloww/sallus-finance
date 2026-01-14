@@ -266,20 +266,54 @@ export default function Auth() {
       }
 
       if (acceptResult?.error) {
-        // Check if user already exists
-        if (acceptResult.userExists) {
+        // Handle specific error codes from the edge function
+        const errorCode = acceptResult.code;
+        
+        if (acceptResult.userExists || errorCode === "USER_EXISTS_LINKED") {
           toast.error("Este email já está cadastrado. Faça login com sua senha existente.");
           setActiveTab("login");
           setLoginForm({ email: inviteData.email, password: "" });
           setIsLoading(false);
           return;
         }
+        
+        if (errorCode === "INVITE_ALREADY_ACCEPTED") {
+          toast.error("Este convite já foi utilizado. Faça login normalmente.");
+          setActiveTab("login");
+          setLoginForm({ email: inviteData.email, password: "" });
+          setIsLoading(false);
+          return;
+        }
+        
+        if (errorCode === "INVITE_EXPIRED") {
+          toast.error("Este convite expirou. Solicite um novo convite ao administrador.");
+          setActiveTab("login");
+          setIsLoading(false);
+          return;
+        }
+        
+        if (errorCode === "COMPANY_LINK_FAILED") {
+          // Erro recuperável - usuário pode tentar novamente
+          toast.error("Erro ao vincular à empresa. Por favor, tente novamente.");
+          setIsLoading(false);
+          return;
+        }
+        
         throw new Error(acceptResult.error);
       }
 
       console.log("Invite accepted successfully:", acceptResult);
 
-      // 2. Auto-login with the new credentials
+      // Check if user already exists (needs to login with existing password)
+      if (acceptResult.userExists) {
+        toast.success(acceptResult.message || "Acesso concedido! Faça login com sua senha.");
+        setActiveTab("login");
+        setLoginForm({ email: inviteData.email, password: "" });
+        setIsLoading(false);
+        return;
+      }
+
+      // 2. Auto-login with the new credentials (only for new users)
       const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email: inviteData.email,
         password: inviteForm.password,
@@ -308,7 +342,7 @@ export default function Auth() {
 
     } catch (err: any) {
       console.error("Error accepting invite:", err);
-      toast.error(err.message || "Erro ao criar conta");
+      toast.error(err.message || "Erro ao criar conta. Tente novamente.");
     } finally {
       setIsLoading(false);
     }
