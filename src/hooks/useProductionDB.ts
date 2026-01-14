@@ -24,7 +24,7 @@ export interface ProductionFilters {
   search?: string;
 }
 
-// Tipo do banco de dados
+// Tipo do banco de dados - ALINHADO com schema real (sem colunas inexistentes)
 interface DBProduction {
   id: string;
   company_id: string;
@@ -34,7 +34,6 @@ interface DBProduction {
   specialty: string | null;
   payer_type: string;
   convenio: string | null;
-  payment_method: string | null; // AUDIT_FIX: Forma de pagamento para PARTICULAR
   production_type: string;
   description: string;
   procedure_code: string | null;
@@ -57,16 +56,9 @@ interface DBProduction {
     editedAt: string;
     editedBy: string;
   }>;
-  // Campos de pacote convênio (nullable para dados antigos)
-  is_package: boolean | null;
-  package_type: string | null;
-  consult_amount: number | null;
-  fee_amount: number | null;
-  matmed_amount: number | null;
-  package_qty: number | null;
 }
 
-// Converter de DB para domínio
+// Converter de DB para domínio - ALINHADO com schema real
 function toProduction(db: DBProduction): Production {
   return {
     id: db.id,
@@ -76,7 +68,7 @@ function toProduction(db: DBProduction): Production {
     specialty: db.specialty || undefined,
     payerType: db.payer_type as "CONVENIO" | "PARTICULAR",
     convenio: db.convenio || undefined,
-    paymentMethod: db.payment_method || undefined, // AUDIT_FIX
+    paymentMethod: undefined, // Coluna não existe no banco ainda
     productionType: db.production_type,
     description: db.description,
     procedureCode: db.procedure_code || undefined,
@@ -93,13 +85,13 @@ function toProduction(db: DBProduction): Production {
     updatedAt: db.updated_at,
     history: db.history || [],
     editLogs: db.edit_logs || [],
-    // Campos de pacote convênio (blindagem null)
-    isPackage: db.is_package ?? false,
-    packageType: (db.package_type ?? undefined) as "PACOTE_BOX" | "PACOTE_GTA" | undefined,
-    consultAmount: Number(db.consult_amount ?? 0),
-    feeAmount: Number(db.fee_amount ?? 0),
-    matmedAmount: Number(db.matmed_amount ?? 0),
-    packageQty: Number(db.package_qty ?? 1),
+    // Campos de pacote - colunas não existem no banco ainda (defaults)
+    isPackage: false,
+    packageType: undefined,
+    consultAmount: 0,
+    feeAmount: 0,
+    matmedAmount: 0,
+    packageQty: 1,
   };
 }
 
