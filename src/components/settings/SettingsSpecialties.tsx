@@ -29,7 +29,6 @@ import {
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { SpecialtyConfig, Production, Transaction } from "@/types";
-import { generateId } from "@/utils/formatters";
 
 interface SettingsSpecialtiesProps {
   specialties: SpecialtyConfig[];
@@ -49,6 +48,26 @@ const DEFAULT_SPECIALTIES: SpecialtyConfig[] = [
   { id: "DERMATOLOGIA", name: "Dermatologia", active: true },
 ];
 
+// Helper para normalizar chaves (compatibilidade com dados antigos)
+function normalizeKey(s: string | undefined | null): string {
+  if (!s) return "";
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "_");
+}
+
+// Helper para gerar ID estável baseado no nome
+function generateStableId(name: string): string {
+  return name
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
 export function SettingsSpecialties({
   specialties,
   productions,
@@ -62,12 +81,22 @@ export function SettingsSpecialties({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
 
-  // CORREÇÃO: Usar lista do banco OU defaults se vazia
+  // CORREÇÃO PASSO 3: Merge completo - banco + defaults
   const types = useMemo(() => {
     if (specialties.length === 0) {
       return DEFAULT_SPECIALTIES;
     }
-    return specialties;
+    // Merge: manter specialties do banco, adicionar defaults ausentes
+    const byId = new Map<string, SpecialtyConfig>();
+    // Primeiro, adicionar todas do banco
+    specialties.forEach((s) => byId.set(s.id, s));
+    // Depois, adicionar defaults que não existem por ID
+    DEFAULT_SPECIALTIES.forEach((def) => {
+      if (!byId.has(def.id)) {
+        byId.set(def.id, def);
+      }
+    });
+    return Array.from(byId.values());
   }, [specialties]);
 
   // Persistir defaults se a lista do banco estiver vazia
@@ -78,10 +107,27 @@ export function SettingsSpecialties({
     }
   }, [initialized, specialties.length, onUpdate]);
 
-  // Contagem de uso em produções e transações
-  const getUsageCount = (specialtyId: string) => {
-    const prodCount = productions.filter((p) => p.specialty === specialtyId).length;
-    const txnCount = transactions.filter((t) => t.specialty === specialtyId).length;
+  // CORREÇÃO PASSO 5: Contagem de uso com compatibilidade de dados antigos
+  const getUsageCount = (type: SpecialtyConfig) => {
+    const specialtyId = type.id;
+    const specialtyName = type.name;
+    const normalizedId = normalizeKey(specialtyId);
+    const normalizedName = normalizeKey(specialtyName);
+
+    const prodCount = productions.filter((p) => {
+      if (!p.specialty) return false;
+      if (p.specialty === specialtyId) return true;
+      const normProd = normalizeKey(p.specialty);
+      return normProd === normalizedId || normProd === normalizedName;
+    }).length;
+
+    const txnCount = transactions.filter((t) => {
+      if (!t.specialty) return false;
+      if (t.specialty === specialtyId) return true;
+      const normTxn = normalizeKey(t.specialty);
+      return normTxn === normalizedId || normTxn === normalizedName;
+    }).length;
+
     return prodCount + txnCount;
   };
 
@@ -92,12 +138,16 @@ export function SettingsSpecialties({
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   }, [types, searchTerm]);
 
+  // CORREÇÃO PASSO 4: ID estável baseado no nome
   const handleAdd = () => {
     const trimmed = newName.trim();
     if (!trimmed) return;
 
+    const newId = generateStableId(trimmed);
+
+    // Check duplicates by ID or name
     const exists = types.some(
-      (t) => t.name.toLowerCase() === trimmed.toLowerCase()
+      (t) => t.id === newId || t.name.toLowerCase() === trimmed.toLowerCase()
     );
     if (exists) {
       toast.error("Especialidade já existe!");
@@ -105,7 +155,7 @@ export function SettingsSpecialties({
     }
 
     const newObj: SpecialtyConfig = {
-      id: generateId(),
+      id: newId,
       name: trimmed,
       active: true,
     };
@@ -118,7 +168,7 @@ export function SettingsSpecialties({
 
   const handleToggle = (id: string) => {
     const type = types.find((t) => t.id === id);
-    const usageCount = getUsageCount(id);
+    const usageCount = getUsageCount(type!);
 
     if (type?.active && usageCount > 0) {
       if (
@@ -167,7 +217,7 @@ export function SettingsSpecialties({
     setEditingName("");
   };
 
-  // Contagem de ativos vs inativos
+  // Contagem de ativos vs inativos - USA types (merged) não specialties (raw)
   const activeCount = types.filter((t) => t.active).length;
   const inactiveCount = types.length - activeCount;
 
@@ -231,7 +281,7 @@ export function SettingsSpecialties({
               </p>
             ) : (
               filteredTypes.map((type) => {
-                const usageCount = getUsageCount(type.id);
+                const usageCount = getUsageCount(type);
                 const isEditing = editingId === type.id;
                 const isInUse = usageCount > 0;
 

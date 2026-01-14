@@ -111,11 +111,8 @@ export default function Settings() {
   const [editingSubunitId, setEditingSubunitId] = useState<string | null>(null);
   const [editingSubunitName, setEditingSubunitName] = useState("");
 
-  // Specialty states (Centro Clínico only)
-  const [newSpecialty, setNewSpecialty] = useState("");
-  const [editingSpecialtyId, setEditingSpecialtyId] = useState<string | null>(null);
-  const [editingSpecialtyName, setEditingSpecialtyName] = useState("");
-  const [specialtyToDelete, setSpecialtyToDelete] = useState<{ unitId: string; id: string; name: string } | null>(null);
+  // LEGACY: Specialty states removed - now managed via SettingsSpecialties component
+  // using extendedSettings.specialties as single source of truth
 
   // Category states
   const [newCategory, setNewCategory] = useState("");
@@ -161,15 +158,8 @@ export default function Settings() {
       }
     });
 
-    // Garantir especialidades padrão no Centro Clínico (se não existir cadastro)
-    const centro = byId.get("CENTRO_CLINICO");
-    if (centro) {
-      const existing = Array.isArray((centro as any).specialties) ? (centro as any).specialties : [];
-      if (existing.length === 0) {
-        (centro as any).specialties = SPECIALTIES.map((s) => ({ id: s.id, name: s.name, active: true }));
-      }
-      byId.set("CENTRO_CLINICO", centro);
-    }
+    // LEGACY: Specialty initialization removed - now handled by SettingsSpecialties
+    // using extendedSettings.specialties as single source of truth
 
     updateSettings({ units: Array.from(byId.values()) });
     toast.success("Unidades padrão restauradas!");
@@ -389,164 +379,11 @@ export default function Settings() {
     );
   };
 
-  // Hidratar especialidades existentes do Centro Clínico a partir das transações (apenas se ainda não houver cadastro)
-  useEffect(() => {
-    const centroClinico = settings.units.find((u) => u.id === "CENTRO_CLINICO");
-    if (!centroClinico) return;
+  // LEGACY: Specialty inference removed - now handled by SettingsSpecialties
+  // using extendedSettings.specialties as single source of truth
 
-    // Se já existem especialidades cadastradas, não sobrescrever
-    if (centroClinico.specialties && centroClinico.specialties.length > 0) return;
-
-    // Buscar especialidades distintas usadas nas movimentações do Centro Clínico
-    const usedSpecialtyIds = Array.from(
-      new Set(
-        allTransactions
-          .filter((t) => t.unit === "CENTRO_CLINICO" && t.specialty)
-          .map((t) => t.specialty as string)
-      )
-    );
-
-    if (usedSpecialtyIds.length === 0) return;
-
-    const inferredSpecialties: SpecialtyConfig[] = usedSpecialtyIds.map((id) => ({
-      id,
-      name: SPECIALTY_LABELS[id] ?? id,
-      active: true,
-    }));
-
-    const updatedUnits = settings.units.map((u) =>
-      u.id === "CENTRO_CLINICO"
-        ? {
-            ...u,
-            specialties: inferredSpecialties.sort((a, b) =>
-              a.name.localeCompare(b.name, "pt-BR")
-            ),
-          }
-        : u
-    );
-
-    updateSettings({ units: updatedUnits });
-  }, [allTransactions, settings.units, updateSettings]);
-
-  const getSpecialtyTransactionCount = (specialtyId: string) => {
-    return allTransactions.filter((t) => t.specialty === specialtyId).length;
-  };
-
-  const handleAddSpecialty = (unitId: string) => {
-    const trimmed = newSpecialty.trim();
-    if (!trimmed) return;
-
-    const unit = settings.units.find((u) => u.id === unitId);
-    if (!unit) {
-      toast.error("Centro Clínico não encontrado!");
-      return;
-    }
-
-    const exists = unit.specialties?.some(
-      (s) => s.name.toLowerCase() === trimmed.toLowerCase()
-    );
-    if (exists) {
-      toast.error("Especialidade já existe!");
-      return;
-    }
-
-    const newSpecialtyObj: SpecialtyConfig = {
-      id: trimmed.toLowerCase().replace(/\s+/g, "_").normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
-      name: trimmed,
-      active: true,
-    };
-
-    const updatedUnits = settings.units.map((u) =>
-      u.id === unitId
-        ? { ...u, specialties: [...(u.specialties || []), newSpecialtyObj].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")) }
-        : u
-    );
-
-    updateSettings({ units: updatedUnits });
-    addAuditLog("UPDATE_SETTINGS", `Especialidade "${trimmed}" adicionada ao Centro Clínico`);
-    setNewSpecialty("");
-    toast.success("Especialidade adicionada!");
-  };
-
-  const handleConfirmDeleteSpecialty = () => {
-    if (!specialtyToDelete) return;
-    const { unitId, id, name } = specialtyToDelete;
-
-    const updatedUnits = settings.units.map((u) =>
-      u.id === unitId
-        ? { ...u, specialties: u.specialties?.filter((s) => s.id !== id) || [] }
-        : u
-    );
-
-    updateSettings({ units: updatedUnits });
-    addAuditLog("UPDATE_SETTINGS", `Especialidade "${name}" removida do Centro Clínico`);
-    toast.success("Especialidade removida!");
-    setSpecialtyToDelete(null);
-  };
-
-  const handleToggleSpecialty = (unitId: string, specialtyId: string) => {
-    const updatedUnits = settings.units.map((u) =>
-      u.id === unitId
-        ? {
-            ...u,
-            specialties: u.specialties?.map((s) =>
-              s.id === specialtyId ? { ...s, active: !s.active } : s
-            ) || [],
-          }
-        : u
-    );
-
-    updateSettings({ units: updatedUnits });
-    toast.success("Configuração salva!");
-  };
-
-  const handleStartEditSpecialty = (specialtyId: string, specialtyName: string) => {
-    setEditingSpecialtyId(specialtyId);
-    setEditingSpecialtyName(specialtyName);
-  };
-
-  const handleSaveEditSpecialty = (unitId: string) => {
-    const trimmed = editingSpecialtyName.trim();
-    if (!trimmed) {
-      toast.error("Nome não pode estar vazio!");
-      return;
-    }
-
-    const unit = settings.units.find((u) => u.id === unitId);
-    if (!unit) return;
-
-    const exists = unit.specialties?.some(
-      (s) => s.id !== editingSpecialtyId && s.name.toLowerCase() === trimmed.toLowerCase()
-    );
-    if (exists) {
-      toast.error("Já existe uma especialidade com esse nome!");
-      return;
-    }
-
-    const updatedUnits = settings.units.map((u) =>
-      u.id === unitId
-        ? {
-            ...u,
-            specialties: u.specialties?.map((s) =>
-              s.id === editingSpecialtyId ? { ...s, name: trimmed } : s
-            ).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")) || [],
-          }
-        : u
-    );
-
-    updateSettings({ units: updatedUnits });
-    addAuditLog("UPDATE_SETTINGS", `Especialidade renomeada para "${trimmed}"`);
-    setEditingSpecialtyId(null);
-    setEditingSpecialtyName("");
-    toast.success("Especialidade atualizada!");
-  };
-
-  const handleCancelEditSpecialty = () => {
-    setEditingSpecialtyId(null);
-    setEditingSpecialtyName("");
-  };
-
-  // centroClinicoUnit is no longer needed - we use isCentroClinico in the render
+  // LEGACY: All specialty handlers removed - now in SettingsSpecialties component
+  // using extendedSettings.specialties as single source of truth
 
   // ============= CATEGORY HANDLERS =============
   const handleToggleCategory = (catId: string) => {
@@ -1077,160 +914,15 @@ export default function Settings() {
                               💡 Subunidades ficam disponíveis para filtros analíticos (Score, Projeção, Cenários).
                             </p>
 
-                            {/* Specialties Section - Centro Clínico only */}
+                            {/* Specialties Section - Moved to dedicated tab */}
                             {isCentroClinico(unit) && (
                               <div className="mt-6 pt-4 border-t border-border">
-                                <div className="flex items-center gap-2 mb-3">
-                                  <Stethoscope className="h-4 w-4 text-primary" />
-                                  <span className="text-sm font-medium text-foreground">Especialidades</span>
-                                  {unit.specialties && unit.specialties.length > 0 && (
-                                    <span className="text-xs text-muted-foreground bg-primary/10 px-1.5 py-0.5 rounded">
-                                      {unit.specialties.length}
-                                    </span>
-                                  )}
+                                <div className="flex items-center gap-2 text-muted-foreground">
+                                  <Stethoscope className="h-4 w-4" />
+                                  <span className="text-sm">
+                                    Especialidades são gerenciadas na aba <strong>Especialidades</strong>
+                                  </span>
                                 </div>
-
-                                {/* Add specialty form */}
-                                <div className="flex gap-2 mb-3">
-                                  <Input
-                                    placeholder="Nova especialidade..."
-                                    value={newSpecialty}
-                                    onChange={(e) => setNewSpecialty(e.target.value)}
-                                    onKeyDown={(e) => e.key === "Enter" && handleAddSpecialty(unit.id)}
-                                    className="h-8 text-sm max-w-xs"
-                                  />
-                                  <Button
-                                    size="sm"
-                                    onClick={() => handleAddSpecialty(unit.id)}
-                                    className="h-8 gap-1"
-                                  >
-                                    <Plus className="h-3 w-3" />
-                                    Adicionar
-                                  </Button>
-                                </div>
-
-                                {/* Specialties list */}
-                                {unit.specialties && unit.specialties.length > 0 ? (
-                                  <div className="space-y-2">
-                                    {unit.specialties.map((specialty) => {
-                                      const specTransactionCount = getSpecialtyTransactionCount(specialty.id);
-                                      return (
-                                        <div
-                                          key={specialty.id}
-                                          className={`flex items-center justify-between rounded-md border px-3 py-2 ${
-                                            specialty.active
-                                              ? "border-primary/30 bg-primary/5"
-                                              : "border-border/50 bg-muted/50 opacity-60"
-                                          }`}
-                                        >
-                                          {editingSpecialtyId === specialty.id ? (
-                                            <div className="flex items-center gap-2 flex-1">
-                                              <Input
-                                                value={editingSpecialtyName}
-                                                onChange={(e) => setEditingSpecialtyName(e.target.value)}
-                                                onKeyDown={(e) => {
-                                                  if (e.key === "Enter") handleSaveEditSpecialty(unit.id);
-                                                  if (e.key === "Escape") handleCancelEditSpecialty();
-                                                }}
-                                                className="h-7 text-sm max-w-[150px]"
-                                                autoFocus
-                                              />
-                                              <Button size="icon" variant="ghost" onClick={() => handleSaveEditSpecialty(unit.id)} className="h-6 w-6 text-success">
-                                                <Check className="h-3 w-3" />
-                                              </Button>
-                                              <Button size="icon" variant="ghost" onClick={handleCancelEditSpecialty} className="h-6 w-6">
-                                                <X className="h-3 w-3" />
-                                              </Button>
-                                            </div>
-                                          ) : (
-                                            <>
-                                              <div className="flex items-center gap-2">
-                                                <span className="text-sm text-foreground">{specialty.name}</span>
-                                                {specTransactionCount > 0 && (
-                                                  <span className="text-xs text-muted-foreground">
-                                                    ({specTransactionCount} mov.)
-                                                  </span>
-                                                )}
-                                              </div>
-                                              <div className="flex items-center gap-1">
-                                                <Button
-                                                  variant="ghost"
-                                                  size="icon"
-                                                  onClick={() => handleStartEditSpecialty(specialty.id, specialty.name)}
-                                                  className="h-6 w-6"
-                                                >
-                                                  <Pencil className="h-3 w-3" />
-                                                </Button>
-                                                {specTransactionCount > 0 ? (
-                                                  <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-6 w-6 text-muted-foreground cursor-not-allowed"
-                                                    title="Especialidade possui histórico financeiro. Exclusão não permitida — apenas desativação."
-                                                    onClick={() => toast.warning("Especialidade possui histórico financeiro. Exclusão não permitida — apenas desativação.")}
-                                                  >
-                                                    <AlertTriangle className="h-3 w-3" />
-                                                  </Button>
-                                                ) : (
-                                                  <AlertDialog>
-                                                    <AlertDialogTrigger asChild>
-                                                      <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-6 w-6 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                                        title="Excluir especialidade"
-                                                        onClick={() => setSpecialtyToDelete({ unitId: unit.id, id: specialty.id, name: specialty.name })}
-                                                      >
-                                                        <Trash2 className="h-3 w-3" />
-                                                      </Button>
-                                                    </AlertDialogTrigger>
-                                                    <AlertDialogContent>
-                                                      <AlertDialogHeader>
-                                                        <AlertDialogTitle>Excluir especialidade?</AlertDialogTitle>
-                                                        <AlertDialogDescription>
-                                                          Deseja realmente excluir a especialidade <strong>"{specialty.name}"</strong>?
-                                                          Esta ação não pode ser desfeita.
-                                                        </AlertDialogDescription>
-                                                      </AlertDialogHeader>
-                                                      <AlertDialogFooter>
-                                                        <AlertDialogCancel onClick={() => setSpecialtyToDelete(null)}>Cancelar</AlertDialogCancel>
-                                                        <AlertDialogAction
-                                                          onClick={handleConfirmDeleteSpecialty}
-                                                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                                        >
-                                                          Excluir
-                                                        </AlertDialogAction>
-                                                      </AlertDialogFooter>
-                                                    </AlertDialogContent>
-                                                  </AlertDialog>
-                                                )}
-                                                <Switch
-                                                  checked={specialty.active}
-                                                  onCheckedChange={() => handleToggleSpecialty(unit.id, specialty.id)}
-                                                  className="scale-75"
-                                                />
-                                              </div>
-                                            </>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                ) : (
-                                  <div className="flex flex-col items-center justify-center py-6 text-center bg-muted/20 rounded-lg border border-dashed border-border">
-                                    <Stethoscope className="h-8 w-8 text-muted-foreground/50 mb-2" />
-                                    <p className="text-sm text-muted-foreground">
-                                      Nenhuma especialidade cadastrada.
-                                    </p>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                      Adicione uma nova especialidade acima.
-                                    </p>
-                                  </div>
-                                )}
-
-                                <p className="mt-3 text-xs text-muted-foreground">
-                                  🏥 Especialidades ficam disponíveis para filtros analíticos (Score, Projeção, Cenários).
-                                </p>
                               </div>
                             )}
                           </div>
