@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { parseLocalDate, toStartOfDay } from "@/utils/formatters";
+import { useGlobalRealtime } from "@/contexts/GlobalRealtimeProvider";
 
 // Types for financial entries
 export type FinancialEntryType = "entrada" | "saida";
@@ -93,6 +94,14 @@ export function useFinancialEntries() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Integração com GlobalRealtimeProvider
+  let globalRealtime: ReturnType<typeof useGlobalRealtime> | null = null;
+  try {
+    globalRealtime = useGlobalRealtime();
+  } catch {
+    // Provider pode não estar disponível em alguns contextos
+  }
+
   // Fetch entries from database
   const fetchEntries = useCallback(async () => {
     if (!currentCompanyId) {
@@ -122,62 +131,20 @@ export function useFinancialEntries() {
     }
   }, [currentCompanyId]);
 
-  // Initial fetch and realtime subscription
+  // Initial fetch
   useEffect(() => {
     fetchEntries();
+  }, [fetchEntries]);
 
-    // Subscribe to realtime changes - handle specific events for better performance
-    const channel = supabase
-      .channel("financial_entries_changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "financial_entries",
-          filter: currentCompanyId ? `company_id=eq.${currentCompanyId}` : undefined,
-        },
-        (payload) => {
-          // Only add if not already in state (avoid duplicates from optimistic update)
-          const newEntry = payload.new as FinancialEntry;
-          setEntries(prev => {
-            if (prev.some(e => e.id === newEntry.id)) return prev;
-            return [newEntry, ...prev];
-          });
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "financial_entries",
-          filter: currentCompanyId ? `company_id=eq.${currentCompanyId}` : undefined,
-        },
-        (payload) => {
-          const updatedEntry = payload.new as FinancialEntry;
-          setEntries(prev => prev.map(e => e.id === updatedEntry.id ? updatedEntry : e));
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "DELETE",
-          schema: "public",
-          table: "financial_entries",
-          filter: currentCompanyId ? `company_id=eq.${currentCompanyId}` : undefined,
-        },
-        (payload) => {
-          const deletedId = (payload.old as FinancialEntry).id;
-          setEntries(prev => prev.filter(e => e.id !== deletedId));
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [fetchEntries, currentCompanyId]);
+  // Registrar no GlobalRealtimeProvider para sincronização automática
+  useEffect(() => {
+    if (globalRealtime) {
+      globalRealtime.registerRefetch("financial-entries", fetchEntries);
+      return () => {
+        globalRealtime.unregisterRefetch("financial-entries");
+      };
+    }
+  }, [globalRealtime, fetchEntries]);
 
   // Add new entry with optimistic update and idempotency support
   const addEntry = useCallback(

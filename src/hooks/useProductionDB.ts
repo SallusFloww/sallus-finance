@@ -10,6 +10,7 @@ import {
   ProductionHistoryEntry 
 } from "@/types";
 import { toast } from "sonner";
+import { useGlobalRealtime } from "@/contexts/GlobalRealtimeProvider";
 
 export interface ProductionFilters {
   startDate?: Date;
@@ -127,6 +128,14 @@ export function useProductionDB() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Integração com GlobalRealtimeProvider
+  let globalRealtime: ReturnType<typeof useGlobalRealtime> | null = null;
+  try {
+    globalRealtime = useGlobalRealtime();
+  } catch {
+    // Provider pode não estar disponível em alguns contextos
+  }
+
   // Fetch productions
   const fetchProductions = useCallback(async () => {
     if (!currentCompany?.id) return;
@@ -150,99 +159,20 @@ export function useProductionDB() {
     }
   }, [currentCompany?.id]);
 
-  // Initial fetch and realtime subscription
+  // Initial fetch
   useEffect(() => {
     fetchProductions();
+  }, [fetchProductions]);
 
-    if (!currentCompany?.id) return;
-
-    const channel = supabase
-      .channel(`productions-${currentCompany.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "productions",
-          filter: `company_id=eq.${currentCompany.id}`,
-        },
-        (payload) => {
-          const newProd = toProduction(payload.new as unknown as DBProduction);
-          setProductions(prev => {
-            // Avoid duplicates (optimistic update may have added it already)
-            if (prev.some(p => p.id === newProd.id)) {
-              return prev.map(p => p.id === newProd.id ? newProd : p);
-            }
-            return [newProd, ...prev];
-          });
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "productions",
-          filter: `company_id=eq.${currentCompany.id}`,
-        },
-        (payload) => {
-          const updated = toProduction(payload.new as unknown as DBProduction);
-          setProductions(prev => prev.map(p => p.id === updated.id ? updated : p));
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "DELETE",
-          schema: "public",
-          table: "productions",
-          filter: `company_id=eq.${currentCompany.id}`,
-        },
-        (payload) => {
-          const deletedId = (payload.old as { id: string }).id;
-          setProductions(prev => prev.filter(p => p.id !== deletedId));
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [currentCompany?.id, fetchProductions]);
-
-  // AUDIT_FIX: Auto-refresh quando aba ganha foco (visibilitychange)
-  // Usa ref para evitar re-renders desnecessários e problemas de timing
+  // Registrar no GlobalRealtimeProvider para sincronização automática
   useEffect(() => {
-    let isMounted = true;
-    const handleVisibilityChange = () => {
-      if (!document.hidden && currentCompany?.id && isMounted) {
-        // Pequeno delay para evitar conflitos com render cycle
-        setTimeout(() => {
-          if (isMounted) fetchProductions();
-        }, 100);
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      isMounted = false;
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [fetchProductions, currentCompany?.id]);
-
-  // AUDIT_FIX: Polling leve como fallback (45s), só quando aba visível
-  useEffect(() => {
-    if (!currentCompany?.id) return;
-    let isMounted = true;
-    const intervalId = window.setInterval(() => {
-      if (!document.hidden && isMounted) {
-        fetchProductions();
-      }
-    }, 45000);
-    return () => {
-      isMounted = false;
-      window.clearInterval(intervalId);
-    };
-  }, [fetchProductions, currentCompany?.id]);
+    if (globalRealtime) {
+      globalRealtime.registerRefetch("productions", fetchProductions);
+      return () => {
+        globalRealtime.unregisterRefetch("productions");
+      };
+    }
+  }, [globalRealtime, fetchProductions]);
 
   // Add production with optimistic update
   const addProduction = useCallback(async (
