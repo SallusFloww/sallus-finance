@@ -27,6 +27,7 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/contexts/AppContext";
+import { useCompanySettings } from "@/hooks/useCompanySettings";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMovementAllocations } from "@/hooks/useMovementAllocations";
 import { 
@@ -97,8 +98,11 @@ export function TransactionForm({ editingTransaction, onClose }: TransactionForm
 
   const categories = settings.categories;
 
-  const centroClinicoSpecialties =
-    settings.units.find((u: any) => u.id === "CENTRO_CLINICO")?.specialties?.filter((s: any) => s.active) ||
+  // Use useCompanySettings for centralized specialty source
+  const { extendedSettings } = useCompanySettings();
+  
+  // CORREÇÃO: Usar especialidades do cadastro mestre (extendedSettings)
+  const centroClinicoSpecialties = extendedSettings.specialties?.filter(s => s.active) ||
     SPECIALTIES.map((s) => ({ id: s.id, name: s.name, active: true }));
 
   const [open, setOpen] = useState(false);

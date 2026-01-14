@@ -3,6 +3,7 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useApp } from "@/contexts/AppContext";
+import { useCompanySettings } from "@/hooks/useCompanySettings";
 import { useDRE } from "@/hooks/useDRE";
 import { useConsistencyCheck } from "@/hooks/useConsistencyCheck";
 import { ConsistencyBadge } from "@/components/dashboard/ConsistencyBadge";
@@ -95,9 +96,9 @@ export default function FinancialHealthScore() {
   const [selectedUnit, setSelectedUnit] = useState<string>("all");
   const [selectedSpecialty, setSelectedSpecialty] = useState<string>("all");
 
-  // Get Centro Clínico unit and its active specialties
-  const centroClinicoUnit = settings.units.find(u => u.id === "CENTRO_CLINICO");
-  const activeSpecialties = centroClinicoUnit?.specialties?.filter(s => s.active) || [];
+  // CORREÇÃO: Usar especialidades do cadastro mestre (extendedSettings)
+  const { extendedSettings } = useCompanySettings();
+  const activeSpecialties = extendedSettings.specialties?.filter(s => s.active) || [];
   const showSpecialtyFilter = selectedUnit === "CENTRO_CLINICO" && activeSpecialties.length > 0;
   const selectedSpecialtyName = activeSpecialties.find(s => s.id === selectedSpecialty)?.name;
 
@@ -852,7 +853,7 @@ export default function FinancialHealthScore() {
             )}
 
             {/* RANKING COMPARATIVO DE ESPECIALIDADES - Centro Clínico */}
-            {centroClinicoUnit && activeSpecialties.length > 0 && (
+            {activeSpecialties.length > 0 && (
               <SpecialtyRanking
                 transactions={transactions}
                 specialties={activeSpecialties}
