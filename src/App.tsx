@@ -90,8 +90,8 @@ function AppRoutes() {
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
-      <GlobalRealtimeProvider>
-        <AppProvider>
+      <AppProvider>
+        <GlobalRealtimeProvider>
           <TooltipProvider>
             <Toaster />
             <Sonner />
@@ -99,8 +99,8 @@ const App = () => (
               <AppRoutes />
             </BrowserRouter>
           </TooltipProvider>
-        </AppProvider>
-      </GlobalRealtimeProvider>
+        </GlobalRealtimeProvider>
+      </AppProvider>
     </AuthProvider>
   </QueryClientProvider>
 );

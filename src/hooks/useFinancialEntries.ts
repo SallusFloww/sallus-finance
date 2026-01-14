@@ -95,13 +95,7 @@ export function useFinancialEntries() {
   const [error, setError] = useState<string | null>(null);
 
   // Integração com GlobalRealtimeProvider - versão global
-  let globalVersion = 0;
-  try {
-    const realtime = useGlobalRealtime();
-    globalVersion = realtime.version;
-  } catch {
-    // Provider pode não estar disponível em alguns contextos
-  }
+  const { version: globalVersion } = useGlobalRealtime();
 
   // Fetch entries from database
   const fetchEntries = useCallback(async () => {
