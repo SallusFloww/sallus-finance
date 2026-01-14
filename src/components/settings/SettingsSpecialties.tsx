@@ -75,6 +75,11 @@ export function SettingsSpecialties({
   onUpdate,
   onAddLog,
 }: SettingsSpecialtiesProps) {
+  // BLINDAGEM: garantir arrays válidos
+  const safeProductions = productions ?? [];
+  const safeTransactions = transactions ?? [];
+  const safeSpecialties = specialties ?? [];
+
   const [initialized, setInitialized] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [newName, setNewName] = useState("");
@@ -99,7 +104,7 @@ export function SettingsSpecialties({
     const byId = new Map<string, SpecialtyConfig>();
 
     // 1) Adicionar especialidades do banco
-    specialties.forEach((s) => byId.set(s.id, s));
+    safeSpecialties.forEach((s) => byId.set(s.id, s));
 
     // 2) Adicionar defaults que não existem
     DEFAULT_SPECIALTIES.forEach((def) => {
@@ -113,7 +118,7 @@ export function SettingsSpecialties({
       const inferred = new Map<string, SpecialtyConfig>();
 
       // Produções com specialty
-      productions.forEach((p) => {
+      safeProductions.forEach((p) => {
         if (p.specialty) {
           const id = generateStableId(p.specialty);
           if (!byId.has(id) && !inferred.has(id)) {
@@ -127,7 +132,7 @@ export function SettingsSpecialties({
       });
 
       // Transações com specialty
-      transactions.forEach((t) => {
+      safeTransactions.forEach((t) => {
         if (t.specialty) {
           const id = generateStableId(t.specialty);
           if (!byId.has(id) && !inferred.has(id)) {
@@ -151,7 +156,7 @@ export function SettingsSpecialties({
     });
 
     return Array.from(byId.values());
-  }, [specialties, productions, transactions]);
+  }, [safeSpecialties, safeProductions, safeTransactions]);
 
   // Persistir se banco vazio OU se inferimos novos do histórico
   useEffect(() => {
@@ -161,7 +166,7 @@ export function SettingsSpecialties({
     const byId = new Map<string, SpecialtyConfig>();
 
     // Do banco
-    specialties.forEach((s) => byId.set(s.id, s));
+    safeSpecialties.forEach((s) => byId.set(s.id, s));
 
     // Defaults
     DEFAULT_SPECIALTIES.forEach((def) => {
@@ -171,7 +176,7 @@ export function SettingsSpecialties({
     });
 
     // Do histórico
-    productions.forEach((p) => {
+    safeProductions.forEach((p) => {
       if (p.specialty) {
         const id = generateStableId(p.specialty);
         if (!byId.has(id)) {
@@ -183,7 +188,7 @@ export function SettingsSpecialties({
         }
       }
     });
-    transactions.forEach((t) => {
+    safeTransactions.forEach((t) => {
       if (t.specialty) {
         const id = generateStableId(t.specialty);
         if (!byId.has(id)) {
@@ -199,12 +204,12 @@ export function SettingsSpecialties({
     const merged = Array.from(byId.values());
 
     // Persistir se banco estava vazio OU se inferimos novos
-    if (specialties.length === 0 || merged.length > specialties.length) {
+    if (safeSpecialties.length === 0 || merged.length > safeSpecialties.length) {
       onUpdate(merged);
     }
 
     setInitialized(true);
-  }, [initialized, specialties, productions, transactions, onUpdate]);
+  }, [initialized, safeSpecialties, safeProductions, safeTransactions, onUpdate]);
 
   // CORREÇÃO PASSO 5: Contagem de uso com compatibilidade de dados antigos
   const getUsageCount = (type: SpecialtyConfig) => {
@@ -213,14 +218,14 @@ export function SettingsSpecialties({
     const normalizedId = normalizeKey(specialtyId);
     const normalizedName = normalizeKey(specialtyName);
 
-    const prodCount = productions.filter((p) => {
+    const prodCount = safeProductions.filter((p) => {
       if (!p.specialty) return false;
       if (p.specialty === specialtyId) return true;
       const normProd = normalizeKey(p.specialty);
       return normProd === normalizedId || normProd === normalizedName;
     }).length;
 
-    const txnCount = transactions.filter((t) => {
+    const txnCount = safeTransactions.filter((t) => {
       if (!t.specialty) return false;
       if (t.specialty === specialtyId) return true;
       const normTxn = normalizeKey(t.specialty);
