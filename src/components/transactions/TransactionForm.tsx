@@ -102,8 +102,12 @@ export function TransactionForm({ editingTransaction, onClose }: TransactionForm
   const { extendedSettings } = useCompanySettings();
   
   // CORREÇÃO: Usar especialidades do cadastro mestre (extendedSettings)
-  const centroClinicoSpecialties = extendedSettings.specialties?.filter(s => s.active) ||
-    SPECIALTIES.map((s) => ({ id: s.id, name: s.name, active: true }));
+  // Fallback para SPECIALTIES quando array vazio OU undefined
+  const activeFromMaster = (extendedSettings.specialties ?? []).filter(s => s.active);
+  const centroClinicoSpecialties = 
+    activeFromMaster.length > 0
+      ? activeFromMaster
+      : SPECIALTIES.map((s) => ({ id: s.id, name: s.name, active: true }));
 
   const [open, setOpen] = useState(false);
   const [showAporteConfirmation, setShowAporteConfirmation] = useState(false);
