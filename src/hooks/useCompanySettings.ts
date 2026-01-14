@@ -160,9 +160,32 @@ export function useCompanySettings() {
         const payers = Array.isArray(rawData.payers) 
           ? (rawData.payers as PayerConfig[]) 
           : [];
-        const specialties = Array.isArray(rawData.specialties)
-          ? (rawData.specialties as SpecialtyConfig[])
-          : [];
+        // Normalizar specialties: converter string[] legado para SpecialtyConfig[]
+        const rawSpecialties = Array.isArray(rawData.specialties) ? rawData.specialties : [];
+        const specialties: SpecialtyConfig[] = rawSpecialties
+          .map((s: any) => {
+            // Se for string legado, converter para objeto
+            if (typeof s === "string") {
+              const id = s
+                .trim()
+                .toUpperCase()
+                .replace(/\s+/g, "_")
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "");
+              return { id, name: s.trim(), active: true };
+            }
+            // Se for objeto, validar id e name
+            if (s && typeof s === "object" && s.id && s.name) {
+              return {
+                id: String(s.id),
+                name: String(s.name),
+                active: s.active !== false,
+              };
+            }
+            // Item inválido - ignorar
+            return null;
+          })
+          .filter((s: SpecialtyConfig | null): s is SpecialtyConfig => s !== null);
         const systemParameters = rawData.system_parameters || undefined;
 
         const extended: ExpandedSettings = {
