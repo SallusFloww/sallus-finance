@@ -128,10 +128,11 @@ export function useProductionDB() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Integração com GlobalRealtimeProvider
-  let globalRealtime: ReturnType<typeof useGlobalRealtime> | null = null;
+  // Integração com GlobalRealtimeProvider - versão global
+  let globalVersion = 0;
   try {
-    globalRealtime = useGlobalRealtime();
+    const realtime = useGlobalRealtime();
+    globalVersion = realtime.version;
   } catch {
     // Provider pode não estar disponível em alguns contextos
   }
@@ -159,20 +160,10 @@ export function useProductionDB() {
     }
   }, [currentCompany?.id]);
 
-  // Initial fetch
+  // Fetch inicial e reativo à versão global
   useEffect(() => {
     fetchProductions();
-  }, [fetchProductions]);
-
-  // Registrar no GlobalRealtimeProvider para sincronização automática
-  useEffect(() => {
-    if (globalRealtime) {
-      globalRealtime.registerRefetch("productions", fetchProductions);
-      return () => {
-        globalRealtime.unregisterRefetch("productions");
-      };
-    }
-  }, [globalRealtime, fetchProductions]);
+  }, [fetchProductions, globalVersion]);
 
   // Add production with optimistic update
   const addProduction = useCallback(async (
