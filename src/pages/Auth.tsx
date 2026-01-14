@@ -90,6 +90,11 @@ export default function Auth() {
     }
   }, [searchParams]);
 
+  // Limpar errors quando activeTab mudar (higiene de estado)
+  useEffect(() => {
+    setErrors({});
+  }, [activeTab]);
+
   // Load invite data
   const loadInviteData = async (token: string) => {
     setInviteLoading(true);
@@ -253,7 +258,7 @@ export default function Auth() {
     setIsLoading(true);
 
     try {
-      // 1. Call edge function to create user and link to company
+      // Call edge function to create user and link to company
       const { data: acceptResult, error: acceptError } = await supabase.functions.invoke("accept-invite", {
         body: {
           inviteToken: inviteToken,
@@ -261,16 +266,18 @@ export default function Auth() {
         },
       });
 
+      // Handle HTTP errors (network, 500, etc)
       if (acceptError) {
         throw new Error(acceptError.message || "Erro ao processar convite");
       }
 
-      if (acceptResult?.error) {
-        // Handle specific error codes from the edge function
-        const errorCode = acceptResult.code;
+      // REGRA: Tratar erros exclusivamente via acceptResult.code
+      // Se success !== true, NÃO continuar o fluxo
+      if (acceptResult?.success !== true) {
+        const errorCode = acceptResult?.code;
         
-        if (acceptResult.userExists || errorCode === "USER_EXISTS_LINKED") {
-          toast.error("Este email já está cadastrado. Faça login com sua senha existente.");
+        if (errorCode === "USER_EXISTS_LINKED") {
+          toast.error("Este email já está cadastrado nesta empresa. Faça login com sua senha existente.");
           setActiveTab("login");
           setLoginForm({ email: inviteData.email, password: "" });
           setIsLoading(false);
@@ -293,18 +300,20 @@ export default function Auth() {
         }
         
         if (errorCode === "COMPANY_LINK_FAILED") {
-          // Erro recuperável - usuário pode tentar novamente
-          toast.error("Erro ao vincular à empresa. Por favor, tente novamente.");
+          // Erro recuperável - usuário pode tentar novamente com o mesmo link
+          toast.error("Sua conta foi criada, mas houve um erro ao vincular à empresa. Você pode tentar novamente com o mesmo link ou contatar o suporte.");
           setIsLoading(false);
+          // NÃO redirecionar - permitir nova tentativa
           return;
         }
         
-        throw new Error(acceptResult.error);
+        // Outros erros
+        throw new Error(acceptResult?.error || "Erro desconhecido ao processar convite");
       }
 
       console.log("Invite accepted successfully:", acceptResult);
 
-      // Check if user already exists (needs to login with existing password)
+      // Verificar se usuário já existia (precisa fazer login com senha existente)
       if (acceptResult.userExists) {
         toast.success(acceptResult.message || "Acesso concedido! Faça login com sua senha.");
         setActiveTab("login");
@@ -313,32 +322,13 @@ export default function Auth() {
         return;
       }
 
-      // 2. Auto-login with the new credentials (only for new users)
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: inviteData.email,
-        password: inviteForm.password,
-      });
-
-      if (signInError) {
-        console.error("Auto-login failed:", signInError);
-        toast.success("Conta criada com sucesso! Faça login para continuar.");
-        setActiveTab("login");
-        setLoginForm({ email: inviteData.email, password: "" });
-        setIsLoading(false);
-        return;
-      }
-
-      console.log("Auto-login successful:", signInData.user?.email);
-
-      toast.success("Conta criada com sucesso! Bem-vindo ao sistema.");
-      
-      // 3. Reload user data to get company info
-      await reloadUserData();
-      
-      // 4. Navigate to dashboard
-      setTimeout(() => {
-        window.location.href = "/";
-      }, 500);
+      // NOVO FLUXO: NÃO fazer auto-login para evitar race conditions
+      // Mostrar mensagem de sucesso e redirecionar para login
+      toast.success("Conta criada com sucesso! Faça login para continuar.");
+      setActiveTab("login");
+      setLoginForm({ email: inviteData.email, password: "" });
+      setInviteData(null);
+      setInviteToken(null);
 
     } catch (err: any) {
       console.error("Error accepting invite:", err);
@@ -454,13 +444,13 @@ export default function Auth() {
                   {errors.confirmPassword && <p className="text-sm text-destructive">{errors.confirmPassword}</p>}
                 </div>
 
-                <Button type="submit" className="w-full gradient-primary" disabled={isLoading}>
+                <Button type="submit" className="w-full gradient-primary" disabled={isLoading || inviteLoading}>
                   {isLoading ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   ) : (
                     <UserPlus className="h-4 w-4 mr-2" />
                   )}
-                  Criar Conta e Entrar
+                  Criar Conta
                 </Button>
               </form>
 

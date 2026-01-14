@@ -135,8 +135,10 @@ serve(async (req) => {
 
     // =====================================================
     // STEP 2: VERIFICAR SE USUÁRIO JÁ EXISTE
+    // Nota: listUsers com filter por email seria ideal, mas a versão do SDK não suporta.
+    // Usando listUsers com busca manual - em produção com muitos usuários considere usar RPC.
     // =====================================================
-    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
+    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
     const existingUser = existingUsers?.users?.find(
       (u) => u.email?.toLowerCase() === email.toLowerCase()
     );
