@@ -381,6 +381,59 @@ export type Database = {
           },
         ]
       }
+      package_pricing_rules: {
+        Row: {
+          company_id: string
+          consult_default_amount: number
+          created_at: string
+          created_by: string | null
+          effective_from: string
+          fee_default_amount: number
+          id: string
+          is_active: boolean
+          notes: string | null
+          package_type: string
+          plan_id: string
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          consult_default_amount?: number
+          created_at?: string
+          created_by?: string | null
+          effective_from: string
+          fee_default_amount?: number
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          package_type: string
+          plan_id: string
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          consult_default_amount?: number
+          created_at?: string
+          created_by?: string | null
+          effective_from?: string
+          fee_default_amount?: number
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          package_type?: string
+          plan_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "package_pricing_rules_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       permissions: {
         Row: {
           code: string
