@@ -81,31 +81,130 @@ export function SettingsSpecialties({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
 
-  // CORREÇÃO PASSO 3: Merge completo - banco + defaults
-  const types = useMemo(() => {
-    if (specialties.length === 0) {
-      return DEFAULT_SPECIALTIES;
+  // Helper para formatar nome legível a partir do ID
+  const formatDisplayName = (raw: string): string => {
+    // Se já está em formato legível (tem minúsculas), retornar
+    if (raw !== raw.toUpperCase()) {
+      return raw.charAt(0).toUpperCase() + raw.slice(1);
     }
-    // Merge: manter specialties do banco, adicionar defaults ausentes
+    // Converter CARDIOLOGIA -> Cardiologia
+    return raw
+      .replace(/_/g, " ")
+      .toLowerCase()
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  };
+
+  // CORREÇÃO DEFINITIVA: Merge de banco + defaults + histórico
+  const types = useMemo(() => {
     const byId = new Map<string, SpecialtyConfig>();
-    // Primeiro, adicionar todas do banco
+
+    // 1) Adicionar especialidades do banco
     specialties.forEach((s) => byId.set(s.id, s));
-    // Depois, adicionar defaults que não existem por ID
+
+    // 2) Adicionar defaults que não existem
     DEFAULT_SPECIALTIES.forEach((def) => {
       if (!byId.has(def.id)) {
         byId.set(def.id, def);
       }
     });
-    return Array.from(byId.values());
-  }, [specialties]);
 
-  // Persistir defaults se a lista do banco estiver vazia
+    // 3) Inferir especialidades do histórico (productions e transactions)
+    const inferFromHistory = () => {
+      const inferred = new Map<string, SpecialtyConfig>();
+
+      // Produções com specialty
+      productions.forEach((p) => {
+        if (p.specialty) {
+          const id = generateStableId(p.specialty);
+          if (!byId.has(id) && !inferred.has(id)) {
+            inferred.set(id, {
+              id,
+              name: formatDisplayName(p.specialty),
+              active: true,
+            });
+          }
+        }
+      });
+
+      // Transações com specialty
+      transactions.forEach((t) => {
+        if (t.specialty) {
+          const id = generateStableId(t.specialty);
+          if (!byId.has(id) && !inferred.has(id)) {
+            inferred.set(id, {
+              id,
+              name: formatDisplayName(t.specialty),
+              active: true,
+            });
+          }
+        }
+      });
+
+      return inferred;
+    };
+
+    const inferred = inferFromHistory();
+    inferred.forEach((spec, id) => {
+      if (!byId.has(id)) {
+        byId.set(id, spec);
+      }
+    });
+
+    return Array.from(byId.values());
+  }, [specialties, productions, transactions]);
+
+  // Persistir se banco vazio OU se inferimos novos do histórico
   useEffect(() => {
-    if (!initialized && specialties.length === 0) {
-      onUpdate(DEFAULT_SPECIALTIES);
-      setInitialized(true);
+    if (initialized) return;
+
+    // Construir o merge completo para persistência
+    const byId = new Map<string, SpecialtyConfig>();
+
+    // Do banco
+    specialties.forEach((s) => byId.set(s.id, s));
+
+    // Defaults
+    DEFAULT_SPECIALTIES.forEach((def) => {
+      if (!byId.has(def.id)) {
+        byId.set(def.id, def);
+      }
+    });
+
+    // Do histórico
+    productions.forEach((p) => {
+      if (p.specialty) {
+        const id = generateStableId(p.specialty);
+        if (!byId.has(id)) {
+          byId.set(id, {
+            id,
+            name: formatDisplayName(p.specialty),
+            active: true,
+          });
+        }
+      }
+    });
+    transactions.forEach((t) => {
+      if (t.specialty) {
+        const id = generateStableId(t.specialty);
+        if (!byId.has(id)) {
+          byId.set(id, {
+            id,
+            name: formatDisplayName(t.specialty),
+            active: true,
+          });
+        }
+      }
+    });
+
+    const merged = Array.from(byId.values());
+
+    // Persistir se banco estava vazio OU se inferimos novos
+    if (specialties.length === 0 || merged.length > specialties.length) {
+      onUpdate(merged);
     }
-  }, [initialized, specialties.length, onUpdate]);
+
+    setInitialized(true);
+  }, [initialized, specialties, productions, transactions, onUpdate]);
 
   // CORREÇÃO PASSO 5: Contagem de uso com compatibilidade de dados antigos
   const getUsageCount = (type: SpecialtyConfig) => {
