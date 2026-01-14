@@ -101,13 +101,42 @@ export function TransactionForm({ editingTransaction, onClose }: TransactionForm
   // Use useCompanySettings for centralized specialty source
   const { extendedSettings } = useCompanySettings();
   
-  // CORREÇÃO: Usar especialidades do cadastro mestre (extendedSettings)
-  // Fallback para SPECIALTIES quando array vazio OU undefined
-  const activeFromMaster = (extendedSettings.specialties ?? []).filter(s => s.active);
-  const centroClinicoSpecialties = 
-    activeFromMaster.length > 0
-      ? activeFromMaster
-      : SPECIALTIES.map((s) => ({ id: s.id, name: s.name, active: true }));
+  // CORREÇÃO DEFINITIVA: Merge cadastro mestre + legado do histórico + fallback
+  const centroClinicoSpecialties = (() => {
+    const byId = new Map<string, { id: string; name: string; active: boolean }>();
+
+    // 1) Cadastro mestre (ativas)
+    (extendedSettings.specialties ?? [])
+      .filter((s) => s.active)
+      .forEach((s) => byId.set(s.id, { id: s.id, name: s.name, active: true }));
+
+    // 2) Legado do histórico (transações existentes com specialty)
+    const txList = transactions.transactions ?? [];
+    txList.forEach((t) => {
+      if (t.unit === "CENTRO_CLINICO" && t.specialty) {
+        const id = t.specialty
+          .trim()
+          .toUpperCase()
+          .replace(/\s+/g, "_")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
+        if (!byId.has(id)) {
+          const name =
+            t.specialty !== t.specialty.toUpperCase()
+              ? t.specialty.charAt(0).toUpperCase() + t.specialty.slice(1)
+              : t.specialty.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+          byId.set(id, { id, name, active: true });
+        }
+      }
+    });
+
+    // 3) Fallback para SPECIALTIES se tudo vazio
+    if (byId.size === 0) {
+      SPECIALTIES.forEach((s) => byId.set(s.id, { id: s.id, name: s.name, active: true }));
+    }
+
+    return Array.from(byId.values());
+  })();
 
   const [open, setOpen] = useState(false);
   const [showAporteConfirmation, setShowAporteConfirmation] = useState(false);
