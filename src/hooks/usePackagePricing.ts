@@ -67,7 +67,8 @@ export function usePackagePricing() {
 
   // Fetch all rules for the current company
   const fetchRules = useCallback(async () => {
-    if (!currentCompany) {
+    const companyId = currentCompany?.id;
+    if (!companyId) {
       setRules([]);
       setLoading(false);
       return;
@@ -80,7 +81,7 @@ export function usePackagePricing() {
       const { data, error: fetchError } = await (supabase
         .from("package_pricing_rules") as any)
         .select("*")
-        .eq("company_id", currentCompany)
+        .eq("company_id", companyId)
         .order("effective_from", { ascending: false });
 
       if (fetchError) {
@@ -198,14 +199,15 @@ export function usePackagePricing() {
       effectiveFrom: string;
       notes?: string;
     }): Promise<PackagePricingRule | null> => {
-      if (!currentCompany) {
+      const companyId = currentCompany?.id;
+      if (!companyId) {
         toast.error("Empresa não selecionada");
         return null;
       }
 
       try {
         const insertData = {
-          company_id: currentCompany,
+          company_id: companyId,
           plan_id: data.planId,
           package_type: data.packageType,
           consult_default_amount: data.consultDefaultAmount,
