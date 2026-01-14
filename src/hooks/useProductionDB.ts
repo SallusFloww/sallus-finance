@@ -252,9 +252,72 @@ export function useProductionDB() {
       .single();
 
     if (insertError) {
-      // Rollback optimistic update on error
+      console.error("createProduction insertError:", insertError);
+
+      // Verificar tipo de erro para mensagens específicas
+      const errorMsg = insertError.message || "";
+      
+      // Erro de RLS/permissão
+      if (errorMsg.includes("row-level security") || errorMsg.includes("permission denied")) {
+        setProductions(prev => prev.filter(p => p.id !== optimisticId));
+        toast.error("Sem permissão para lançar produção nesta empresa. Verifique role Admin/Gestor.");
+        return null;
+      }
+
+      // Erro de coluna inexistente - tentar fallback com payload mínimo
+      if (errorMsg.includes("column") && errorMsg.includes("does not exist")) {
+        console.warn("Tentando fallback com payload mínimo...");
+        
+        const minimalPayload = {
+          company_id: currentCompany.id,
+          production_date: data.productionDate,
+          competencia: data.competencia,
+          unit: data.unit,
+          specialty: data.specialty || null,
+          payer_type: data.payerType,
+          convenio: data.convenio || null,
+          production_type: data.productionType,
+          description: data.description,
+          procedure_code: data.procedureCode || null,
+          quantity: data.quantity,
+          unit_value: data.unitValue,
+          total_value: totalValue,
+          status: "PRODUZIDO",
+          created_by: profile.id,
+          history: JSON.parse(JSON.stringify(history)),
+        };
+
+        const { data: fallbackInserted, error: fallbackError } = await supabase
+          .from("productions")
+          .insert([minimalPayload])
+          .select()
+          .single();
+
+        if (fallbackError) {
+          console.error("Fallback também falhou:", fallbackError);
+          setProductions(prev => prev.filter(p => p.id !== optimisticId));
+          toast.error(fallbackError.message || "Erro ao criar produção");
+          return null;
+        }
+
+        // Fallback funcionou
+        const fallbackProduction = toProduction(fallbackInserted as unknown as DBProduction);
+        setProductions(prev => {
+          const withoutOptimistic = prev.filter(p => p.id !== optimisticId);
+          const alreadyExists = withoutOptimistic.some(p => p.id === fallbackProduction.id);
+          if (alreadyExists) {
+            return withoutOptimistic.map(p => p.id === fallbackProduction.id ? fallbackProduction : p);
+          }
+          return [fallbackProduction, ...withoutOptimistic];
+        });
+        await fetchProductions();
+        toast.success("Produção registrada (modo compatível)");
+        return fallbackProduction;
+      }
+
+      // Rollback optimistic update on other errors
       setProductions(prev => prev.filter(p => p.id !== optimisticId));
-      toast.error("Erro ao criar produção");
+      toast.error(errorMsg || "Erro ao criar produção");
       return null;
     }
 

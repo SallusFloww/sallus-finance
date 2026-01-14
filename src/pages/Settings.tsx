@@ -1051,9 +1051,9 @@ export default function Settings() {
           {/* ============= SPECIALTIES TAB ============= */}
           <TabsContent value="specialties" className="space-y-4">
             <SettingsSpecialties
-              specialties={extendedSettings.specialties || []}
-              productions={productions}
-              transactions={allTransactions}
+              specialties={extendedSettings?.specialties ?? []}
+              productions={productions ?? []}
+              transactions={allTransactions ?? []}
               onUpdate={(specs) => setExtendedSettings(prev => ({ ...prev, specialties: specs }))}
               onAddLog={addAuditLog}
             />
