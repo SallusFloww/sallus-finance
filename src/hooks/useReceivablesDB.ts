@@ -11,6 +11,7 @@ import {
   ReceivableHistoryEntry
 } from "@/types";
 import { toast } from "sonner";
+import { useGlobalRealtime } from "@/contexts/GlobalRealtimeProvider";
 
 interface ReceivablesFilters {
   startDate?: Date;
@@ -120,6 +121,14 @@ export function useReceivablesDB() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Integração com GlobalRealtimeProvider
+  let globalRealtime: ReturnType<typeof useGlobalRealtime> | null = null;
+  try {
+    globalRealtime = useGlobalRealtime();
+  } catch {
+    // Provider pode não estar disponível em alguns contextos
+  }
+
   // Fetch receivables
   const fetchReceivables = useCallback(async () => {
     if (!currentCompany?.id) return;
@@ -143,66 +152,20 @@ export function useReceivablesDB() {
     }
   }, [currentCompany?.id]);
 
-  // Initial fetch and realtime subscription
+  // Initial fetch
   useEffect(() => {
     fetchReceivables();
+  }, [fetchReceivables]);
 
-    if (!currentCompany?.id) return;
-
-    const channel = supabase
-      .channel("receivables-changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "receivables",
-          filter: `company_id=eq.${currentCompany.id}`,
-        },
-        () => {
-          fetchReceivables();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [currentCompany?.id, fetchReceivables]);
-
-  // AUDIT_FIX: Auto-refresh quando aba ganha foco (visibilitychange)
-  // Usa ref para evitar re-renders desnecessários e problemas de timing
+  // Registrar no GlobalRealtimeProvider para sincronização automática
   useEffect(() => {
-    let isMounted = true;
-    const handleVisibilityChange = () => {
-      if (!document.hidden && currentCompany?.id && isMounted) {
-        // Pequeno delay para evitar conflitos com render cycle
-        setTimeout(() => {
-          if (isMounted) fetchReceivables();
-        }, 100);
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      isMounted = false;
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [fetchReceivables, currentCompany?.id]);
-
-  // AUDIT_FIX: Polling leve como fallback (45s), só quando aba visível
-  useEffect(() => {
-    if (!currentCompany?.id) return;
-    let isMounted = true;
-    const intervalId = window.setInterval(() => {
-      if (!document.hidden && isMounted) {
-        fetchReceivables();
-      }
-    }, 45000);
-    return () => {
-      isMounted = false;
-      window.clearInterval(intervalId);
-    };
-  }, [fetchReceivables, currentCompany?.id]);
+    if (globalRealtime) {
+      globalRealtime.registerRefetch("receivables", fetchReceivables);
+      return () => {
+        globalRealtime.unregisterRefetch("receivables");
+      };
+    }
+  }, [globalRealtime, fetchReceivables]);
 
   // Add receivable
   const addReceivable = useCallback(async (
