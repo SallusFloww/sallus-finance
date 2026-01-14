@@ -75,10 +75,12 @@ export function SettingsSpecialties({
   onUpdate,
   onAddLog,
 }: SettingsSpecialtiesProps) {
-  // BLINDAGEM: garantir arrays válidos
+  // BLINDAGEM: garantir arrays válidos e itens com id/name
   const safeProductions = productions ?? [];
   const safeTransactions = transactions ?? [];
-  const safeSpecialties = specialties ?? [];
+  const safeSpecialties = (specialties ?? []).filter(
+    (s): s is SpecialtyConfig => Boolean(s && typeof s === "object" && s.id && s.name)
+  );
 
   const [initialized, setInitialized] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
