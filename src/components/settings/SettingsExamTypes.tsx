@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Plus,
   Pencil,
@@ -53,6 +53,20 @@ const EXAM_CATEGORIES = [
   { id: "OUTRO", name: "Outro" },
 ];
 
+// Exames default para inicialização
+const DEFAULT_EXAM_TYPES: ExamTypeConfig[] = [
+  { id: "ressonancia", name: "Ressonância Magnética", linkedProductionType: "EXAME", category: "IMAGEM", active: true },
+  { id: "tomografia", name: "Tomografia Computadorizada", linkedProductionType: "EXAME", category: "IMAGEM", active: true },
+  { id: "raio-x", name: "Raio-X", linkedProductionType: "EXAME", category: "IMAGEM", active: true },
+  { id: "ultrassonografia", name: "Ultrassonografia", linkedProductionType: "EXAME", category: "IMAGEM", active: true },
+  { id: "ecocardiograma", name: "Ecocardiograma", linkedProductionType: "EXAME", category: "IMAGEM", active: true },
+  { id: "endoscopia", name: "Endoscopia", linkedProductionType: "EXAME", category: "LABORATORIO", active: true },
+  { id: "colonoscopia", name: "Colonoscopia", linkedProductionType: "EXAME", category: "LABORATORIO", active: true },
+  { id: "eletrocardiograma", name: "Eletrocardiograma", linkedProductionType: "EXAME", category: "OUTRO", active: true },
+  { id: "mamografia", name: "Mamografia", linkedProductionType: "EXAME", category: "IMAGEM", active: true },
+  { id: "densitometria", name: "Densitometria Óssea", linkedProductionType: "EXAME", category: "IMAGEM", active: true },
+];
+
 export function SettingsExamTypes({
   examTypes,
   productionTypes,
@@ -60,12 +74,29 @@ export function SettingsExamTypes({
   onUpdate,
   onAddLog,
 }: SettingsExamTypesProps) {
+  const [initialized, setInitialized] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [newName, setNewName] = useState("");
   const [newLinkedType, setNewLinkedType] = useState("EXAME");
   const [newCategory, setNewCategory] = useState<"IMAGEM" | "LABORATORIO" | "TERAPIA" | "OUTRO">("OUTRO");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingData, setEditingData] = useState<Partial<ExamTypeConfig>>({});
+
+  // CORREÇÃO: Usar lista do banco OU defaults se vazia
+  const types = useMemo(() => {
+    if (examTypes.length === 0) {
+      return DEFAULT_EXAM_TYPES;
+    }
+    return examTypes;
+  }, [examTypes]);
+
+  // Persistir defaults se a lista do banco estiver vazia
+  useEffect(() => {
+    if (!initialized && examTypes.length === 0) {
+      onUpdate(DEFAULT_EXAM_TYPES);
+      setInitialized(true);
+    }
+  }, [initialized, examTypes.length, onUpdate]);
 
   const getUsageCount = (examId: string) => {
     return productions.filter((p) => p.examType === examId).length;
@@ -76,16 +107,16 @@ export function SettingsExamTypes({
 
   // Filter and sort exam types
   const filteredTypes = useMemo(() => {
-    return examTypes
+    return types
       .filter((t) => t.name.toLowerCase().includes(searchTerm.toLowerCase()))
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
-  }, [examTypes, searchTerm]);
+  }, [types, searchTerm]);
 
   const handleAdd = () => {
     const trimmed = newName.trim();
     if (!trimmed) return;
 
-    const exists = examTypes.some(
+    const exists = types.some(
       (t) => t.name.toLowerCase() === trimmed.toLowerCase()
     );
     if (exists) {
@@ -102,14 +133,15 @@ export function SettingsExamTypes({
       createdAt: new Date().toISOString(),
     };
 
-    onUpdate([...examTypes, newObj]);
+    // CORREÇÃO: Usar types (lista combinada) ao invés de examTypes
+    onUpdate([...types, newObj]);
     onAddLog("UPDATE_SETTINGS", `Tipo de exame "${trimmed}" adicionado`);
     setNewName("");
     toast.success("Tipo de exame/procedimento adicionado!");
   };
 
   const handleToggle = (id: string) => {
-    const type = examTypes.find((t) => t.id === id);
+    const type = types.find((t) => t.id === id);
     const usageCount = getUsageCount(id);
     
     if (type?.active && usageCount > 0) {
@@ -118,7 +150,8 @@ export function SettingsExamTypes({
       }
     }
 
-    const updated = examTypes.map((t) =>
+    // CORREÇÃO: Usar types ao invés de examTypes
+    const updated = types.map((t) =>
       t.id === id ? { ...t, active: !t.active, updatedAt: new Date().toISOString() } : t
     );
     onUpdate(updated);
@@ -141,7 +174,8 @@ export function SettingsExamTypes({
       return;
     }
 
-    const updated = examTypes.map((t) =>
+    // CORREÇÃO: Usar types ao invés de examTypes
+    const updated = types.map((t) =>
       t.id === editingId
         ? {
             ...t,
