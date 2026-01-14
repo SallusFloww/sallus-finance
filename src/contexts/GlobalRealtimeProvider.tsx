@@ -158,11 +158,17 @@ export function GlobalRealtimeProvider({ children }: { children: ReactNode }) {
 
 /**
  * Hook para acessar o contexto de realtime global
+ * Retorna valores padrão seguros se estiver fora do Provider
  */
-export function useGlobalRealtime() {
+export function useGlobalRealtime(): GlobalRealtimeContextType {
   const context = useContext(GlobalRealtimeContext);
+  // Retorna valores padrão seguros se estiver fora do Provider
   if (context === undefined) {
-    throw new Error("useGlobalRealtime must be used within a GlobalRealtimeProvider");
+    return {
+      refreshAll: () => {},
+      lastUpdate: Date.now(),
+      version: 0,
+    };
   }
   return context;
 }
