@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Plus,
   Pencil,
@@ -63,7 +63,33 @@ export function SettingsProductionTypes({
   onUpdate,
   onAddLog,
 }: SettingsProductionTypesProps) {
-  const types = productionTypes.length > 0 ? productionTypes : DEFAULT_PRODUCTION_TYPES;
+  // CORREÇÃO: Se não há tipos salvos no banco, usar defaults e PERSISTIR
+  // Isso garante que os defaults sejam salvos no banco imediatamente
+  const [initialized, setInitialized] = useState(false);
+  
+  // Combinar tipos do banco com defaults que ainda não existem
+  const types = useMemo(() => {
+    if (productionTypes.length === 0) {
+      return DEFAULT_PRODUCTION_TYPES;
+    }
+    // Mesclar: manter os do banco e adicionar defaults que não existem
+    const byId = new Map(productionTypes.map(t => [t.id, t]));
+    DEFAULT_PRODUCTION_TYPES.forEach(def => {
+      if (!byId.has(def.id)) {
+        byId.set(def.id, def);
+      }
+    });
+    return Array.from(byId.values());
+  }, [productionTypes]);
+
+  // Persistir defaults se a lista do banco estiver vazia
+  useEffect(() => {
+    if (!initialized && productionTypes.length === 0) {
+      // Salvar defaults no banco para garantir persistência
+      onUpdate(DEFAULT_PRODUCTION_TYPES);
+      setInitialized(true);
+    }
+  }, [initialized, productionTypes.length, onUpdate]);
   
   const [searchTerm, setSearchTerm] = useState("");
   const [newType, setNewType] = useState("");
@@ -105,6 +131,7 @@ export function SettingsProductionTypes({
       createdAt: new Date().toISOString(),
     };
 
+    // CORREÇÃO: Usar a lista completa (types) ao invés de productionTypes
     onUpdate([...types, newTypeObj]);
     onAddLog("UPDATE_SETTINGS", `Tipo de produção "${trimmed}" adicionado`);
     setNewType("");
