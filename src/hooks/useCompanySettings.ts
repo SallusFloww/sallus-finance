@@ -147,15 +147,25 @@ export function useCompanySettings() {
 
         setSettings(baseSettings);
 
-        // Parse extended settings (stored in a JSON field or derived)
-        // For now, extended settings are stored alongside in same row
-        const rawExtended = data as any;
+        // Parse extended settings from dedicated columns
+        const rawData = data as any;
+        const productionTypes = Array.isArray(rawData.production_types) 
+          ? (rawData.production_types as ProductionTypeConfig[]) 
+          : [];
+        const examTypes = Array.isArray(rawData.exam_types) 
+          ? (rawData.exam_types as ExamTypeConfig[]) 
+          : [];
+        const payers = Array.isArray(rawData.payers) 
+          ? (rawData.payers as PayerConfig[]) 
+          : [];
+        const systemParameters = rawData.system_parameters || undefined;
+
         const extended: ExpandedSettings = {
           ...baseSettings,
-          productionTypes: rawExtended.production_types || [],
-          examTypes: rawExtended.exam_types || [],
-          payers: rawExtended.payers || [],
-          systemParameters: rawExtended.system_parameters || undefined,
+          productionTypes,
+          examTypes,
+          payers,
+          systemParameters,
         };
 
         setExtendedSettings(extended);
@@ -271,8 +281,7 @@ export function useCompanySettings() {
         setSettings((prev) => ({ ...prev, ...baseUpdates }));
       }
 
-      // Extended settings are stored in the same row for simplicity
-      // In a more complex system, you might use a separate table
+      // Extended settings are stored in dedicated columns
       const dbUpdate: Record<string, unknown> = {};
 
       if (updates.units !== undefined) {
@@ -287,6 +296,19 @@ export function useCompanySettings() {
       if (updates.initialBalance !== undefined) {
         dbUpdate.initial_balance = updates.initialBalance;
         dbUpdate.initial_balance_last_update = new Date().toISOString();
+      }
+      // Save extended settings to dedicated columns
+      if (updates.productionTypes !== undefined) {
+        dbUpdate.production_types = updates.productionTypes;
+      }
+      if (updates.examTypes !== undefined) {
+        dbUpdate.exam_types = updates.examTypes;
+      }
+      if (updates.payers !== undefined) {
+        dbUpdate.payers = updates.payers;
+      }
+      if (updates.systemParameters !== undefined) {
+        dbUpdate.system_parameters = updates.systemParameters;
       }
 
       try {

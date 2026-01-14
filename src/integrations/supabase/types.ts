@@ -93,11 +93,15 @@ export type Database = {
           categories: Json | null
           company_id: string
           created_at: string
+          exam_types: Json | null
           id: string
           initial_balance: number
           initial_balance_adjustments: Json | null
           initial_balance_last_update: string | null
+          payers: Json | null
           payment_methods: Json | null
+          production_types: Json | null
+          system_parameters: Json | null
           units: Json | null
           updated_at: string
         }
@@ -105,11 +109,15 @@ export type Database = {
           categories?: Json | null
           company_id: string
           created_at?: string
+          exam_types?: Json | null
           id?: string
           initial_balance?: number
           initial_balance_adjustments?: Json | null
           initial_balance_last_update?: string | null
+          payers?: Json | null
           payment_methods?: Json | null
+          production_types?: Json | null
+          system_parameters?: Json | null
           units?: Json | null
           updated_at?: string
         }
@@ -117,11 +125,15 @@ export type Database = {
           categories?: Json | null
           company_id?: string
           created_at?: string
+          exam_types?: Json | null
           id?: string
           initial_balance?: number
           initial_balance_adjustments?: Json | null
           initial_balance_last_update?: string | null
+          payers?: Json | null
           payment_methods?: Json | null
+          production_types?: Json | null
+          system_parameters?: Json | null
           units?: Json | null
           updated_at?: string
         }
