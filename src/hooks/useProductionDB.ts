@@ -220,34 +220,29 @@ export function useProductionDB() {
     // Optimistic update - add to state immediately
     setProductions(prev => [optimisticProduction, ...prev]);
 
+    // Payload com apenas colunas que existem no schema do banco
+    const insertPayload = {
+      company_id: currentCompany.id,
+      production_date: data.productionDate,
+      competencia: data.competencia,
+      unit: data.unit,
+      specialty: data.specialty || null,
+      payer_type: data.payerType,
+      convenio: data.convenio || null,
+      production_type: data.productionType,
+      description: data.description,
+      procedure_code: data.procedureCode || null,
+      quantity: data.quantity,
+      unit_value: data.unitValue,
+      total_value: totalValue,
+      status: "PRODUZIDO",
+      created_by: profile.id,
+      history: JSON.parse(JSON.stringify(history)),
+    };
+
     const { data: inserted, error: insertError } = await supabase
       .from("productions")
-      .insert([{
-        company_id: currentCompany.id,
-        production_date: data.productionDate,
-        competencia: data.competencia,
-        unit: data.unit,
-        specialty: data.specialty || null,
-        payer_type: data.payerType,
-        convenio: data.convenio || null,
-        payment_method: data.paymentMethod || null, // AUDIT_FIX
-        production_type: data.productionType,
-        description: data.description,
-        procedure_code: data.procedureCode || null,
-        quantity: data.quantity,
-        unit_value: data.unitValue,
-        total_value: totalValue,
-        status: "PRODUZIDO",
-        created_by: profile.id,
-        history: JSON.parse(JSON.stringify(history)),
-        // Campos de pacote convênio
-        is_package: isPackage,
-        package_type: isPackage ? (data.packageType || data.productionType) : null,
-        consult_amount: isPackage ? (data.consultAmount || 0) : 0,
-        fee_amount: isPackage ? (data.feeAmount || 0) : 0,
-        matmed_amount: isPackage ? (data.matmedAmount || 0) : 0,
-        package_qty: isPackage ? (data.packageQty || data.quantity) : 1,
-      }])
+      .insert([insertPayload])
       .select()
       .single();
 
