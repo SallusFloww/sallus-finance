@@ -5,3 +5,4 @@ export { SettingsParameters } from "./SettingsParameters";
 export { SettingsCategories } from "./SettingsCategories";
 export { SettingsUnits } from "./SettingsUnits";
 export { SettingsPackagePricing } from "./SettingsPackagePricing";
+export { SettingsSpecialties } from "./SettingsSpecialties";

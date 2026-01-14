@@ -62,6 +62,7 @@ import {
   SettingsPayers,
   SettingsParameters,
   SettingsPackagePricing,
+  SettingsSpecialties,
 } from "@/components/settings";
 import { DemoSettings } from "@/components/settings/DemoSettings";
 import { useReceivablesDB } from "@/hooks/useReceivablesDB";
@@ -828,6 +829,10 @@ export default function Settings() {
               <FileText className="h-4 w-4" />
               <span className="hidden sm:inline">Exames</span>
             </TabsTrigger>
+            <TabsTrigger value="specialties" className="gap-1 text-xs lg:text-sm">
+              <Stethoscope className="h-4 w-4" />
+              <span className="hidden sm:inline">Especialidades</span>
+            </TabsTrigger>
             <TabsTrigger value="payers" className="gap-1 text-xs lg:text-sm">
               <Users className="h-4 w-4" />
               <span className="hidden sm:inline">Pagadores</span>
@@ -1347,6 +1352,17 @@ export default function Settings() {
               productionTypes={extendedSettings.productionTypes || []}
               productions={productions}
               onUpdate={(types) => setExtendedSettings(prev => ({ ...prev, examTypes: types }))}
+              onAddLog={addAuditLog}
+            />
+          </TabsContent>
+
+          {/* ============= SPECIALTIES TAB ============= */}
+          <TabsContent value="specialties" className="space-y-4">
+            <SettingsSpecialties
+              specialties={extendedSettings.specialties || []}
+              productions={productions}
+              transactions={allTransactions}
+              onUpdate={(specs) => setExtendedSettings(prev => ({ ...prev, specialties: specs }))}
               onAddLog={addAuditLog}
             />
           </TabsContent>

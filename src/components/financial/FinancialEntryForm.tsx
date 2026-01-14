@@ -35,7 +35,7 @@ import {
   useFinancialEntries 
 } from "@/hooks/useFinancialEntries";
 import { useCompanySettings } from "@/hooks/useCompanySettings";
-import { BUSINESS_UNITS, RECEIPT_TYPES, PAYMENT_METHODS_PARTICULAR, OPERADORAS, DEFAULT_CATEGORIES, SPECIALTIES } from "@/utils/constants";
+import { BUSINESS_UNITS, RECEIPT_TYPES, PAYMENT_METHODS_PARTICULAR, OPERADORAS, DEFAULT_CATEGORIES } from "@/utils/constants";
 import { parseMoneyBR, parseLocalDate } from "@/utils/formatters";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
@@ -56,7 +56,10 @@ interface FinancialEntryFormProps {
 
 export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryFormProps) {
   const { addEntry, updateEntry } = useFinancialEntries();
-  const { settings } = useCompanySettings();
+  const { settings, extendedSettings } = useCompanySettings();
+  
+  // CORREÇÃO: Usar especialidades do cadastro mestre (extendedSettings)
+  const specialtiesFromSettings = extendedSettings.specialties?.filter(s => s.active) || [];
 
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -578,7 +581,7 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="">Sem especialidade</SelectItem>
-              {SPECIALTIES.map((spec) => (
+              {specialtiesFromSettings.map((spec) => (
                 <SelectItem key={spec.id} value={spec.id}>
                   {spec.name}
                 </SelectItem>

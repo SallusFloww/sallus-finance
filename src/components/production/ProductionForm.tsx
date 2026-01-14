@@ -126,6 +126,7 @@ export function ProductionForm({
   // Use database-backed settings for suggestions
   const { 
     settings,
+    extendedSettings,
     getSavedExamTypes, 
     getSavedTherapyTypes, 
     getSavedProductionTypes,
@@ -190,7 +191,10 @@ export function ProductionForm({
   const isCentroClinico = selectedUnit?.id?.toLowerCase().includes("centroclinico") ||
                           selectedUnit?.id?.toLowerCase().includes("centro_clinico") ||
                           selectedUnit?.name?.toLowerCase().includes("centro clínico");
-  const specialties = isCentroClinico ? (selectedUnit?.specialties?.filter(s => s.active) || []) : [];
+  // CORREÇÃO: Usar especialidades do extendedSettings (cadastro mestre) ao invés de dentro das unidades
+  const specialties = isCentroClinico 
+    ? (extendedSettings.specialties?.filter(s => s.active) || [])
+    : [];
 
   // Reset campos dinâmicos quando muda o tipo de produção
   useEffect(() => {

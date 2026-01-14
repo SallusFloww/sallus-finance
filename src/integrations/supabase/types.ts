@@ -101,6 +101,7 @@ export type Database = {
           payers: Json | null
           payment_methods: Json | null
           production_types: Json | null
+          specialties: Json | null
           system_parameters: Json | null
           units: Json | null
           updated_at: string
@@ -117,6 +118,7 @@ export type Database = {
           payers?: Json | null
           payment_methods?: Json | null
           production_types?: Json | null
+          specialties?: Json | null
           system_parameters?: Json | null
           units?: Json | null
           updated_at?: string
@@ -133,6 +135,7 @@ export type Database = {
           payers?: Json | null
           payment_methods?: Json | null
           production_types?: Json | null
+          specialties?: Json | null
           system_parameters?: Json | null
           units?: Json | null
           updated_at?: string

@@ -12,6 +12,7 @@ import {
   ExamTypeConfig,
   PayerConfig,
   SystemParameters,
+  SpecialtyConfig,
 } from "@/types";
 import type { Json } from "@/integrations/supabase/types";
 import { DEFAULT_UNITS } from "@/utils/constants";
@@ -40,6 +41,7 @@ const DEFAULT_EXTENDED: ExpandedSettings = {
   productionTypes: [],
   examTypes: [],
   payers: [],
+  specialties: [],
   systemParameters: undefined,
 };
 
@@ -158,6 +160,9 @@ export function useCompanySettings() {
         const payers = Array.isArray(rawData.payers) 
           ? (rawData.payers as PayerConfig[]) 
           : [];
+        const specialties = Array.isArray(rawData.specialties)
+          ? (rawData.specialties as SpecialtyConfig[])
+          : [];
         const systemParameters = rawData.system_parameters || undefined;
 
         const extended: ExpandedSettings = {
@@ -165,6 +170,7 @@ export function useCompanySettings() {
           productionTypes,
           examTypes,
           payers,
+          specialties,
           systemParameters,
         };
 
@@ -306,6 +312,9 @@ export function useCompanySettings() {
       }
       if (updates.payers !== undefined) {
         dbUpdate.payers = updates.payers;
+      }
+      if (updates.specialties !== undefined) {
+        dbUpdate.specialties = updates.specialties;
       }
       if (updates.systemParameters !== undefined) {
         dbUpdate.system_parameters = updates.systemParameters;

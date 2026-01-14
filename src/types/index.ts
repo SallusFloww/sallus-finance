@@ -663,6 +663,7 @@ export interface ExpandedSettings extends Settings {
   productionTypes?: ProductionTypeConfig[];
   examTypes?: ExamTypeConfig[];
   payers?: PayerConfig[];
+  specialties?: SpecialtyConfig[];
   systemParameters?: SystemParameters;
   settingsChangeLogs?: SettingsChangeLog[];
 }
