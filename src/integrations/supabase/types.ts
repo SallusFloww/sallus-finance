@@ -481,15 +481,21 @@ export type Database = {
           billed_value: number | null
           company_id: string
           competencia: string
+          consult_amount: number | null
           convenio: string | null
           created_at: string
           created_by: string | null
           description: string
           edit_logs: Json | null
+          fee_amount: number | null
           glossed_value: number | null
           history: Json | null
           id: string
+          is_package: boolean | null
           linked_receivable_id: string | null
+          matmed_amount: number | null
+          package_qty: number | null
+          package_type: string | null
           payer_type: string
           procedure_code: string | null
           production_date: string
@@ -507,15 +513,21 @@ export type Database = {
           billed_value?: number | null
           company_id: string
           competencia: string
+          consult_amount?: number | null
           convenio?: string | null
           created_at?: string
           created_by?: string | null
           description: string
           edit_logs?: Json | null
+          fee_amount?: number | null
           glossed_value?: number | null
           history?: Json | null
           id?: string
+          is_package?: boolean | null
           linked_receivable_id?: string | null
+          matmed_amount?: number | null
+          package_qty?: number | null
+          package_type?: string | null
           payer_type: string
           procedure_code?: string | null
           production_date: string
@@ -533,15 +545,21 @@ export type Database = {
           billed_value?: number | null
           company_id?: string
           competencia?: string
+          consult_amount?: number | null
           convenio?: string | null
           created_at?: string
           created_by?: string | null
           description?: string
           edit_logs?: Json | null
+          fee_amount?: number | null
           glossed_value?: number | null
           history?: Json | null
           id?: string
+          is_package?: boolean | null
           linked_receivable_id?: string | null
+          matmed_amount?: number | null
+          package_qty?: number | null
+          package_type?: string | null
           payer_type?: string
           procedure_code?: string | null
           production_date?: string
