@@ -265,7 +265,7 @@ export function ProductionForm({
   const saveNewExamType = async () => {
     if (newExamType.trim() && !examTypes.includes(newExamType.trim())) {
       await addExamType(newExamType.trim());
-      setFormData({ ...formData, examType: newExamType.trim(), description: newExamType.trim() });
+      setFormData(prev => ({ ...prev, examType: newExamType.trim(), description: newExamType.trim() }));
       toast.success(`"${newExamType.trim()}" adicionado às sugestões`);
     }
     setNewExamType("");
@@ -275,7 +275,7 @@ export function ProductionForm({
   const saveNewTherapyType = async () => {
     if (newTherapyType.trim() && !therapyTypes.includes(newTherapyType.trim())) {
       await addTherapyType(newTherapyType.trim());
-      setFormData({ ...formData, therapySessionType: newTherapyType.trim(), description: newTherapyType.trim() });
+      setFormData(prev => ({ ...prev, therapySessionType: newTherapyType.trim(), description: newTherapyType.trim() }));
       toast.success(`"${newTherapyType.trim()}" adicionado às sugestões`);
     }
     setNewTherapyType("");
@@ -285,7 +285,7 @@ export function ProductionForm({
   const saveNewProductionType = async () => {
     if (newProductionType.trim() && !productionTypes.includes(newProductionType.trim())) {
       await addProductionType(newProductionType.trim());
-      setFormData({ ...formData, productionType: newProductionType.trim(), description: newProductionType.trim() });
+      setFormData(prev => ({ ...prev, productionType: newProductionType.trim(), description: newProductionType.trim() }));
       toast.success(`"${newProductionType.trim()}" adicionado aos tipos de produção`);
     }
     setNewProductionType("");
@@ -499,7 +499,7 @@ export function ProductionForm({
                             key={type}
                             value={type}
                             onSelect={() => {
-                              setFormData({ ...formData, examType: type, description: type });
+                              setFormData(prev => ({ ...prev, examType: type, description: type }));
                               setExamTypeOpen(false);
                             }}
                           >
@@ -524,7 +524,7 @@ export function ProductionForm({
               <Input
                 placeholder="Ex: 40901033 (TUSS/AMB)"
                 value={formData.procedureCode}
-                onChange={(e) => setFormData({ ...formData, procedureCode: e.target.value })}
+                onChange={(e) => setFormData(prev => ({ ...prev, procedureCode: e.target.value }))}
               />
             </div>
           </div>
@@ -588,7 +588,7 @@ export function ProductionForm({
                           key={type}
                           value={type}
                           onSelect={() => {
-                            setFormData({ ...formData, therapySessionType: type, description: type });
+                            setFormData(prev => ({ ...prev, therapySessionType: type, description: type }));
                             setTherapyTypeOpen(false);
                           }}
                         >
@@ -625,7 +625,7 @@ export function ProductionForm({
               <Input
                 placeholder="Descreva o procedimento realizado"
                 value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
               />
             </div>
             <div className="space-y-2">
@@ -633,7 +633,7 @@ export function ProductionForm({
               <Input
                 placeholder="Código TUSS/AMB ou interno"
                 value={formData.procedureCode}
-                onChange={(e) => setFormData({ ...formData, procedureCode: e.target.value })}
+                onChange={(e) => setFormData(prev => ({ ...prev, procedureCode: e.target.value }))}
               />
             </div>
           </div>
@@ -744,7 +744,7 @@ export function ProductionForm({
                           key={type}
                           value={type}
                           onSelect={() => {
-                            setFormData({ ...formData, productionType: type });
+                            setFormData(prev => ({ ...prev, productionType: type }));
                             setProductionTypeOpen(false);
                             setNewProductionType("");
                           }}
@@ -779,7 +779,7 @@ export function ProductionForm({
               ) : (
                 <Select 
                   value={formData.unit} 
-                  onValueChange={(v) => setFormData({ ...formData, unit: v, specialty: "" })}
+                  onValueChange={(v) => setFormData(prev => ({ ...prev, unit: v, specialty: "" }))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione" />
@@ -798,7 +798,7 @@ export function ProductionForm({
               <Input
                 placeholder="MM/AAAA"
                 value={formData.competencia}
-                onChange={(e) => setFormData({ ...formData, competencia: formatCompetencia(e.target.value) })}
+                onChange={(e) => setFormData(prev => ({ ...prev, competencia: formatCompetencia(e.target.value) }))}
                 maxLength={7}
               />
             </div>
@@ -809,7 +809,7 @@ export function ProductionForm({
             <Label>Especialidade{isCentroClinico ? " *" : ""}</Label>
             <Select 
               value={formData.specialty} 
-              onValueChange={(v) => setFormData({ ...formData, specialty: v })}
+              onValueChange={(v) => setFormData(prev => ({ ...prev, specialty: v }))}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Selecione a especialidade" />
@@ -833,12 +833,12 @@ export function ProductionForm({
               <Label>Pagador *</Label>
               <Select 
                 value={formData.payerType} 
-                onValueChange={(v) => setFormData({ 
-                  ...formData, 
+                onValueChange={(v) => setFormData(prev => ({ 
+                  ...prev, 
                   payerType: v as "CONVENIO" | "PARTICULAR", 
-                  convenio: v === "PARTICULAR" ? "" : formData.convenio,
-                  paymentMethod: v === "CONVENIO" ? "" : formData.paymentMethod
-                })}
+                  convenio: v === "PARTICULAR" ? "" : prev.convenio,
+                  paymentMethod: v === "CONVENIO" ? "" : prev.paymentMethod
+                }))}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -856,7 +856,7 @@ export function ProductionForm({
                 <Label>Forma de Pagamento *</Label>
                 <Select 
                   value={formData.paymentMethod} 
-                  onValueChange={(v) => setFormData({ ...formData, paymentMethod: v })}
+                  onValueChange={(v) => setFormData(prev => ({ ...prev, paymentMethod: v }))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione" />
@@ -877,7 +877,7 @@ export function ProductionForm({
                 <Label>Convênio *</Label>
                 <Select 
                   value={formData.convenio} 
-                  onValueChange={(v) => setFormData({ ...formData, convenio: v })}
+                  onValueChange={(v) => setFormData(prev => ({ ...prev, convenio: v }))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione" />
@@ -903,7 +903,7 @@ export function ProductionForm({
                 type="number"
                 min="1"
                 value={formData.quantity}
-                onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                onChange={(e) => setFormData(prev => ({ ...prev, quantity: e.target.value }))}
                 className="text-lg font-bold text-center h-12 bg-background"
               />
             </div>
@@ -916,7 +916,7 @@ export function ProductionForm({
                 min="0"
                 placeholder="0,00"
                 value={formData.totalValue}
-                onChange={(e) => setFormData({ ...formData, totalValue: e.target.value })}
+                onChange={(e) => setFormData(prev => ({ ...prev, totalValue: e.target.value }))}
                 className="text-lg font-bold text-center h-12 bg-background"
               />
               <p className="text-xs text-muted-foreground">
@@ -975,7 +975,7 @@ export function ProductionForm({
               <Input
                 type="date"
                 value={formData.productionDate}
-                onChange={(e) => setFormData({ ...formData, productionDate: e.target.value })}
+                onChange={(e) => setFormData(prev => ({ ...prev, productionDate: e.target.value }))}
               />
             </div>
           </div>
@@ -985,7 +985,7 @@ export function ProductionForm({
             <Textarea
               placeholder="Informações adicionais (opcional)..."
               value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
               rows={2}
             />
           </div>

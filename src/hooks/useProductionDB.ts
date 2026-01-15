@@ -230,13 +230,19 @@ export function useProductionDB() {
     // matmed = total - consult - fee (nunca negativo)
     const matmedAmount = isPackage ? Math.max(0, totalValue - consultAmount - feeAmount) : 0;
 
+    // HOTFIX: Sanitização robusta de specialty para evitar null indevido
+    const safeSpecialty = 
+      typeof data.specialty === "string" && data.specialty.trim().length > 0
+        ? data.specialty.trim()
+        : null;
+
     // Payload com colunas de pacote incluídas
     const insertPayload = {
       company_id: currentCompany.id,
       production_date: data.productionDate,
       competencia: data.competencia,
       unit: data.unit,
-      specialty: data.specialty || null,
+      specialty: safeSpecialty,
       payer_type: data.payerType,
       convenio: data.convenio || null,
       production_type: data.productionType,
@@ -285,7 +291,7 @@ export function useProductionDB() {
           production_date: data.productionDate,
           competencia: data.competencia,
           unit: data.unit,
-          specialty: data.specialty || null,
+          specialty: safeSpecialty,
           payer_type: data.payerType,
           convenio: data.convenio || null,
           production_type: data.productionType,
@@ -336,6 +342,23 @@ export function useProductionDB() {
 
     // Replace optimistic entry with real data (avoid duplicates from realtime)
     const realProduction = toProduction(inserted as unknown as DBProduction);
+    
+    // HOTFIX: Verificar se specialty foi salva corretamente - se não, corrigir
+    if (safeSpecialty && !realProduction.specialty) {
+      console.warn("Specialty perdida no insert, tentando corrigir...");
+      const { error: patchError } = await supabase
+        .from("productions")
+        .update({ specialty: safeSpecialty })
+        .eq("id", realProduction.id);
+      
+      if (patchError) {
+        console.error("Falha ao corrigir specialty:", patchError);
+        toast.error("Especialidade não foi salva. Edite a produção para corrigir.");
+      } else {
+        realProduction.specialty = safeSpecialty;
+      }
+    }
+    
     setProductions(prev => {
       // Remove optimistic entry and add real one if not already present
       const withoutOptimistic = prev.filter(p => p.id !== optimisticId);
