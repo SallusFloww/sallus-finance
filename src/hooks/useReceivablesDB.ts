@@ -300,6 +300,31 @@ export function useReceivablesDB() {
     let createdTransactionId: string | null = null;
 
     try {
+      // Inferir especialidade a partir das produções vinculadas a este receivable
+      let inferredSpecialty: string | null = null;
+      let specialtyNote = "";
+
+      const { data: prodSpecs, error: prodSpecError } = await supabase
+        .from("productions")
+        .select("specialty")
+        .eq("company_id", currentCompany.id)
+        .eq("linked_receivable_id", id);
+
+      if (!prodSpecError && Array.isArray(prodSpecs)) {
+        const cleaned = prodSpecs
+          .map((p: any) => (typeof p.specialty === "string" ? p.specialty.trim() : ""))
+          .filter((s: string) => s.length > 0 && s !== "SEM_ESPECIALIDADE");
+
+        const unique = Array.from(new Set(cleaned));
+
+        if (unique.length === 1) {
+          inferredSpecialty = unique[0];
+        } else if (unique.length > 1) {
+          inferredSpecialty = null;
+          specialtyNote = ` | Especialidade: múltiplas (${unique.join(", ").substring(0, 120)})`;
+        }
+      }
+
       // STEP 1: Criar entrada no financial_entries (Caixa/Movimentações)
       const { data: insertedEntry, error: insertError } = await supabase
         .from("financial_entries")
@@ -317,7 +342,8 @@ export function useReceivablesDB() {
           receipt_type: receivable.source === "PARTICULAR" ? "PARTICULAR" : "CONVENIO",
           payment_method: "TRANSFER",
           operadora: receivable.source !== "PARTICULAR" ? receivable.source : null,
-          observacao: `Origem: receivable_id=${id} | Competência: ${receivable.competencia || "N/A"}`,
+          specialty: inferredSpecialty,
+          observacao: `Origem: receivable_id=${id} | Competência: ${receivable.competencia || "N/A"}${specialtyNote}`,
         }])
         .select()
         .single();
