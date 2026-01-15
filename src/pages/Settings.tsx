@@ -1055,7 +1055,7 @@ export default function Settings() {
               specialties={extendedSettings?.specialties ?? []}
               productions={productions ?? []}
               transactions={allTransactions ?? []}
-              onUpdate={(specs) => setExtendedSettings(prev => ({ ...prev, specialties: specs }) as ExpandedSettings)}
+              onUpdate={(specs) => setExtendedSettings(prev => ({ ...(prev ?? {}), specialties: specs }) as ExpandedSettings)}
               onAddLog={addAuditLog}
             />
           </TabsContent>
