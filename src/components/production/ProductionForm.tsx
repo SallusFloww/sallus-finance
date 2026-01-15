@@ -34,7 +34,8 @@ import {
 } from "@/components/ui/popover";
 import { ProductionType, UnitConfig, BASE_PRODUCTION_TYPES } from "@/types";
 import { toast } from "sonner";
-import { Activity, Check, ChevronsUpDown, Plus, Calculator, Package, AlertCircle } from "lucide-react";
+import { Activity, Check, ChevronsUpDown, Plus, Calculator, Package, AlertCircle, Info } from "lucide-react";
+import { SPECIALTIES } from "@/utils/constants";
 import { cn } from "@/lib/utils";
 import { useCompanySettings } from "@/hooks/useCompanySettings";
 import { usePackagePricing } from "@/hooks/usePackagePricing";
@@ -191,10 +192,14 @@ export function ProductionForm({
   const isCentroClinico = selectedUnit?.id?.toLowerCase().includes("centroclinico") ||
                           selectedUnit?.id?.toLowerCase().includes("centro_clinico") ||
                           selectedUnit?.name?.toLowerCase().includes("centro clínico");
-  // CORREÇÃO: Usar especialidades do extendedSettings (cadastro mestre) ao invés de dentro das unidades
-  const specialties = isCentroClinico 
-    ? (extendedSettings.specialties?.filter(s => s.active) || [])
-    : [];
+  
+  // CORREÇÃO FORENSE: Especialidades com fallback para constantes padrão
+  // Se extendedSettings?.specialties tiver itens ativos, usa eles. Senão, usa SPECIALTIES padrão.
+  const masterSpecialties = extendedSettings?.specialties?.filter(s => s.active) ?? [];
+  const specialtyOptions = masterSpecialties.length > 0 
+    ? masterSpecialties 
+    : SPECIALTIES.map(s => ({ id: s.id, name: s.name, active: true }));
+  const hasCustomSpecialties = masterSpecialties.length > 0;
 
   // Reset campos dinâmicos quando muda o tipo de produção
   useEffect(() => {
@@ -284,6 +289,12 @@ export function ProductionForm({
   const handleSubmit = () => {
     if (!formData.unit || !formData.competencia) {
       toast.error("Preencha todos os campos obrigatórios");
+      return;
+    }
+
+    // CORREÇÃO FORENSE: Centro Clínico EXIGE especialidade
+    if (isCentroClinico && !formData.specialty) {
+      toast.error("Selecione a especialidade para Centro Clínico");
       return;
     }
 
@@ -787,22 +798,28 @@ export function ProductionForm({
             </div>
           </div>
 
-          {isCentroClinico && specialties.length > 0 && (
+          {isCentroClinico && (
             <div className="space-y-2">
-              <Label>Especialidade</Label>
+              <Label>Especialidade *</Label>
               <Select 
                 value={formData.specialty} 
                 onValueChange={(v) => setFormData({ ...formData, specialty: v })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecione" />
+                  <SelectValue placeholder="Selecione a especialidade" />
                 </SelectTrigger>
                 <SelectContent>
-                  {specialties.map((s) => (
+                  {specialtyOptions.map((s) => (
                     <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {!hasCustomSpecialties && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Info className="h-3 w-3" />
+                  Cadastre especialidades em Configurações para personalizar.
+                </p>
+              )}
             </div>
           )}
 
