@@ -86,7 +86,8 @@ export default function Settings() {
   // Wrapper to update extended settings
   const setExtendedSettings = (updater: ((prev: ExpandedSettings) => ExpandedSettings) | Partial<ExpandedSettings>) => {
     if (typeof updater === 'function') {
-      const newValue = updater(extendedSettings);
+      const safeExtended = extendedSettings ?? {} as ExpandedSettings;
+      const newValue = updater(safeExtended);
       updateExtendedSettings(newValue);
     } else {
       updateExtendedSettings(updater);
@@ -1054,7 +1055,7 @@ export default function Settings() {
               specialties={extendedSettings?.specialties ?? []}
               productions={productions ?? []}
               transactions={allTransactions ?? []}
-              onUpdate={(specs) => setExtendedSettings(prev => ({ ...prev, specialties: specs }))}
+              onUpdate={(specs) => setExtendedSettings(prev => ({ ...prev, specialties: specs }) as ExpandedSettings)}
               onAddLog={addAuditLog}
             />
           </TabsContent>
@@ -1062,10 +1063,10 @@ export default function Settings() {
           {/* ============= PAYERS TAB ============= */}
           <TabsContent value="payers" className="space-y-4">
             <SettingsPayers
-              payers={extendedSettings.payers || []}
-              productions={productions}
-              receivables={receivables}
-              onUpdate={(payers) => setExtendedSettings(prev => ({ ...prev, payers }))}
+              payers={extendedSettings?.payers ?? []}
+              productions={productions ?? []}
+              receivables={receivables ?? []}
+              onUpdate={(payers) => setExtendedSettings(prev => ({ ...prev, payers }) as ExpandedSettings)}
               onAddLog={addAuditLog}
             />
           </TabsContent>
@@ -1078,13 +1079,13 @@ export default function Settings() {
           {/* ============= PARAMETERS TAB ============= */}
           <TabsContent value="parameters" className="space-y-4">
             <SettingsParameters
-              parameters={extendedSettings.systemParameters || {
+              parameters={extendedSettings?.systemParameters ?? {
                 daysForBillingAlert: 15,
                 allowFutureCompetence: false,
                 allowPhysicalDeletion: false,
                 criticalActionConfirmation: "SIMPLE",
               }}
-              onUpdate={(params) => setExtendedSettings(prev => ({ ...prev, systemParameters: params }))}
+              onUpdate={(params) => setExtendedSettings(prev => ({ ...prev, systemParameters: params }) as ExpandedSettings)}
               onAddLog={addAuditLog}
               userName={user?.name || "Sistema"}
             />
