@@ -189,12 +189,18 @@ export function ProductionForm({
   const activeUnits = effectiveUnits.filter((u) => u.active);
   
   const selectedUnit = effectiveUnits.find((u) => u.id === formData.unit);
-  const isCentroClinico = selectedUnit?.id?.toLowerCase().includes("centroclinico") ||
-                          selectedUnit?.id?.toLowerCase().includes("centro_clinico") ||
-                          selectedUnit?.name?.toLowerCase().includes("centro clínico");
+  
+  // CORREÇÃO FORENSE: Normalização robusta para detectar Centro Clínico
+  const norm = (s?: string) =>
+    (s ?? "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[\s\-_]+/g, "");
+  const unitKey = norm(selectedUnit?.id) + " " + norm(selectedUnit?.name);
+  const isCentroClinico = unitKey.includes("centroclinico");
   
   // CORREÇÃO FORENSE: Especialidades com fallback para constantes padrão
-  // Se extendedSettings?.specialties tiver itens ativos, usa eles. Senão, usa SPECIALTIES padrão.
   const masterSpecialties = extendedSettings?.specialties?.filter(s => s.active) ?? [];
   const specialtyOptions = masterSpecialties.length > 0 
     ? masterSpecialties 
@@ -798,30 +804,29 @@ export function ProductionForm({
             </div>
           </div>
 
-          {isCentroClinico && (
-            <div className="space-y-2">
-              <Label>Especialidade *</Label>
-              <Select 
-                value={formData.specialty} 
-                onValueChange={(v) => setFormData({ ...formData, specialty: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a especialidade" />
-                </SelectTrigger>
-                <SelectContent>
-                  {specialtyOptions.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {!hasCustomSpecialties && (
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Info className="h-3 w-3" />
-                  Cadastre especialidades em Configurações para personalizar.
-                </p>
-              )}
-            </div>
-          )}
+          {/* CORREÇÃO FORENSE: Especialidade sempre visível, obrigatória só para Centro Clínico */}
+          <div className="space-y-2">
+            <Label>Especialidade{isCentroClinico ? " *" : ""}</Label>
+            <Select 
+              value={formData.specialty} 
+              onValueChange={(v) => setFormData({ ...formData, specialty: v })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione a especialidade" />
+              </SelectTrigger>
+              <SelectContent>
+                {specialtyOptions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!hasCustomSpecialties && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <Info className="h-3 w-3" />
+                Cadastre especialidades em Configurações para personalizar.
+              </p>
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
