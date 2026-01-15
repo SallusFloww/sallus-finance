@@ -76,7 +76,10 @@ function toProduction(db: DBProduction): Production {
     productionDate: db.production_date,
     competencia: db.competencia,
     unit: db.unit,
-    specialty: db.specialty || undefined,
+    specialty:
+      typeof db.specialty === "string" && db.specialty.trim().length > 0
+        ? db.specialty
+        : "SEM_ESPECIALIDADE",
     payerType: db.payer_type as "CONVENIO" | "PARTICULAR",
     convenio: db.convenio || undefined,
     paymentMethod: undefined, // Coluna não existe no banco ainda
@@ -242,7 +245,7 @@ export function useProductionDB() {
       production_date: data.productionDate,
       competencia: data.competencia,
       unit: data.unit,
-      specialty: safeSpecialty,
+      specialty: safeSpecialty ?? "SEM_ESPECIALIDADE",
       payer_type: data.payerType,
       convenio: data.convenio || null,
       production_type: data.productionType,
@@ -620,6 +623,8 @@ export function useProductionDB() {
       consolidatedConsultas: { value: 0, quantity: 0 },
       consolidatedBoxTaxas: { value: 0, quantity: 0 },
       consolidatedMatMed: { value: 0 },
+      // Agrupamento por especialidade
+      bySpecialty: {} as Record<string, number>,
     };
 
     // Helper para inicializar tipo em byProductionType
@@ -633,6 +638,10 @@ export function useProductionDB() {
       stats.totalProduced += p.estimatedValue;
       stats.totalQuantityProduced += p.quantity;
       stats.countProduced++;
+
+      // Agrupamento por especialidade (garantido não-nulo após toProduction)
+      const specialtyKey = p.specialty ?? "SEM_ESPECIALIDADE";
+      stats.bySpecialty[specialtyKey] = (stats.bySpecialty[specialtyKey] || 0) + p.estimatedValue;
 
       // ============= DETECÇÃO PACOTE =============
       const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";

@@ -591,6 +591,9 @@ export interface ProductionStats {
   consolidatedBoxTaxas: { value: number; quantity: number };
   // Mat/Med: matmed_amount dos pacotes (avulsos não têm mat/med separado)
   consolidatedMatMed: { value: number };
+  
+  // ============= AGRUPAMENTO POR ESPECIALIDADE =============
+  bySpecialty: Record<string, number>;
 }
 
 // ============= CONFIGURAÇÕES DO SISTEMA =============
