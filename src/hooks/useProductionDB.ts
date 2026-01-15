@@ -24,7 +24,7 @@ export interface ProductionFilters {
   search?: string;
 }
 
-// Tipo do banco de dados - ALINHADO com schema real (sem colunas inexistentes)
+// Tipo do banco de dados - ALINHADO com schema real (colunas de pacote adicionadas)
 interface DBProduction {
   id: string;
   company_id: string;
@@ -56,10 +56,21 @@ interface DBProduction {
     editedAt: string;
     editedBy: string;
   }>;
+  // Campos de pacote (agora existem no banco)
+  is_package: boolean | null;
+  package_type: string | null;
+  package_qty: number | null;
+  consult_amount: number | null;
+  fee_amount: number | null;
+  matmed_amount: number | null;
 }
 
-// Converter de DB para domínio - ALINHADO com schema real
+// Converter de DB para domínio - leitura das colunas de pacote
 function toProduction(db: DBProduction): Production {
+  const isPackage = db.is_package === true || 
+    db.production_type === "PACOTE_BOX" || 
+    db.production_type === "PACOTE_GTA";
+  
   return {
     id: db.id,
     productionDate: db.production_date,
@@ -85,13 +96,13 @@ function toProduction(db: DBProduction): Production {
     updatedAt: db.updated_at,
     history: db.history || [],
     editLogs: db.edit_logs || [],
-    // Campos de pacote - colunas não existem no banco ainda (defaults)
-    isPackage: false,
-    packageType: undefined,
-    consultAmount: 0,
-    feeAmount: 0,
-    matmedAmount: 0,
-    packageQty: 1,
+    // Campos de pacote - agora lidos do banco
+    isPackage: isPackage,
+    packageType: (db.package_type ?? undefined) as "PACOTE_BOX" | "PACOTE_GTA" | undefined,
+    consultAmount: Number(db.consult_amount ?? 0),
+    feeAmount: Number(db.fee_amount ?? 0),
+    matmedAmount: Number(db.matmed_amount ?? 0),
+    packageQty: Number(db.package_qty ?? db.quantity ?? 1),
   };
 }
 
@@ -212,7 +223,14 @@ export function useProductionDB() {
     // Optimistic update - add to state immediately
     setProductions(prev => [optimisticProduction, ...prev]);
 
-    // Payload com apenas colunas que existem no schema do banco
+    // Calcular valores de pacote (consult, fee, matmed)
+    const packageQty = isPackage ? (data.packageQty || data.quantity) : 1;
+    const consultAmount = isPackage ? (data.consultAmount || 0) : 0;
+    const feeAmount = isPackage ? (data.feeAmount || 0) : 0;
+    // matmed = total - consult - fee (nunca negativo)
+    const matmedAmount = isPackage ? Math.max(0, totalValue - consultAmount - feeAmount) : 0;
+
+    // Payload com colunas de pacote incluídas
     const insertPayload = {
       company_id: currentCompany.id,
       production_date: data.productionDate,
@@ -230,6 +248,13 @@ export function useProductionDB() {
       status: "PRODUZIDO",
       created_by: profile.id,
       history: JSON.parse(JSON.stringify(history)),
+      // Campos de pacote
+      is_package: isPackage,
+      package_type: isPackage ? (data.packageType || data.productionType) : null,
+      package_qty: packageQty,
+      consult_amount: consultAmount,
+      fee_amount: feeAmount,
+      matmed_amount: matmedAmount,
     };
 
     const { data: inserted, error: insertError } = await supabase
@@ -251,9 +276,9 @@ export function useProductionDB() {
         return null;
       }
 
-      // Erro de coluna inexistente - tentar fallback com payload mínimo
+      // Erro de coluna inexistente - tentar fallback com payload mínimo (sem campos de pacote)
       if (errorMsg.includes("column") && errorMsg.includes("does not exist")) {
-        console.warn("Tentando fallback com payload mínimo...");
+        console.warn("Tentando fallback com payload mínimo (sem campos de pacote)...");
         
         const minimalPayload = {
           company_id: currentCompany.id,
@@ -272,6 +297,7 @@ export function useProductionDB() {
           status: "PRODUZIDO",
           created_by: profile.id,
           history: JSON.parse(JSON.stringify(history)),
+          // NÃO incluir campos de pacote no fallback mínimo
         };
 
         const { data: fallbackInserted, error: fallbackError } = await supabase
