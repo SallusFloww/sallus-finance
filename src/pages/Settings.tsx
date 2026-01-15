@@ -650,7 +650,7 @@ export default function Settings() {
         </div>
 
         <Tabs defaultValue="units" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 lg:grid-cols-8">
+          <TabsList className="grid h-auto w-full grid-cols-4 gap-1 lg:grid-cols-8">
             <TabsTrigger value="units" className="gap-1 text-xs lg:text-sm">
               <Building2 className="h-4 w-4" />
               <span className="hidden sm:inline">Unidades</span>
