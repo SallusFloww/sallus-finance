@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { differenceInDays, parseISO } from "date-fns";
@@ -122,7 +122,10 @@ export function useReceivablesDB() {
   const [error, setError] = useState<string | null>(null);
 
   // Integração com GlobalRealtimeProvider - versão global
-  const { version: globalVersion } = useGlobalRealtime();
+  const { version: globalVersion, refreshAll } = useGlobalRealtime();
+
+  // TRAVA ANTI-DUPLO CLIQUE (em memória)
+  const processingIdsRef = useRef<Set<string>>(new Set());
 
   // Fetch receivables
   const fetchReceivables = useCallback(async () => {
@@ -297,9 +300,31 @@ export function useReceivablesDB() {
       return null;
     }
 
+    // TRAVA ANTI DUPLICIDADE (clique duplo / execução dupla)
+    if (processingIdsRef.current.has(id)) {
+      toast.error("Recebimento já está sendo processado. Aguarde...");
+      return null;
+    }
+    processingIdsRef.current.add(id);
+
     let createdTransactionId: string | null = null;
 
     try {
+      // CHECAGEM NO BANCO (idempotência real): se já existe movimentação para este receivable, NÃO inserir de novo
+      const { data: existing, error: existingErr } = await supabase
+        .from("financial_entries")
+        .select("id, status")
+        .eq("company_id", currentCompany.id)
+        .eq("categoria", "RECEBIMENTO_FATURAMENTO")
+        .ilike("observacao", `%receivable_id=${id}%`)
+        .neq("status", "cancelado")
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (!existingErr && existing && existing.length > 0) {
+        toast.error("Movimentação deste recebimento já existe. Evitando duplicidade.");
+        return { id, transactionId: existing[0].id };
+      }
       // Inferir especialidade a partir das produções vinculadas a este receivable
       let inferredSpecialty: string | null = null;
       let specialtyNote = "";
@@ -400,6 +425,8 @@ export function useReceivablesDB() {
 
       // Refetch para garantir sincronização
       await fetchReceivables();
+      // Forçar atualização imediata (mata o "preciso dar F5")
+      refreshAll();
       // Sucesso completo
       return { id, transactionId: createdTransactionId };
 
@@ -421,8 +448,11 @@ export function useReceivablesDB() {
 
       toast.error("Erro inesperado ao processar recebimento");
       return null;
+    } finally {
+      // Liberar trava SEMPRE (sucesso ou erro)
+      processingIdsRef.current.delete(id);
     }
-  }, [receivables, currentCompany?.id, profile?.id, fetchReceivables]);
+  }, [receivables, currentCompany?.id, profile?.id, fetchReceivables, refreshAll]);
 
   // Mark as glossed
   const markAsGlossed = useCallback(async (
