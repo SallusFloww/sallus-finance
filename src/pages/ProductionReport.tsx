@@ -507,12 +507,20 @@ export default function ProductionReport() {
       });
   }, [filteredProductions, totalQuantity, previousByUnit]);
 
-  // Ranking por especialidade (CORREÇÃO: apenas especialidades reais, sem fallback para unit)
+  // Ranking por especialidade — APENAS Centro Clínico
   const specialtyRanking: SpecialtyRanking[] = useMemo(() => {
     const bySpecialty: Record<string, number> = {};
     
-    filteredProductions.forEach((p) => {
-      // CORREÇÃO: NÃO usar unit como fallback - agrupar em "Sem especialidade"
+    // Filtrar APENAS produções do Centro Clínico
+    const centroClinicoProductions = filteredProductions.filter((p) => {
+      const unitNorm = (p.unit ?? "").toLowerCase().replace(/[\s\-_]+/g, "");
+      return unitNorm === "centroclinico" || unitNorm.includes("centroclinico");
+    });
+    
+    // Total de quantidade do Centro Clínico para cálculo de percentual
+    const centroClinicoTotal = centroClinicoProductions.reduce((sum, p) => sum + p.quantity, 0);
+    
+    centroClinicoProductions.forEach((p) => {
       const spec = (p.specialty && p.specialty.trim() !== "") 
         ? p.specialty 
         : "__SEM_ESPECIALIDADE__";
@@ -528,7 +536,7 @@ export default function ProductionReport() {
         return b[1] - a[1];
       })
       .map(([specialty, qty]) => {
-        const percentage = totalQuantity > 0 ? (qty / totalQuantity) * 100 : 0;
+        const percentage = centroClinicoTotal > 0 ? (qty / centroClinicoTotal) * 100 : 0;
         let concentrationLevel: "alta" | "ok" | "baixa" = "ok";
         if (percentage > 70) concentrationLevel = "alta";
         else if (percentage < 10) concentrationLevel = "baixa";
@@ -545,7 +553,7 @@ export default function ProductionReport() {
           concentrationLevel,
         };
       });
-  }, [filteredProductions, totalQuantity]);
+  }, [filteredProductions]);
 
   // AUDIT_FIX: Moved before managementAlerts to avoid forward reference
   // Check if specialty field exists (real specialties, not unit fallback)
@@ -1753,24 +1761,20 @@ export default function ProductionReport() {
               </CardContent>
             </Card>
 
-            {/* NOVO: Produção por Especialidade */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Award className="h-4 w-4 text-purple-600" />
-                  Produção por Especialidade
-                </CardTitle>
-                {/* AUDIT_FIX: Removed proxy badge/text - using real specialties only */}
-                <CardDescription className="text-xs">
-                  Clique para filtrar{hasRealSpecialty ? "" : " • Sem especialidades registradas"}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {specialtyRanking.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">Sem dados</p>
-                ) : (
-                  specialtyRanking.map((spec, idx) => {
-                    // AUDIT_FIX: Use spec.key directly instead of fragile reverse-lookup
+            {/* NOVO: Produção por Especialidade — APENAS Centro Clínico */}
+            {specialtyRanking.length > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <Award className="h-4 w-4 text-purple-600" />
+                    Produção por Especialidade
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Centro Clínico • Clique para filtrar
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {specialtyRanking.map((spec, idx) => {
                     return (
                       <div 
                         key={spec.key} 
@@ -1801,10 +1805,10 @@ export default function ProductionReport() {
                         </div>
                       </div>
                     );
-                  })
-                )}
-              </CardContent>
-            </Card>
+                  })}
+                </CardContent>
+              </Card>
+            )}
 
             {/* Mix Assistencial */}
             <Card>
