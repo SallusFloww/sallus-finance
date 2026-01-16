@@ -311,11 +311,11 @@ export function useReceivablesDB() {
 
     try {
       // CHECAGEM NO BANCO (idempotência real): se já existe movimentação para este receivable, NÃO inserir de novo
+      // Busca por observacao (receivable_id=...) independente da categoria
       const { data: existing, error: existingErr } = await supabase
         .from("financial_entries")
         .select("id, status")
         .eq("company_id", currentCompany.id)
-        .eq("categoria", "RECEBIMENTO_FATURAMENTO")
         .ilike("observacao", `%receivable_id=${id}%`)
         .neq("status", "cancelado")
         .order("created_at", { ascending: false })
@@ -325,7 +325,8 @@ export function useReceivablesDB() {
         toast.error("Movimentação deste recebimento já existe. Evitando duplicidade.");
         return { id, transactionId: existing[0].id };
       }
-      // Inferir especialidade a partir das produções vinculadas a este receivable
+
+      // Inferir ESPECIALIDADE a partir das produções vinculadas a este receivable
       let inferredSpecialty: string | null = null;
       let specialtyNote = "";
 
@@ -350,6 +351,31 @@ export function useReceivablesDB() {
         }
       }
 
+      // Inferir CATEGORIA a partir dos production_type vinculados ao receivable
+      let inferredCategory: string = "RECEBIMENTO_FATURAMENTO";
+      let typeNote = "";
+
+      const { data: prodTypes, error: prodTypeErr } = await supabase
+        .from("productions")
+        .select("production_type")
+        .eq("company_id", currentCompany.id)
+        .eq("linked_receivable_id", id);
+
+      if (!prodTypeErr && Array.isArray(prodTypes)) {
+        const cleanedTypes = prodTypes
+          .map((p: any) => (typeof p.production_type === "string" ? p.production_type.trim() : ""))
+          .filter((t: string) => t.length > 0);
+
+        const uniqueTypes = Array.from(new Set(cleanedTypes));
+
+        if (uniqueTypes.length === 1) {
+          inferredCategory = uniqueTypes[0]; // ex: "CONSULTA"
+        } else if (uniqueTypes.length > 1) {
+          inferredCategory = "RECEBIMENTO_FATURAMENTO";
+          typeNote = ` | Tipos: múltiplos (${uniqueTypes.join(", ").substring(0, 120)})`;
+        }
+      }
+
       // STEP 1: Criar entrada no financial_entries (Caixa/Movimentações)
       const { data: insertedEntry, error: insertError } = await supabase
         .from("financial_entries")
@@ -362,13 +388,13 @@ export function useReceivablesDB() {
           data_prevista: actualReceiptDate,
           data_recebimento: actualReceiptDate,
           descricao: `Recebimento faturamento • ${receivable.source} • ${receivable.description}`.substring(0, 200),
-          categoria: "RECEBIMENTO_FATURAMENTO",
+          categoria: inferredCategory,
           unit_id: receivable.unit || null,
           receipt_type: receivable.source === "PARTICULAR" ? "PARTICULAR" : "CONVENIO",
           payment_method: "TRANSFER",
           operadora: receivable.source !== "PARTICULAR" ? receivable.source : null,
           specialty: inferredSpecialty,
-          observacao: `Origem: receivable_id=${id} | Competência: ${receivable.competencia || "N/A"}${specialtyNote}`,
+          observacao: `Origem: receivable_id=${id} | Competência: ${receivable.competencia || "N/A"}${specialtyNote}${typeNote}`,
         }])
         .select()
         .single();
