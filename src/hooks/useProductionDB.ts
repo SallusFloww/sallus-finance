@@ -639,9 +639,14 @@ export function useProductionDB() {
       stats.totalQuantityProduced += p.quantity;
       stats.countProduced++;
 
-      // Agrupamento por especialidade (garantido não-nulo após toProduction)
-      const specialtyKey = p.specialty ?? "SEM_ESPECIALIDADE";
-      stats.bySpecialty[specialtyKey] = (stats.bySpecialty[specialtyKey] || 0) + p.estimatedValue;
+      // Agrupamento por especialidade — APENAS Centro Clínico
+      const unitNorm = (p.unit ?? "").toLowerCase().replace(/[\s\-_]+/g, "");
+      const isCentroClinico = unitNorm === "centroclinico" || unitNorm.includes("centroclinico");
+      
+      if (isCentroClinico) {
+        const specialtyKey = p.specialty ?? "SEM_ESPECIALIDADE";
+        stats.bySpecialty[specialtyKey] = (stats.bySpecialty[specialtyKey] || 0) + p.estimatedValue;
+      }
 
       // ============= DETECÇÃO PACOTE =============
       const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";
