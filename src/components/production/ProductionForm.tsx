@@ -231,6 +231,13 @@ export function ProductionForm({
     }));
   }, [formData.productionType]);
 
+  // Limpar specialty quando unidade não é Centro Clínico
+  useEffect(() => {
+    if (!isCentroClinico && formData.specialty) {
+      setFormData(prev => ({ ...prev, specialty: "" }));
+    }
+  }, [formData.unit, isCentroClinico]);
+
   // Descrição automática por tipo
   const getDefaultDescription = (type: string): string => {
     switch (type) {
@@ -804,29 +811,31 @@ export function ProductionForm({
             </div>
           </div>
 
-          {/* CORREÇÃO FORENSE: Especialidade sempre visível, obrigatória só para Centro Clínico */}
-          <div className="space-y-2">
-            <Label>Especialidade{isCentroClinico ? " *" : ""}</Label>
-            <Select 
-              value={formData.specialty} 
-              onValueChange={(v) => setFormData(prev => ({ ...prev, specialty: v }))}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione a especialidade" />
-              </SelectTrigger>
-              <SelectContent>
-                {specialtyOptions.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {!hasCustomSpecialties && (
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <Info className="h-3 w-3" />
-                Cadastre especialidades em Configurações para personalizar.
-              </p>
-            )}
-          </div>
+          {/* Especialidade - APENAS Centro Clínico */}
+          {isCentroClinico && (
+            <div className="space-y-2">
+              <Label>Especialidade *</Label>
+              <Select 
+                value={formData.specialty} 
+                onValueChange={(v) => setFormData(prev => ({ ...prev, specialty: v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a especialidade" />
+                </SelectTrigger>
+                <SelectContent>
+                  {specialtyOptions.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!hasCustomSpecialties && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Info className="h-3 w-3" />
+                  Cadastre especialidades em Configurações para personalizar.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
