@@ -485,6 +485,7 @@ export type Database = {
           error_message: string | null
           file_name: string | null
           id: string
+          import_hash: string | null
           invalid_rows: number
           status: string
           total_rows: number
@@ -499,6 +500,7 @@ export type Database = {
           error_message?: string | null
           file_name?: string | null
           id?: string
+          import_hash?: string | null
           invalid_rows: number
           status?: string
           total_rows: number
@@ -513,6 +515,7 @@ export type Database = {
           error_message?: string | null
           file_name?: string | null
           id?: string
+          import_hash?: string | null
           invalid_rows?: number
           status?: string
           total_rows?: number

@@ -1,11 +1,6 @@
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { format, parse, isValid, startOfMonth, endOfMonth, isWithinInterval } from "date-fns";
-
-// ✅ Helper para parsear data YYYY-MM-DD sem shift de timezone
-function parseDateOnly(yyyyMmDd: string): Date {
-  return parse(yyyyMmDd, "yyyy-MM-dd", new Date());
-}
-import { Upload, Download, FileText, AlertCircle, CheckCircle2, X, Loader2 } from "lucide-react";
+import { Upload, Download, FileText, AlertCircle, CheckCircle2, X, Loader2, Search, Filter, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -36,12 +31,63 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useCompanySettings } from "@/hooks/useCompanySettings";
 import { supabase } from "@/integrations/supabase/client";
 import { formatCurrency } from "@/utils/formatters";
 import { useGlobalRealtime } from "@/contexts/GlobalRealtimeProvider";
+
+// ✅ Helper para parsear data YYYY-MM-DD sem shift de timezone
+function parseDateOnly(yyyyMmDd: string): Date {
+  return parse(yyyyMmDd, "yyyy-MM-dd", new Date());
+}
+
+// ✅ Gerar hash simples para detecção de duplicação de lote
+async function generateImportHash(context: ImportContext, rows: ParsedRow[]): Promise<string> {
+  const validRows = rows.filter(r => r.isValid);
+  
+  // Normalizar dados para hash
+  const normalized = {
+    context: {
+      production_type: context.production_type,
+      unit: context.unit,
+      competencia: context.competencia,
+      payer_type: context.payer_type,
+      convenio: context.convenio || "",
+    },
+    rows: validRows.map(r => ({
+      date: r.production_date,
+      value: Math.round((r.unit_value || 0) * 100), // centavos
+      patient: (r.paciente_nome || "").trim().toLowerCase(),
+    })).sort((a, b) => {
+      // Ordenar por data + valor + paciente para consistência
+      if (a.date !== b.date) return (a.date || "").localeCompare(b.date || "");
+      if (a.value !== b.value) return a.value - b.value;
+      return a.patient.localeCompare(b.patient);
+    }),
+  };
+  
+  const text = JSON.stringify(normalized);
+  
+  // Usar SubtleCrypto para SHA-256
+  const encoder = new TextEncoder();
+  const data = encoder.encode(text);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}
 
 interface ProductionImportModalProps {
   open: boolean;
@@ -65,6 +111,7 @@ interface ParsedRow {
   paciente_nome: string;
   isValid: boolean;
   errors: string[];
+  isPossibleDuplicate?: boolean; // ✅ Marcação de possível duplicado
 }
 
 type Step = "context" | "upload";
@@ -120,6 +167,25 @@ export function ProductionImportModal({
   const [fileName, setFileName] = useState<string>("");
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
 
+  // ✅ Filtros de preview (modo auditoria)
+  const [showOnlyInvalid, setShowOnlyInvalid] = useState(false);
+  const [patientSearch, setPatientSearch] = useState("");
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  // ✅ Estado para detecção de duplicação de lote
+  const [duplicateCheckState, setDuplicateCheckState] = useState<{
+    checking: boolean;
+    existingBatch: { id: string; created_at: string } | null;
+    showConfirmDialog: boolean;
+  }>({
+    checking: false,
+    existingBatch: null,
+    showConfirmDialog: false,
+  });
+
+  // ✅ Estado para duplicados por linha
+  const [duplicateLineCount, setDuplicateLineCount] = useState(0);
+
   // Generate competencia options (last 12 months + next 2)
   const competenciaOptions = useMemo(() => {
     const options: { value: string; label: string }[] = [];
@@ -133,6 +199,48 @@ export function ProductionImportModal({
     }
     return options.reverse();
   }, []);
+
+  // ✅ Agrupamento por data para chips
+  const dateGroups = useMemo(() => {
+    const groups: { [date: string]: { count: number; total: number } } = {};
+    
+    parsedRows
+      .filter(r => r.isValid && r.production_date)
+      .forEach(r => {
+        const key = r.production_date!;
+        if (!groups[key]) {
+          groups[key] = { count: 0, total: 0 };
+        }
+        groups[key].count++;
+        groups[key].total += r.unit_value || 0;
+      });
+    
+    return Object.entries(groups)
+      .map(([date, data]) => ({ date, ...data }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [parsedRows]);
+
+  // ✅ Linhas filtradas para exibição
+  const filteredRows = useMemo(() => {
+    let rows = parsedRows;
+    
+    if (showOnlyInvalid) {
+      rows = rows.filter(r => !r.isValid);
+    }
+    
+    if (patientSearch.trim()) {
+      const search = patientSearch.toLowerCase().trim();
+      rows = rows.filter(r => 
+        r.paciente_nome.toLowerCase().includes(search)
+      );
+    }
+    
+    if (selectedDate) {
+      rows = rows.filter(r => r.production_date === selectedDate);
+    }
+    
+    return rows;
+  }, [parsedRows, showOnlyInvalid, patientSearch, selectedDate]);
 
   // Summary stats - ✅ Usa parseDateOnly para evitar bug de timezone
   const summary = useMemo(() => {
@@ -203,6 +311,17 @@ export function ProductionImportModal({
     return num;
   }, []);
 
+  // ✅ Garantir competência sempre como YYYY-MM
+  const normalizeCompetencia = useCallback((value: string): string => {
+    // Se já está no formato YYYY-MM, retornar
+    if (/^\d{4}-\d{2}$/.test(value)) return value;
+    // Se está no formato MM/YYYY, converter
+    if (/^\d{2}\/\d{4}$/.test(value)) {
+      return value.slice(3) + "-" + value.slice(0, 2);
+    }
+    return value;
+  }, []);
+
   // Validate row against competencia
   const validateRow = useCallback(
     (
@@ -219,7 +338,8 @@ export function ProductionImportModal({
         errors.push("Data inválida");
       } else if (date) {
         // Check if date is within competencia
-        const [year, month] = context.competencia.split("-").map(Number);
+        const normalizedComp = normalizeCompetencia(context.competencia);
+        const [year, month] = normalizedComp.split("-").map(Number);
         const competenciaStart = startOfMonth(new Date(year, month - 1));
         const competenciaEnd = endOfMonth(new Date(year, month - 1));
 
@@ -249,8 +369,60 @@ export function ProductionImportModal({
         errors,
       };
     },
-    [context.competencia, parseDate, parseValue]
+    [context.competencia, parseDate, parseValue, normalizeCompetencia]
   );
+
+  // ✅ Verificar duplicados por linha no banco
+  const checkLineDuplicates = useCallback(async (rows: ParsedRow[]) => {
+    if (!currentCompany?.id) return;
+    
+    const validRows = rows.filter(r => r.isValid && r.production_date);
+    if (validRows.length === 0) return;
+
+    try {
+      // Buscar produções existentes para a mesma competência/unidade
+      const normalizedComp = normalizeCompetencia(context.competencia);
+      
+      const { data: existingProductions } = await supabase
+        .from("productions")
+        .select("production_date, unit_value, production_type, unit, payer_type, convenio, paciente_nome")
+        .eq("company_id", currentCompany.id)
+        .eq("competencia", normalizedComp)
+        .eq("unit", context.unit)
+        .eq("production_type", context.production_type)
+        .eq("payer_type", context.payer_type);
+      
+      if (!existingProductions || existingProductions.length === 0) {
+        setDuplicateLineCount(0);
+        return;
+      }
+
+      // Criar set de chaves existentes para busca rápida
+      const existingKeys = new Set(
+        existingProductions.map(p => 
+          `${p.production_date}|${p.unit_value}|${(p.paciente_nome || "").toLowerCase().trim()}`
+        )
+      );
+
+      // Marcar linhas como possíveis duplicados
+      let count = 0;
+      const updatedRows = rows.map(r => {
+        if (!r.isValid || !r.production_date) return r;
+        
+        const key = `${r.production_date}|${r.unit_value}|${r.paciente_nome.toLowerCase().trim()}`;
+        const isPossibleDuplicate = existingKeys.has(key);
+        
+        if (isPossibleDuplicate) count++;
+        
+        return { ...r, isPossibleDuplicate };
+      });
+
+      setParsedRows(updatedRows);
+      setDuplicateLineCount(count);
+    } catch (err) {
+      console.error("Erro ao verificar duplicados:", err);
+    }
+  }, [currentCompany?.id, context, normalizeCompetencia]);
 
   // Handle file upload - suporta formato brasileiro
   const handleFileUpload = useCallback(
@@ -259,6 +431,9 @@ export function ProductionImportModal({
       if (!file) return;
 
       setFileName(file.name);
+      setPatientSearch("");
+      setSelectedDate(null);
+      setShowOnlyInvalid(false);
 
       const reader = new FileReader();
       reader.onload = (event) => {
@@ -270,6 +445,14 @@ export function ProductionImportModal({
 
         // ✅ Remover BOM do Excel (UTF-8 BOM)
         text = text.replace(/^\uFEFF/, "");
+
+        // ✅ Remover linha sep=; se existir
+        if (text.startsWith("sep=")) {
+          const firstNewline = text.indexOf("\n");
+          if (firstNewline !== -1) {
+            text = text.substring(firstNewline + 1);
+          }
+        }
 
         // Parse CSV
         const lines = text.split(/\r?\n/).filter((line) => line.trim());
@@ -319,6 +502,13 @@ export function ProductionImportModal({
     [validateRow]
   );
 
+  // ✅ Verificar duplicados quando parsedRows mudar
+  useEffect(() => {
+    if (parsedRows.length > 0 && step === "upload") {
+      checkLineDuplicates(parsedRows);
+    }
+  }, [parsedRows.length, step]); // Removido checkLineDuplicates para evitar loop
+
   // Download template - com BOM UTF-8 para Excel abrir corretamente
   const downloadTemplate = useCallback(() => {
     const BOM = "\ufeff";
@@ -331,8 +521,47 @@ export function ProductionImportModal({
     URL.revokeObjectURL(url);
   }, []);
 
+  // ✅ Verificar se lote já foi importado (por hash)
+  const checkBatchDuplicate = useCallback(async (): Promise<boolean> => {
+    if (!currentCompany?.id) return false;
+    
+    setDuplicateCheckState(s => ({ ...s, checking: true }));
+    
+    try {
+      const hash = await generateImportHash(context, parsedRows);
+      
+      const { data, error } = await supabase
+        .from("production_import_batches")
+        .select("id, created_at")
+        .eq("company_id", currentCompany.id)
+        .eq("import_hash", hash)
+        .maybeSingle();
+      
+      if (error) {
+        console.error("Erro ao verificar hash:", error);
+        return false;
+      }
+      
+      if (data) {
+        setDuplicateCheckState({
+          checking: false,
+          existingBatch: data,
+          showConfirmDialog: true,
+        });
+        return true; // É duplicado, precisa confirmação
+      }
+      
+      setDuplicateCheckState(s => ({ ...s, checking: false }));
+      return false;
+    } catch (err) {
+      console.error("Erro ao gerar hash:", err);
+      setDuplicateCheckState(s => ({ ...s, checking: false }));
+      return false;
+    }
+  }, [currentCompany?.id, context, parsedRows]);
+
   // Import productions
-  const handleImport = useCallback(async () => {
+  const handleImport = useCallback(async (forceImport = false) => {
     // ✅ PROTEÇÃO 4A: Evitar clique duplo via ref
     if (importingRef.current) {
       toast.warning("Importação já em andamento...");
@@ -350,6 +579,12 @@ export function ProductionImportModal({
       return;
     }
 
+    // ✅ Verificar duplicação de lote (se não forçado)
+    if (!forceImport) {
+      const isDuplicate = await checkBatchDuplicate();
+      if (isDuplicate) return; // Dialog será exibido
+    }
+
     importingRef.current = true;
     setIsImporting(true);
 
@@ -361,11 +596,7 @@ export function ProductionImportModal({
       }));
 
       // ✅ PROTEÇÃO 3: Garantir competência como YYYY-MM
-      let competenciaFormatted = context.competencia;
-      // Se veio como MM/YYYY, converter
-      if (/^\d{2}\/\d{4}$/.test(competenciaFormatted)) {
-        competenciaFormatted = competenciaFormatted.slice(3) + "-" + competenciaFormatted.slice(0, 2);
-      }
+      const competenciaFormatted = normalizeCompetencia(context.competencia);
 
       // Convert context to plain object for JSON serialization
       const contextForRpc = {
@@ -375,6 +606,14 @@ export function ProductionImportModal({
         payer_type: context.payer_type,
         convenio: context.convenio || null,
       };
+
+      // ✅ Gerar hash para anti-duplicação
+      let importHash = await generateImportHash(context, parsedRows);
+      
+      // Se é import forçado, adicionar timestamp ao hash para permitir novo lote
+      if (forceImport) {
+        importHash = `${importHash}_${Date.now()}`;
+      }
 
       const { data, error } = await supabase.rpc("import_productions_batch", {
         _company_id: currentCompany.id,
@@ -390,12 +629,21 @@ export function ProductionImportModal({
         imported_count?: number; 
         invalid_count?: number;
         total_value?: number; 
+        batch_id?: string;
         error?: string;
         errors?: Array<{ row: number; error: string }>;
       };
 
       if (!result.success) {
         throw new Error(result.error || "Erro na importação");
+      }
+
+      // ✅ Atualizar batch com hash
+      if (result.batch_id) {
+        await supabase
+          .from("production_import_batches")
+          .update({ import_hash: importHash })
+          .eq("id", result.batch_id);
       }
 
       // Mostrar resumo com linhas inválidas se houver
@@ -412,17 +660,7 @@ export function ProductionImportModal({
 
       onImportComplete();
       // Reset state and close
-      setStep("context");
-      setContext({
-        production_type: "",
-        unit: "",
-        competencia: format(new Date(), "yyyy-MM"),
-        payer_type: "CONVENIO",
-        convenio: "",
-      });
-      setFileName("");
-      setParsedRows([]);
-      onOpenChange(false);
+      resetAndClose();
     } catch (err: any) {
       console.error("Erro na importação:", err);
       toast.error(err.message || "Erro ao importar produções");
@@ -430,10 +668,10 @@ export function ProductionImportModal({
       importingRef.current = false;
       setIsImporting(false);
     }
-  }, [currentCompany?.id, parsedRows, context, fileName, onImportComplete, refreshAll, onOpenChange]);
+  }, [currentCompany?.id, parsedRows, context, fileName, onImportComplete, refreshAll, checkBatchDuplicate, normalizeCompetencia]);
 
   // Reset and close
-  const handleClose = useCallback(() => {
+  const resetAndClose = useCallback(() => {
     setStep("context");
     setContext({
       production_type: "",
@@ -444,8 +682,19 @@ export function ProductionImportModal({
     });
     setFileName("");
     setParsedRows([]);
+    setPatientSearch("");
+    setSelectedDate(null);
+    setShowOnlyInvalid(false);
+    setDuplicateLineCount(0);
+    setDuplicateCheckState({
+      checking: false,
+      existingBatch: null,
+      showConfirmDialog: false,
+    });
     onOpenChange(false);
   }, [onOpenChange]);
+
+  const handleClose = resetAndClose;
 
   // Get payer name for display
   const getPayerName = useCallback(
@@ -457,309 +706,435 @@ export function ProductionImportModal({
   );
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Upload className="h-5 w-5" />
-            Importar Produções via CSV
-          </DialogTitle>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={handleClose}>
+        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5" />
+              Importar Produções via CSV
+            </DialogTitle>
+          </DialogHeader>
 
-        {/* Step indicator */}
-        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
-          <Badge variant={step === "context" ? "default" : "secondary"}>1. Contexto</Badge>
-          <span>→</span>
-          <Badge variant={step === "upload" ? "default" : "secondary"}>2. Upload</Badge>
-        </div>
+          {/* Step indicator */}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+            <Badge variant={step === "context" ? "default" : "secondary"}>1. Contexto</Badge>
+            <span>→</span>
+            <Badge variant={step === "upload" ? "default" : "secondary"}>2. Upload</Badge>
+          </div>
 
-        {step === "context" && (
-          <div className="space-y-4">
-            <Alert>
-              <FileText className="h-4 w-4" />
-              <AlertDescription>
-                <strong>Importante:</strong> Essas informações serão aplicadas a <strong>TODAS</strong> as linhas do arquivo CSV.
-                O arquivo não pode sobrescrever esses campos.
-              </AlertDescription>
-            </Alert>
+          {step === "context" && (
+            <div className="space-y-4">
+              <Alert>
+                <FileText className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>Importante:</strong> Essas informações serão aplicadas a <strong>TODAS</strong> as linhas do arquivo CSV.
+                  O arquivo não pode sobrescrever esses campos.
+                </AlertDescription>
+              </Alert>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Tipo de Produção *</Label>
-                <Select
-                  value={context.production_type}
-                  onValueChange={(v) => setContext((c) => ({ ...c, production_type: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {productionTypes.map((type) => (
-                      <SelectItem key={type.id} value={type.id}>
-                        {type.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Unidade *</Label>
-                <Select
-                  value={context.unit}
-                  onValueChange={(v) => setContext((c) => ({ ...c, unit: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {units.filter((u) => u.active !== false).map((unit) => (
-                      <SelectItem key={unit.id} value={unit.id}>
-                        {unit.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Competência *</Label>
-                <Select
-                  value={context.competencia}
-                  onValueChange={(v) => setContext((c) => ({ ...c, competencia: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {competenciaOptions.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Pagador *</Label>
-                <Select
-                  value={context.payer_type}
-                  onValueChange={(v) => setContext((c) => ({ ...c, payer_type: v as "CONVENIO" | "PARTICULAR", convenio: v === "PARTICULAR" ? "" : c.convenio }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="CONVENIO">Convênio</SelectItem>
-                    <SelectItem value="PARTICULAR">Particular</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {context.payer_type === "CONVENIO" && (
-                <div className="space-y-2 col-span-2">
-                  <Label>Convênio *</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Tipo de Produção *</Label>
                   <Select
-                    value={context.convenio}
-                    onValueChange={(v) => setContext((c) => ({ ...c, convenio: v }))}
+                    value={context.production_type}
+                    onValueChange={(v) => setContext((c) => ({ ...c, production_type: v }))}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Selecione o convênio..." />
+                      <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {payers.filter((p) => p.type === "CONVENIO" && p.active !== false).length === 0 ? (
-                        <div className="px-2 py-4 text-sm text-muted-foreground text-center">
-                          Nenhum convênio cadastrado
-                        </div>
-                      ) : (
-                        payers
-                          .filter((p) => p.type === "CONVENIO" && p.active !== false)
-                          .map((payer) => (
-                            <SelectItem key={payer.id} value={payer.id}>
-                              {payer.name}
-                            </SelectItem>
-                          ))
-                      )}
+                      {productionTypes.map((type) => (
+                        <SelectItem key={type.id} value={type.id}>
+                          {type.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
-              )}
-            </div>
 
-            <div className="flex justify-end gap-2 pt-4">
-              <Button variant="outline" onClick={handleClose}>
-                Cancelar
-              </Button>
-              <Button onClick={() => setStep("upload")} disabled={!isContextValid}>
-                Continuar
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {step === "upload" && (
-          <div className="flex-1 flex flex-col min-h-0 space-y-4">
-            {/* Context summary */}
-            <div className="bg-muted/50 rounded-lg p-3 text-sm">
-              <div className="font-medium mb-1">Contexto do Lote:</div>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
-                <span>
-                  Tipo: <strong>{productionTypes.find((t) => t.id === context.production_type)?.name}</strong>
-                </span>
-                <span>
-                  Unidade: <strong>{units.find((u) => u.id === context.unit)?.name}</strong>
-                </span>
-                <span>
-                  Competência: <strong>{context.competencia.split("-").reverse().join("/")}</strong>
-                </span>
-                <span>
-                  Pagador:{" "}
-                  <strong>
-                    {context.payer_type === "PARTICULAR" ? "Particular" : getPayerName(context.convenio)}
-                  </strong>
-                </span>
-              </div>
-            </div>
-
-            {/* ✅ Texto explicativo para Etapa 2 */}
-            <Alert>
-              <FileText className="h-4 w-4" />
-              <AlertDescription>
-                O arquivo deve conter <strong>APENAS</strong> as colunas: <code className="bg-muted px-1 rounded">data_producao</code>, <code className="bg-muted px-1 rounded">valor_unitario</code> e <code className="bg-muted px-1 rounded">paciente_nome</code>.
-                <br />
-                <span className="text-muted-foreground">Unidade, convênio e competência já foram definidos na etapa anterior.</span>
-              </AlertDescription>
-            </Alert>
-
-            {/* Upload area */}
-            <div className="flex items-center gap-4">
-              <div className="flex-1">
-                <Label htmlFor="csv-upload" className="sr-only">
-                  Arquivo CSV
-                </Label>
-                <Input
-                  id="csv-upload"
-                  type="file"
-                  accept=".csv"
-                  onChange={handleFileUpload}
-                  className="cursor-pointer"
-                />
-              </div>
-              <Button variant="outline" size="sm" onClick={downloadTemplate}>
-                <Download className="h-4 w-4 mr-1" />
-                Baixar modelo CSV
-              </Button>
-            </div>
-
-            {/* Summary */}
-            {parsedRows.length > 0 && (
-              <>
-                <Separator />
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 text-sm">
-                  <div className="bg-muted/50 rounded p-2">
-                    <div className="text-muted-foreground text-xs">Total de linhas</div>
-                    <div className="font-semibold">{summary.total}</div>
-                  </div>
-                  <div className="bg-green-500/10 rounded p-2">
-                    <div className="text-green-600 text-xs">Válidas</div>
-                    <div className="font-semibold text-green-600">{summary.validCount}</div>
-                  </div>
-                  <div className="bg-destructive/10 rounded p-2">
-                    <div className="text-destructive text-xs">Inválidas</div>
-                    <div className="font-semibold text-destructive">{summary.invalidCount}</div>
-                  </div>
-                  <div className="bg-muted/50 rounded p-2">
-                    <div className="text-muted-foreground text-xs">Total (válidas)</div>
-                    <div className="font-semibold">{formatCurrency(summary.totalValue)}</div>
-                  </div>
-                  <div className="bg-muted/50 rounded p-2">
-                    <div className="text-muted-foreground text-xs">Menor data</div>
-                    <div className="font-semibold">{summary.minDate}</div>
-                  </div>
-                  <div className="bg-muted/50 rounded p-2">
-                    <div className="text-muted-foreground text-xs">Maior data</div>
-                    <div className="font-semibold">{summary.maxDate}</div>
-                  </div>
+                <div className="space-y-2">
+                  <Label>Unidade *</Label>
+                  <Select
+                    value={context.unit}
+                    onValueChange={(v) => setContext((c) => ({ ...c, unit: v }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {units.filter((u) => u.active !== false).map((unit) => (
+                        <SelectItem key={unit.id} value={unit.id}>
+                          {unit.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
-                {/* Preview table - ✅ Altura fixa para mostrar TODAS as linhas com rolagem */}
-                <ScrollArea className="h-[280px] border rounded-md">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-12">#</TableHead>
-                        <TableHead>Data</TableHead>
-                        <TableHead className="text-right">Valor</TableHead>
-                        <TableHead>Paciente</TableHead>
-                        <TableHead className="w-32">Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {parsedRows.map((row) => (
-                        <TableRow key={row.rowNumber} className={row.isValid ? "" : "bg-destructive/5"}>
-                          <TableCell className="text-muted-foreground">{row.rowNumber}</TableCell>
-                          <TableCell>
-                            {row.production_date
-                              ? format(parseDateOnly(row.production_date), "dd/MM/yyyy")
-                              : row.raw["data_producao"] || "-"}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {row.unit_value !== null ? formatCurrency(row.unit_value) : row.raw["valor_unitario"] || "-"}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">{row.paciente_nome || "-"}</TableCell>
-                          <TableCell>
-                            {row.isValid ? (
-                              <Badge variant="outline" className="text-green-600 border-green-600/30">
-                                <CheckCircle2 className="h-3 w-3 mr-1" />
-                                OK
-                              </Badge>
-                            ) : (
-                              <Badge variant="destructive" className="text-xs">
-                                <X className="h-3 w-3 mr-1" />
-                                {row.errors.join(", ")}
-                              </Badge>
-                            )}
-                          </TableCell>
-                        </TableRow>
+                <div className="space-y-2">
+                  <Label>Competência *</Label>
+                  <Select
+                    value={context.competencia}
+                    onValueChange={(v) => setContext((c) => ({ ...c, competencia: v }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {competenciaOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
                       ))}
-                    </TableBody>
-                  </Table>
-                </ScrollArea>
-              </>
-            )}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            {/* No valid rows warning */}
-            {parsedRows.length > 0 && summary.validCount === 0 && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  Nenhuma linha válida para importar. Corrija os erros no CSV e tente novamente.
-                </AlertDescription>
-              </Alert>
-            )}
+                <div className="space-y-2">
+                  <Label>Pagador *</Label>
+                  <Select
+                    value={context.payer_type}
+                    onValueChange={(v) => setContext((c) => ({ ...c, payer_type: v as "CONVENIO" | "PARTICULAR", convenio: v === "PARTICULAR" ? "" : c.convenio }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CONVENIO">Convênio</SelectItem>
+                      <SelectItem value="PARTICULAR">Particular</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            {/* Actions */}
-            <div className="flex justify-between gap-2 pt-2">
-              <Button variant="ghost" onClick={() => setStep("context")}>
-                ← Voltar
-              </Button>
-              <div className="flex gap-2">
+                {context.payer_type === "CONVENIO" && (
+                  <div className="space-y-2 col-span-2">
+                    <Label>Convênio *</Label>
+                    <Select
+                      value={context.convenio}
+                      onValueChange={(v) => setContext((c) => ({ ...c, convenio: v }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o convênio..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {payers.filter((p) => p.type === "CONVENIO" && p.active !== false).length === 0 ? (
+                          <div className="px-2 py-4 text-sm text-muted-foreground text-center">
+                            Nenhum convênio cadastrado
+                          </div>
+                        ) : (
+                          payers
+                            .filter((p) => p.type === "CONVENIO" && p.active !== false)
+                            .map((payer) => (
+                              <SelectItem key={payer.id} value={payer.id}>
+                                {payer.name}
+                              </SelectItem>
+                            ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4">
                 <Button variant="outline" onClick={handleClose}>
                   Cancelar
                 </Button>
-                <Button
-                  onClick={handleImport}
-                  disabled={isImporting || summary.validCount === 0}
-                >
-                  {isImporting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  Importar {summary.validCount > 0 && `(${summary.validCount})`}
+                <Button onClick={() => setStep("upload")} disabled={!isContextValid}>
+                  Continuar
                 </Button>
               </div>
             </div>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+          )}
+
+          {step === "upload" && (
+            <div className="flex-1 flex flex-col min-h-0 space-y-4">
+              {/* Context summary */}
+              <div className="bg-muted/50 rounded-lg p-3 text-sm">
+                <div className="font-medium mb-1">Contexto do Lote:</div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
+                  <span>
+                    Tipo: <strong>{productionTypes.find((t) => t.id === context.production_type)?.name}</strong>
+                  </span>
+                  <span>
+                    Unidade: <strong>{units.find((u) => u.id === context.unit)?.name}</strong>
+                  </span>
+                  <span>
+                    Competência: <strong>{context.competencia.split("-").reverse().join("/")}</strong>
+                  </span>
+                  <span>
+                    Pagador:{" "}
+                    <strong>
+                      {context.payer_type === "PARTICULAR" ? "Particular" : getPayerName(context.convenio)}
+                    </strong>
+                  </span>
+                </div>
+              </div>
+
+              {/* ✅ Texto explicativo para Etapa 2 */}
+              <Alert>
+                <FileText className="h-4 w-4" />
+                <AlertDescription>
+                  O arquivo deve conter <strong>APENAS</strong> as colunas: <code className="bg-muted px-1 rounded">data_producao</code>, <code className="bg-muted px-1 rounded">valor_unitario</code> e <code className="bg-muted px-1 rounded">paciente_nome</code>.
+                  <br />
+                  <span className="text-muted-foreground">Unidade, convênio e competência já foram definidos na etapa anterior.</span>
+                </AlertDescription>
+              </Alert>
+
+              {/* Upload area */}
+              <div className="flex items-center gap-4">
+                <div className="flex-1">
+                  <Label htmlFor="csv-upload" className="sr-only">
+                    Arquivo CSV
+                  </Label>
+                  <Input
+                    id="csv-upload"
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileUpload}
+                    className="cursor-pointer"
+                  />
+                </div>
+                <Button variant="outline" size="sm" onClick={downloadTemplate}>
+                  <Download className="h-4 w-4 mr-1" />
+                  Baixar modelo CSV
+                </Button>
+              </div>
+
+              {/* Summary */}
+              {parsedRows.length > 0 && (
+                <>
+                  <Separator />
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 text-sm">
+                    <div className="bg-muted/50 rounded p-2">
+                      <div className="text-muted-foreground text-xs">Total de linhas</div>
+                      <div className="font-semibold">{summary.total}</div>
+                    </div>
+                    <div className="bg-green-500/10 rounded p-2">
+                      <div className="text-green-600 text-xs">Válidas</div>
+                      <div className="font-semibold text-green-600">{summary.validCount}</div>
+                    </div>
+                    <div className="bg-destructive/10 rounded p-2">
+                      <div className="text-destructive text-xs">Inválidas</div>
+                      <div className="font-semibold text-destructive">{summary.invalidCount}</div>
+                    </div>
+                    <div className="bg-muted/50 rounded p-2">
+                      <div className="text-muted-foreground text-xs">Total (válidas)</div>
+                      <div className="font-semibold">{formatCurrency(summary.totalValue)}</div>
+                    </div>
+                    <div className="bg-muted/50 rounded p-2">
+                      <div className="text-muted-foreground text-xs">Menor data</div>
+                      <div className="font-semibold">{summary.minDate}</div>
+                    </div>
+                    <div className="bg-muted/50 rounded p-2">
+                      <div className="text-muted-foreground text-xs">Maior data</div>
+                      <div className="font-semibold">{summary.maxDate}</div>
+                    </div>
+                  </div>
+
+                  {/* ✅ Alerta de duplicados por linha */}
+                  {duplicateLineCount > 0 && (
+                    <Alert variant="default" className="border-amber-500/50 bg-amber-500/10">
+                      <AlertTriangle className="h-4 w-4 text-amber-600" />
+                      <AlertDescription className="text-amber-700">
+                        <strong>{duplicateLineCount}</strong> linha(s) pode(m) ser duplicada(s) (já existe produção semelhante no banco).
+                        Revise antes de importar.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  {/* ✅ Filtros do preview (modo auditoria) */}
+                  <div className="flex flex-wrap items-center gap-3">
+                    {/* Toggle inválidas */}
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="show-invalid"
+                        checked={showOnlyInvalid}
+                        onCheckedChange={setShowOnlyInvalid}
+                      />
+                      <Label htmlFor="show-invalid" className="text-sm cursor-pointer">
+                        <Filter className="h-3 w-3 inline mr-1" />
+                        Só inválidas
+                      </Label>
+                    </div>
+
+                    {/* Busca por paciente */}
+                    <div className="relative flex-1 max-w-[200px]">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Buscar paciente..."
+                        value={patientSearch}
+                        onChange={(e) => setPatientSearch(e.target.value)}
+                        className="pl-8 h-8 text-sm"
+                      />
+                    </div>
+
+                    {/* Limpar filtros */}
+                    {(showOnlyInvalid || patientSearch || selectedDate) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setShowOnlyInvalid(false);
+                          setPatientSearch("");
+                          setSelectedDate(null);
+                        }}
+                      >
+                        <X className="h-3 w-3 mr-1" />
+                        Limpar
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* ✅ Chips por data */}
+                  {dateGroups.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {dateGroups.map(({ date, count, total }) => (
+                        <Badge
+                          key={date}
+                          variant={selectedDate === date ? "default" : "outline"}
+                          className="cursor-pointer text-xs"
+                          onClick={() => setSelectedDate(selectedDate === date ? null : date)}
+                        >
+                          {format(parseDateOnly(date), "dd/MM")} ({count}) - {formatCurrency(total)}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* ✅ Preview table com header sticky e linhas compactas */}
+                  <ScrollArea className="h-[280px] border rounded-md">
+                    <Table>
+                      <TableHeader className="sticky top-0 bg-background z-10">
+                        <TableRow>
+                          <TableHead className="w-10 py-2 text-xs">#</TableHead>
+                          <TableHead className="py-2 text-xs">Data</TableHead>
+                          <TableHead className="text-right py-2 text-xs">Valor</TableHead>
+                          <TableHead className="py-2 text-xs">Paciente</TableHead>
+                          <TableHead className="w-28 py-2 text-xs">Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredRows.map((row) => (
+                          <TableRow 
+                            key={row.rowNumber} 
+                            className={`${!row.isValid ? "bg-destructive/5" : ""} ${row.isPossibleDuplicate ? "bg-amber-500/10" : ""}`}
+                          >
+                            <TableCell className="text-muted-foreground py-1.5 text-xs">{row.rowNumber}</TableCell>
+                            <TableCell className="py-1.5 text-sm">
+                              {row.production_date
+                                ? format(parseDateOnly(row.production_date), "dd/MM/yyyy")
+                                : row.raw["data_producao"] || "-"}
+                            </TableCell>
+                            <TableCell className="text-right py-1.5 text-sm">
+                              {row.unit_value !== null ? formatCurrency(row.unit_value) : row.raw["valor_unitario"] || "-"}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground py-1.5 text-sm truncate max-w-[150px]">{row.paciente_nome || "-"}</TableCell>
+                            <TableCell className="py-1.5">
+                              {row.isValid ? (
+                                row.isPossibleDuplicate ? (
+                                  <Badge variant="outline" className="text-amber-600 border-amber-600/30 text-xs">
+                                    <AlertTriangle className="h-3 w-3 mr-1" />
+                                    Dup?
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-green-600 border-green-600/30 text-xs">
+                                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                                    OK
+                                  </Badge>
+                                )
+                              ) : (
+                                <Badge variant="destructive" className="text-xs">
+                                  <X className="h-3 w-3 mr-1" />
+                                  {row.errors[0]}
+                                </Badge>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {filteredRows.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                              Nenhuma linha encontrada com os filtros aplicados.
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                </>
+              )}
+
+              {/* No valid rows warning */}
+              {parsedRows.length > 0 && summary.validCount === 0 && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    Nenhuma linha válida para importar. Corrija os erros no CSV e tente novamente.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* Actions */}
+              <div className="flex justify-between gap-2 pt-2">
+                <Button variant="ghost" onClick={() => setStep("context")}>
+                  ← Voltar
+                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={handleClose}>
+                    Cancelar
+                  </Button>
+                  <Button
+                    onClick={() => handleImport(false)}
+                    disabled={isImporting || duplicateCheckState.checking || summary.validCount === 0}
+                  >
+                    {(isImporting || duplicateCheckState.checking) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                    Importar {summary.validCount > 0 && `(${summary.validCount})`}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ✅ Dialog de confirmação de lote duplicado */}
+      <AlertDialog 
+        open={duplicateCheckState.showConfirmDialog} 
+        onOpenChange={(open) => setDuplicateCheckState(s => ({ ...s, showConfirmDialog: open }))}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Lote possivelmente duplicado
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Este lote já foi importado anteriormente em{" "}
+              <strong>
+                {duplicateCheckState.existingBatch?.created_at
+                  ? format(new Date(duplicateCheckState.existingBatch.created_at), "dd/MM/yyyy 'às' HH:mm")
+                  : "data desconhecida"}
+              </strong>.
+              <br /><br />
+              Deseja importar mesmo assim? Isso pode criar registros duplicados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setDuplicateCheckState(s => ({ ...s, showConfirmDialog: false }));
+                handleImport(true); // Forçar importação
+              }}
+              className="bg-amber-600 hover:bg-amber-700"
+            >
+              Importar mesmo assim
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
