@@ -64,10 +64,11 @@ interface ParsedRow {
 
 type Step = "context" | "upload";
 
-const TEMPLATE_CSV = `data_producao,valor_unitario,paciente_nome
-2025-01-15,150.00,João Silva
-2025-01-16,200.50,Maria Santos
-2025-01-17,175,`;
+// ✅ Modelo CSV padrão Brasil: separador ; e decimal ,
+const TEMPLATE_CSV = `data_producao;valor_unitario;paciente_nome
+15/01/2026;150,00;João da Silva
+16/01/2026;200,00;
+17/01/2026;175,50;Maria Souza`;
 
 export function ProductionImportModal({
   open,
@@ -167,11 +168,19 @@ export function ProductionImportModal({
     []
   );
 
-  // Parse numeric value
+  // Parse numeric value - suporta formato brasileiro (vírgula como decimal)
   const parseValue = useCallback((value: string): number | null => {
     if (!value || !value.trim()) return null;
-    // Replace comma with dot, remove spaces
-    const normalized = value.trim().replace(",", ".").replace(/\s/g, "");
+    // Remove espaços e caracteres indesejados
+    let normalized = value.trim().replace(/\s/g, "");
+    // Se tiver vírgula como decimal e não tiver ponto, converter: 150,00 → 150.00
+    if (normalized.includes(",") && !normalized.includes(".")) {
+      normalized = normalized.replace(",", ".");
+    }
+    // Se tiver vírgula e ponto (ex: 1.000,00), remover pontos de milhar e converter vírgula
+    else if (normalized.includes(",") && normalized.includes(".")) {
+      normalized = normalized.replace(/\./g, "").replace(",", ".");
+    }
     const num = parseFloat(normalized);
     if (isNaN(num) || num <= 0) return null;
     return num;
@@ -226,7 +235,7 @@ export function ProductionImportModal({
     [context.competencia, parseDate, parseValue]
   );
 
-  // Handle file upload
+  // Handle file upload - suporta formato brasileiro
   const handleFileUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -236,11 +245,14 @@ export function ProductionImportModal({
 
       const reader = new FileReader();
       reader.onload = (event) => {
-        const text = event.target?.result as string;
+        let text = event.target?.result as string;
         if (!text) {
           toast.error("Erro ao ler arquivo");
           return;
         }
+
+        // ✅ Remover BOM do Excel (UTF-8 BOM)
+        text = text.replace(/^\uFEFF/, "");
 
         // Parse CSV
         const lines = text.split(/\r?\n/).filter((line) => line.trim());
@@ -249,9 +261,13 @@ export function ProductionImportModal({
           return;
         }
 
-        // Parse header
+        // ✅ Detectar separador automaticamente (priorizar ;)
         const headerLine = lines[0];
-        const headers = headerLine.split(/[,;]/).map((h) => h.trim().toLowerCase().replace(/[""]/g, ""));
+        const separator = headerLine.includes(";") ? ";" : ",";
+        
+        const headers = headerLine
+          .split(separator)
+          .map((h) => h.trim().toLowerCase().replace(/[""]/g, ""));
 
         // Validate required headers
         const hasDate = headers.some((h) => h.includes("data"));
@@ -262,13 +278,13 @@ export function ProductionImportModal({
           return;
         }
 
-        // Parse data rows
+        // Parse data rows usando o mesmo separador
         const rows: ParsedRow[] = [];
         for (let i = 1; i < lines.length; i++) {
           const line = lines[i].trim();
           if (!line) continue;
 
-          const values = line.split(/[,;]/).map((v) => v.trim().replace(/[""]/g, ""));
+          const values = line.split(separator).map((v) => v.trim().replace(/[""]/g, ""));
           const rawRow: { [key: string]: string } = {};
 
           headers.forEach((header, idx) => {
@@ -444,7 +460,8 @@ export function ProductionImportModal({
             <Alert>
               <FileText className="h-4 w-4" />
               <AlertDescription>
-                Defina o contexto do lote. Todas as linhas do CSV herdarão essas informações.
+                <strong>Importante:</strong> Essas informações serão aplicadas a <strong>TODAS</strong> as linhas do arquivo CSV.
+                O arquivo não pode sobrescrever esses campos.
               </AlertDescription>
             </Alert>
 
@@ -533,11 +550,19 @@ export function ProductionImportModal({
                       <SelectValue placeholder="Selecione o convênio..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {payers.map((payer) => (
-                        <SelectItem key={payer.id} value={payer.id}>
-                          {payer.name}
-                        </SelectItem>
-                      ))}
+                      {payers.filter((p) => p.type === "CONVENIO" && p.active !== false).length === 0 ? (
+                        <div className="px-2 py-4 text-sm text-muted-foreground text-center">
+                          Nenhum convênio cadastrado
+                        </div>
+                      ) : (
+                        payers
+                          .filter((p) => p.type === "CONVENIO" && p.active !== false)
+                          .map((payer) => (
+                            <SelectItem key={payer.id} value={payer.id}>
+                              {payer.name}
+                            </SelectItem>
+                          ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -578,6 +603,16 @@ export function ProductionImportModal({
                 </span>
               </div>
             </div>
+
+            {/* ✅ Texto explicativo para Etapa 2 */}
+            <Alert>
+              <FileText className="h-4 w-4" />
+              <AlertDescription>
+                O arquivo deve conter <strong>APENAS</strong> as colunas: <code className="bg-muted px-1 rounded">data_producao</code>, <code className="bg-muted px-1 rounded">valor_unitario</code> e <code className="bg-muted px-1 rounded">paciente_nome</code>.
+                <br />
+                <span className="text-muted-foreground">Unidade, convênio e competência já foram definidos na etapa anterior.</span>
+              </AlertDescription>
+            </Alert>
 
             {/* Upload area */}
             <div className="flex items-center gap-4">
