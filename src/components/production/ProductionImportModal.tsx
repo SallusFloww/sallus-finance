@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { format, parse, isValid, startOfMonth, endOfMonth, isWithinInterval } from "date-fns";
 import { Upload, Download, FileText, AlertCircle, CheckCircle2, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -36,6 +36,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useCompanySettings } from "@/hooks/useCompanySettings";
 import { supabase } from "@/integrations/supabase/client";
 import { formatCurrency } from "@/utils/formatters";
+import { useGlobalRealtime } from "@/contexts/GlobalRealtimeProvider";
 
 interface ProductionImportModalProps {
   open: boolean;
@@ -75,6 +76,7 @@ export function ProductionImportModal({
 }: ProductionImportModalProps) {
   const { currentCompany } = useAuth();
   const { settings, extendedSettings } = useCompanySettings();
+  const { refreshAll } = useGlobalRealtime();
 
   // Extract units, productionTypes, payers from settings
   const units = settings.units || [];
@@ -83,6 +85,9 @@ export function ProductionImportModal({
 
   const [step, setStep] = useState<Step>("context");
   const [isImporting, setIsImporting] = useState(false);
+
+  // ✅ PROTEÇÃO 4A: Ref para evitar clique duplo
+  const importingRef = useRef(false);
 
   // Context state
   const [context, setContext] = useState<ImportContext>({
@@ -294,6 +299,12 @@ export function ProductionImportModal({
 
   // Import productions
   const handleImport = useCallback(async () => {
+    // ✅ PROTEÇÃO 4A: Evitar clique duplo via ref
+    if (importingRef.current) {
+      toast.warning("Importação já em andamento...");
+      return;
+    }
+
     if (!currentCompany?.id) {
       toast.error("Empresa não selecionada");
       return;
@@ -305,6 +316,7 @@ export function ProductionImportModal({
       return;
     }
 
+    importingRef.current = true;
     setIsImporting(true);
 
     try {
@@ -314,11 +326,18 @@ export function ProductionImportModal({
         paciente_nome: r.paciente_nome || null,
       }));
 
+      // ✅ PROTEÇÃO 3: Garantir competência como YYYY-MM
+      let competenciaFormatted = context.competencia;
+      // Se veio como MM/YYYY, converter
+      if (/^\d{2}\/\d{4}$/.test(competenciaFormatted)) {
+        competenciaFormatted = competenciaFormatted.slice(3) + "-" + competenciaFormatted.slice(0, 2);
+      }
+
       // Convert context to plain object for JSON serialization
       const contextForRpc = {
         production_type: context.production_type,
         unit: context.unit,
-        competencia: context.competencia,
+        competencia: competenciaFormatted,
         payer_type: context.payer_type,
         convenio: context.convenio || null,
       };
@@ -332,25 +351,52 @@ export function ProductionImportModal({
 
       if (error) throw error;
 
-      const result = data as { success: boolean; imported_count?: number; total_value?: number; error?: string };
+      const result = data as { 
+        success: boolean; 
+        imported_count?: number; 
+        invalid_count?: number;
+        total_value?: number; 
+        error?: string;
+        errors?: Array<{ row: number; error: string }>;
+      };
 
       if (!result.success) {
         throw new Error(result.error || "Erro na importação");
       }
 
+      // Mostrar resumo com linhas inválidas se houver
+      const invalidMsg = result.invalid_count && result.invalid_count > 0 
+        ? ` | ${result.invalid_count} linha(s) rejeitada(s)` 
+        : "";
+
       toast.success(
-        `Importação concluída: ${result.imported_count} produções criadas | Total ${formatCurrency(result.total_value || 0)}`
+        `Importação concluída: ${result.imported_count} produções criadas | Total ${formatCurrency(result.total_value || 0)}${invalidMsg}`
       );
 
+      // ✅ Atualizar lista sem F5
+      refreshAll();
+
       onImportComplete();
-      handleClose();
+      // Reset state and close
+      setStep("context");
+      setContext({
+        production_type: "",
+        unit: "",
+        competencia: format(new Date(), "yyyy-MM"),
+        payer_type: "CONVENIO",
+        convenio: "",
+      });
+      setFileName("");
+      setParsedRows([]);
+      onOpenChange(false);
     } catch (err: any) {
       console.error("Erro na importação:", err);
       toast.error(err.message || "Erro ao importar produções");
     } finally {
+      importingRef.current = false;
       setIsImporting(false);
     }
-  }, [currentCompany?.id, parsedRows, context, fileName, onImportComplete]);
+  }, [currentCompany?.id, parsedRows, context, fileName, onImportComplete, refreshAll, onOpenChange]);
 
   // Reset and close
   const handleClose = useCallback(() => {
