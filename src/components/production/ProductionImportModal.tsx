@@ -64,11 +64,21 @@ interface ParsedRow {
 
 type Step = "context" | "upload";
 
-// ✅ Modelo CSV padrão Brasil: separador ; e decimal ,
-const TEMPLATE_CSV = `data_producao;valor_unitario;paciente_nome
+// ✅ Modelo CSV padrão Brasil: separador ; e decimal , + sep=; para Excel
+const TEMPLATE_CSV = `sep=;
+data_producao;valor_unitario;paciente_nome
 15/01/2026;150,00;João da Silva
 16/01/2026;200,00;
 17/01/2026;175,50;Maria Souza`;
+
+// ✅ Fallback de convênios quando banco está vazio
+const DEFAULT_PAYERS = [
+  { id: "IPASGO", name: "Ipasgo", type: "CONVENIO", active: true },
+  { id: "UNIMED", name: "Unimed", type: "CONVENIO", active: true },
+  { id: "BRADESCO", name: "Bradesco", type: "CONVENIO", active: true },
+  { id: "GEAP", name: "GEAP", type: "CONVENIO", active: true },
+  { id: "PARTICULAR", name: "Particular", type: "PARTICULAR", active: true },
+] as const;
 
 export function ProductionImportModal({
   open,
@@ -82,7 +92,9 @@ export function ProductionImportModal({
   // Extract units, productionTypes, payers from settings
   const units = settings.units || [];
   const productionTypes = extendedSettings.productionTypes || [];
-  const payers = extendedSettings.payers || [];
+  const payers = (extendedSettings.payers && extendedSettings.payers.length > 0)
+    ? extendedSettings.payers
+    : (DEFAULT_PAYERS as unknown as typeof extendedSettings.payers);
 
   const [step, setStep] = useState<Step>("context");
   const [isImporting, setIsImporting] = useState(false);
@@ -302,9 +314,10 @@ export function ProductionImportModal({
     [validateRow]
   );
 
-  // Download template
+  // Download template - com BOM UTF-8 para Excel abrir corretamente
   const downloadTemplate = useCallback(() => {
-    const blob = new Blob([TEMPLATE_CSV], { type: "text/csv;charset=utf-8;" });
+    const BOM = "\ufeff";
+    const blob = new Blob([BOM + TEMPLATE_CSV], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
