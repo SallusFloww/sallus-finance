@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { format, parse, isValid, startOfMonth, endOfMonth, isWithinInterval } from "date-fns";
-import { Upload, Download, FileText, AlertCircle, CheckCircle2, X, Loader2, Search, Filter, AlertTriangle } from "lucide-react";
+import { Upload, Download, FileText, AlertCircle, CheckCircle2, X, Loader2, Search, Filter, AlertTriangle, Copy } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -32,6 +32,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -115,6 +116,9 @@ const PAYMENT_METHODS = [
   { id: "OUTRO", name: "Outro" },
 ] as const;
 
+// ✅ Status da linha para auditoria
+type RowStatus = "OK" | "Revisar" | "Erro";
+
 interface ParsedRow {
   rowNumber: number;
   raw: { [key: string]: string };
@@ -123,7 +127,8 @@ interface ParsedRow {
   paciente_nome: string;
   isValid: boolean;
   errors: string[];
-  isPossibleDuplicate?: boolean; // ✅ Marcação de possível duplicado
+  isDuplicate: boolean; // ✅ Duplicado confirmado
+  status: RowStatus; // ✅ Status para exibição
 }
 
 type Step = "context" | "upload";
@@ -213,8 +218,12 @@ export function ProductionImportModal({
 
   // ✅ Filtros de preview (modo auditoria)
   const [showOnlyInvalid, setShowOnlyInvalid] = useState(false);
+  const [showOnlyDuplicates, setShowOnlyDuplicates] = useState(false);
   const [patientSearch, setPatientSearch] = useState("");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  // ✅ Checkbox global: incluir duplicados na importação
+  const [includeDuplicates, setIncludeDuplicates] = useState(false);
 
   // ✅ Estado para detecção de duplicação de lote
   const [duplicateCheckState, setDuplicateCheckState] = useState<{
@@ -272,6 +281,10 @@ export function ProductionImportModal({
       rows = rows.filter(r => !r.isValid);
     }
     
+    if (showOnlyDuplicates) {
+      rows = rows.filter(r => r.isDuplicate);
+    }
+    
     if (patientSearch.trim()) {
       const search = patientSearch.toLowerCase().trim();
       rows = rows.filter(r => 
@@ -284,13 +297,19 @@ export function ProductionImportModal({
     }
     
     return rows;
-  }, [parsedRows, showOnlyInvalid, patientSearch, selectedDate]);
+  }, [parsedRows, showOnlyInvalid, showOnlyDuplicates, patientSearch, selectedDate]);
 
-  // Summary stats - ✅ Usa parseDateOnly para evitar bug de timezone
+  // ✅ Summary stats - agora com contagem de duplicados e separação
   const summary = useMemo(() => {
     const valid = parsedRows.filter((r) => r.isValid);
     const invalid = parsedRows.filter((r) => !r.isValid);
+    const duplicates = parsedRows.filter((r) => r.isValid && r.isDuplicate);
+    const newRows = parsedRows.filter((r) => r.isValid && !r.isDuplicate);
+    
     const totalValue = valid.reduce((sum, r) => sum + (r.unit_value || 0), 0);
+    const newValue = newRows.reduce((sum, r) => sum + (r.unit_value || 0), 0);
+    const duplicateValue = duplicates.reduce((sum, r) => sum + (r.unit_value || 0), 0);
+    
     const dates = valid
       .map((r) => r.production_date)
       .filter((d): d is string => d !== null)
@@ -301,11 +320,30 @@ export function ProductionImportModal({
       total: parsedRows.length,
       validCount: valid.length,
       invalidCount: invalid.length,
+      duplicateCount: duplicates.length,
+      newCount: newRows.length,
       totalValue,
+      newValue,
+      duplicateValue,
       minDate: dates[0] ? format(dates[0], "dd/MM/yyyy") : "-",
       maxDate: dates[dates.length - 1] ? format(dates[dates.length - 1], "dd/MM/yyyy") : "-",
     };
   }, [parsedRows]);
+
+  // ✅ Quantidade que será realmente importada (considera checkbox de duplicados)
+  const rowsToImportCount = useMemo(() => {
+    if (includeDuplicates) {
+      return summary.validCount;
+    }
+    return summary.newCount;
+  }, [summary, includeDuplicates]);
+
+  const valueToImport = useMemo(() => {
+    if (includeDuplicates) {
+      return summary.totalValue;
+    }
+    return summary.newValue;
+  }, [summary, includeDuplicates]);
 
   const isContextValid = useMemo(() => {
     if (!context.production_type || !context.unit || !context.competencia) return false;
@@ -419,12 +457,14 @@ export function ProductionImportModal({
         paciente_nome,
         isValid: errors.length === 0,
         errors,
+        isDuplicate: false, // ✅ Será atualizado após verificação
+        status: errors.length === 0 ? "OK" : "Erro" as RowStatus,
       };
     },
     [context.competencia, parseDate, parseValue, normalizeCompetencia]
   );
 
-  // ✅ Verificar duplicados por linha no banco
+  // ✅ Verificar duplicados por linha no banco (detecção completa)
   const checkLineDuplicates = useCallback(async (rows: ParsedRow[]) => {
     if (!currentCompany?.id) return;
     
@@ -432,10 +472,11 @@ export function ProductionImportModal({
     if (validRows.length === 0) return;
 
     try {
-      // Buscar produções existentes para a mesma competência/unidade
+      // Buscar produções existentes para a mesma competência/unidade/tipo/pagador
       const normalizedComp = normalizeCompetencia(context.competencia);
       
-      const { data: existingProductions } = await supabase
+      // ✅ Query com todos os campos de detecção de duplicidade
+      let query = supabase
         .from("productions")
         .select("production_date, unit_value, production_type, unit, payer_type, convenio, paciente_nome")
         .eq("company_id", currentCompany.id)
@@ -444,29 +485,50 @@ export function ProductionImportModal({
         .eq("production_type", context.production_type)
         .eq("payer_type", context.payer_type);
       
+      // Adicionar convênio se for CONVENIO
+      if (context.payer_type === "CONVENIO" && context.convenio) {
+        query = query.eq("convenio", context.convenio);
+      }
+      
+      const { data: existingProductions } = await query;
+      
       if (!existingProductions || existingProductions.length === 0) {
+        // Nenhum duplicado - atualizar todas as linhas como novas
+        const updatedRows = rows.map(r => ({
+          ...r,
+          isDuplicate: false,
+          status: r.isValid ? "OK" as RowStatus : "Erro" as RowStatus,
+        }));
+        setParsedRows(updatedRows);
         setDuplicateLineCount(0);
         return;
       }
 
-      // Criar set de chaves existentes para busca rápida
+      // ✅ Criar set de chaves existentes para busca rápida
+      // Chave: production_date|unit_value|paciente_nome (normalizado)
       const existingKeys = new Set(
         existingProductions.map(p => 
-          `${p.production_date}|${p.unit_value}|${(p.paciente_nome || "").toLowerCase().trim()}`
+          `${p.production_date}|${Number(p.unit_value).toFixed(2)}|${(p.paciente_nome || "").toLowerCase().trim()}`
         )
       );
 
-      // Marcar linhas como possíveis duplicados
+      // Marcar linhas como duplicados
       let count = 0;
       const updatedRows = rows.map(r => {
-        if (!r.isValid || !r.production_date) return r;
+        if (!r.isValid || !r.production_date) {
+          return { ...r, isDuplicate: false, status: "Erro" as RowStatus };
+        }
         
-        const key = `${r.production_date}|${r.unit_value}|${r.paciente_nome.toLowerCase().trim()}`;
-        const isPossibleDuplicate = existingKeys.has(key);
+        const key = `${r.production_date}|${(r.unit_value || 0).toFixed(2)}|${r.paciente_nome.toLowerCase().trim()}`;
+        const isDuplicate = existingKeys.has(key);
         
-        if (isPossibleDuplicate) count++;
+        if (isDuplicate) count++;
         
-        return { ...r, isPossibleDuplicate };
+        return { 
+          ...r, 
+          isDuplicate,
+          status: isDuplicate ? "Revisar" as RowStatus : "OK" as RowStatus,
+        };
       });
 
       setParsedRows(updatedRows);
@@ -625,7 +687,14 @@ export function ProductionImportModal({
       return;
     }
 
-    const validRows = parsedRows.filter((r) => r.isValid);
+    // ✅ Filtrar linhas válidas E considerar checkbox de duplicados
+    const validRows = parsedRows.filter((r) => {
+      if (!r.isValid) return false;
+      // Se não incluir duplicados, excluir linhas duplicadas
+      if (!includeDuplicates && r.isDuplicate) return false;
+      return true;
+    });
+    
     if (validRows.length === 0) {
       toast.error("Nenhuma linha válida para importar");
       return;
@@ -740,6 +809,8 @@ export function ProductionImportModal({
     setPatientSearch("");
     setSelectedDate(null);
     setShowOnlyInvalid(false);
+    setShowOnlyDuplicates(false);
+    setIncludeDuplicates(false);
     setRowsPerPage(50);
     setDuplicateLineCount(0);
     setDuplicateCheckState({
@@ -990,46 +1061,73 @@ export function ProductionImportModal({
                 </Button>
               </div>
 
-              {/* Summary */}
+              {/* ✅ Resumo auditável separado: novas vs duplicadas */}
               {parsedRows.length > 0 && (
                 <>
                   <Separator />
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 text-sm">
+                  
+                  {/* Grid de resumo principal */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
                     <div className="bg-muted/50 rounded p-2">
                       <div className="text-muted-foreground text-xs">Total de linhas</div>
                       <div className="font-semibold">{summary.total}</div>
                     </div>
-                    <div className="bg-green-500/10 rounded p-2">
-                      <div className="text-green-600 text-xs">Válidas</div>
-                      <div className="font-semibold text-green-600">{summary.validCount}</div>
-                    </div>
                     <div className="bg-destructive/10 rounded p-2">
-                      <div className="text-destructive text-xs">Inválidas</div>
+                      <div className="text-destructive text-xs">Com erro</div>
                       <div className="font-semibold text-destructive">{summary.invalidCount}</div>
                     </div>
                     <div className="bg-muted/50 rounded p-2">
-                      <div className="text-muted-foreground text-xs">Total (válidas)</div>
+                      <div className="text-muted-foreground text-xs">Período</div>
+                      <div className="font-semibold text-xs">{summary.minDate} - {summary.maxDate}</div>
+                    </div>
+                    <div className="bg-muted/50 rounded p-2">
+                      <div className="text-muted-foreground text-xs">Valor total</div>
                       <div className="font-semibold">{formatCurrency(summary.totalValue)}</div>
-                    </div>
-                    <div className="bg-muted/50 rounded p-2">
-                      <div className="text-muted-foreground text-xs">Menor data</div>
-                      <div className="font-semibold">{summary.minDate}</div>
-                    </div>
-                    <div className="bg-muted/50 rounded p-2">
-                      <div className="text-muted-foreground text-xs">Maior data</div>
-                      <div className="font-semibold">{summary.maxDate}</div>
                     </div>
                   </div>
 
-                  {/* ✅ Alerta de duplicados por linha */}
-                  {duplicateLineCount > 0 && (
-                    <Alert variant="default" className="border-amber-500/50 bg-amber-500/10">
-                      <AlertTriangle className="h-4 w-4 text-amber-600" />
-                      <AlertDescription className="text-amber-700">
-                        <strong>{duplicateLineCount}</strong> linha(s) pode(m) ser duplicada(s) (já existe produção semelhante no banco).
-                        Revise antes de importar.
-                      </AlertDescription>
-                    </Alert>
+                  {/* ✅ Resumo separado: Novas vs Duplicadas */}
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="bg-green-500/10 border border-green-500/20 rounded p-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        <span className="text-green-700 font-medium">Novas</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-2xl font-bold text-green-600">{summary.newCount}</span>
+                        <span className="text-green-600 font-medium">{formatCurrency(summary.newValue)}</span>
+                      </div>
+                    </div>
+                    <div className="bg-amber-500/10 border border-amber-500/20 rounded p-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Copy className="h-4 w-4 text-amber-600" />
+                        <span className="text-amber-700 font-medium">Duplicadas</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-2xl font-bold text-amber-600">{summary.duplicateCount}</span>
+                        <span className="text-amber-600 font-medium">{formatCurrency(summary.duplicateValue)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ✅ Checkbox global: importar duplicados */}
+                  {summary.duplicateCount > 0 && (
+                    <div className="flex items-center space-x-2 p-3 border rounded-md bg-amber-500/5 border-amber-500/30">
+                      <Checkbox 
+                        id="include-duplicates" 
+                        checked={includeDuplicates}
+                        onCheckedChange={(checked) => setIncludeDuplicates(!!checked)}
+                      />
+                      <Label 
+                        htmlFor="include-duplicates" 
+                        className="text-sm cursor-pointer flex-1"
+                      >
+                        <span className="font-medium">Importar linhas duplicadas</span>
+                        <span className="text-muted-foreground ml-2">
+                          ({summary.duplicateCount} linhas • {formatCurrency(summary.duplicateValue)})
+                        </span>
+                      </Label>
+                    </div>
                   )}
 
                   {/* ✅ Filtros do preview (modo auditoria) */}
@@ -1039,16 +1137,27 @@ export function ProductionImportModal({
                       <Switch
                         id="show-invalid"
                         checked={showOnlyInvalid}
-                        onCheckedChange={setShowOnlyInvalid}
+                        onCheckedChange={(v) => { setShowOnlyInvalid(v); if (v) setShowOnlyDuplicates(false); }}
                       />
                       <Label htmlFor="show-invalid" className="text-sm cursor-pointer">
-                        <Filter className="h-3 w-3 inline mr-1" />
-                        Só inválidas
+                        Só erros
+                      </Label>
+                    </div>
+
+                    {/* Toggle duplicadas */}
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="show-duplicates"
+                        checked={showOnlyDuplicates}
+                        onCheckedChange={(v) => { setShowOnlyDuplicates(v); if (v) setShowOnlyInvalid(false); }}
+                      />
+                      <Label htmlFor="show-duplicates" className="text-sm cursor-pointer">
+                        Só duplicadas
                       </Label>
                     </div>
 
                     {/* Busca por paciente */}
-                    <div className="relative flex-1 max-w-[200px]">
+                    <div className="relative flex-1 max-w-[180px]">
                       <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         placeholder="Buscar paciente..."
@@ -1059,19 +1168,20 @@ export function ProductionImportModal({
                     </div>
 
                     {/* Limpar filtros */}
-                    {(showOnlyInvalid || patientSearch || selectedDate) && (
+                    {(showOnlyInvalid || showOnlyDuplicates || patientSearch || selectedDate) && (
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => {
                           setShowOnlyInvalid(false);
+                          setShowOnlyDuplicates(false);
                           setPatientSearch("");
                           setSelectedDate(null);
                         }}
                       >
-                      <X className="h-3 w-3 mr-1" />
-                      Limpar
-                    </Button>
+                        <X className="h-3 w-3 mr-1" />
+                        Limpar
+                      </Button>
                     )}
 
                     {/* ✅ Seletor de linhas por página */}
@@ -1081,7 +1191,7 @@ export function ProductionImportModal({
                         value={String(rowsPerPage)}
                         onValueChange={(v) => setRowsPerPage(Number(v))}
                       >
-                        <SelectTrigger className="h-8 w-[90px] text-xs">
+                        <SelectTrigger className="h-8 w-[80px] text-xs">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -1095,7 +1205,7 @@ export function ProductionImportModal({
                   </div>
 
                   {/* ✅ Chips por data */}
-                  {dateGroups.length > 0 && (
+                  {dateGroups.length > 0 && dateGroups.length <= 15 && (
                     <div className="flex flex-wrap gap-1">
                       {dateGroups.map(({ date, count, total }) => (
                         <Badge
@@ -1104,30 +1214,33 @@ export function ProductionImportModal({
                           className="cursor-pointer text-xs"
                           onClick={() => setSelectedDate(selectedDate === date ? null : date)}
                         >
-                          {format(parseDateOnly(date), "dd/MM")} ({count}) - {formatCurrency(total)}
+                          {format(parseDateOnly(date), "dd/MM")} ({count})
                         </Badge>
                       ))}
                     </div>
                   )}
 
-                  {/* ✅ Preview table com header sticky e altura auditável (max-h-96 = 384px) */}
-                  <ScrollArea className="max-h-96 border rounded-md">
+                  {/* ✅ Tabela auditável com colunas: Nº | Data | Paciente | Valor | Duplicado | Status */}
+                  <ScrollArea className="max-h-80 border rounded-md">
                     <Table>
                       <TableHeader className="sticky top-0 bg-background z-10 shadow-sm">
                         <TableRow>
-                          <TableHead className="w-12 py-2 text-xs">#</TableHead>
+                          <TableHead className="w-12 py-2 text-xs">Nº</TableHead>
                           <TableHead className="w-24 py-2 text-xs">Data</TableHead>
-                          <TableHead className="w-24 text-right py-2 text-xs">Valor</TableHead>
                           <TableHead className="py-2 text-xs">Paciente</TableHead>
-                          <TableHead className="w-20 py-2 text-xs">Status</TableHead>
-                          <TableHead className="py-2 text-xs">Motivo</TableHead>
+                          <TableHead className="w-24 text-right py-2 text-xs">Valor (R$)</TableHead>
+                          <TableHead className="w-20 py-2 text-xs text-center">Duplicado</TableHead>
+                          <TableHead className="w-20 py-2 text-xs text-center">Status</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {paginatedRows.map((row) => (
                           <TableRow 
                             key={row.rowNumber} 
-                            className={`${!row.isValid ? "bg-destructive/5" : ""} ${row.isPossibleDuplicate ? "bg-amber-500/10" : ""}`}
+                            className={`
+                              ${row.status === "Erro" ? "bg-destructive/5" : ""} 
+                              ${row.status === "Revisar" ? "bg-amber-500/5" : ""}
+                            `}
                           >
                             <TableCell className="text-muted-foreground py-1.5 text-xs font-mono">{row.rowNumber}</TableCell>
                             <TableCell className="py-1.5 text-sm">
@@ -1135,31 +1248,37 @@ export function ProductionImportModal({
                                 ? format(parseDateOnly(row.production_date), "dd/MM/yyyy")
                                 : row.raw["data_producao"] || "-"}
                             </TableCell>
+                            <TableCell className="py-1.5 text-sm truncate max-w-[200px]" title={row.paciente_nome}>
+                              {row.paciente_nome || <span className="text-muted-foreground">-</span>}
+                            </TableCell>
                             <TableCell className="text-right py-1.5 text-sm font-mono">
                               {row.unit_value !== null ? formatCurrency(row.unit_value) : row.raw["valor_unitario"] || "-"}
                             </TableCell>
-                            <TableCell className="text-muted-foreground py-1.5 text-sm truncate max-w-[180px]" title={row.paciente_nome}>
-                              {row.paciente_nome || "-"}
-                            </TableCell>
-                            <TableCell className="py-1.5">
-                              {row.isValid ? (
-                                row.isPossibleDuplicate ? (
-                                  <Badge variant="outline" className="text-amber-600 border-amber-600/30 text-xs px-1.5">
-                                    Dup?
-                                  </Badge>
-                                ) : (
-                                  <Badge variant="outline" className="text-green-600 border-green-600/30 text-xs px-1.5">
-                                    OK
-                                  </Badge>
-                                )
-                              ) : (
-                                <Badge variant="destructive" className="text-xs px-1.5">
-                                  ERRO
+                            <TableCell className="py-1.5 text-center">
+                              {row.isDuplicate ? (
+                                <Badge variant="outline" className="text-amber-600 border-amber-500/40 text-xs">
+                                  Sim
                                 </Badge>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">Não</span>
                               )}
                             </TableCell>
-                            <TableCell className="py-1.5 text-xs text-destructive">
-                              {!row.isValid ? row.errors[0] : ""}
+                            <TableCell className="py-1.5 text-center">
+                              {row.status === "OK" && (
+                                <Badge variant="outline" className="text-green-600 border-green-500/40 text-xs">
+                                  OK
+                                </Badge>
+                              )}
+                              {row.status === "Revisar" && (
+                                <Badge variant="outline" className="text-amber-600 border-amber-500/40 text-xs">
+                                  Revisar
+                                </Badge>
+                              )}
+                              {row.status === "Erro" && (
+                                <Badge variant="destructive" className="text-xs" title={row.errors[0]}>
+                                  Erro
+                                </Badge>
+                              )}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -1201,16 +1320,22 @@ export function ProductionImportModal({
                 <Button variant="ghost" onClick={() => setStep("context")}>
                   ← Voltar
                 </Button>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-3">
+                  {/* ✅ Mostrar valor que será importado */}
+                  {rowsToImportCount > 0 && (
+                    <span className="text-sm text-muted-foreground">
+                      {formatCurrency(valueToImport)}
+                    </span>
+                  )}
                   <Button variant="outline" onClick={handleClose}>
                     Cancelar
                   </Button>
                   <Button
                     onClick={() => handleImport(false)}
-                    disabled={isImporting || duplicateCheckState.checking || summary.validCount === 0}
+                    disabled={isImporting || duplicateCheckState.checking || rowsToImportCount === 0}
                   >
                     {(isImporting || duplicateCheckState.checking) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                    Importar {summary.validCount > 0 && `(${summary.validCount})`}
+                    Importar {rowsToImportCount > 0 ? `(${rowsToImportCount})` : ""}
                   </Button>
                 </div>
               </div>
