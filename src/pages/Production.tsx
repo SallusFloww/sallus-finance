@@ -40,6 +40,7 @@ import {
   Plus,
   Search,
   Filter,
+  Upload,
 } from "lucide-react";
 import { useProductionDB } from "@/hooks/useProductionDB";
 import { useApp } from "@/contexts/AppContext";
@@ -47,7 +48,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { startOfMonth, endOfMonth, format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Link } from "react-router-dom";
-import { ProductionStats, ProductionForm, ProductionList, ProductionFormData } from "@/components/production";
+import { ProductionStats, ProductionForm, ProductionList, ProductionFormData, ProductionImportModal } from "@/components/production";
 import { ProductionStatus, ProductionType } from "@/types";
 import { toast } from "sonner";
 import { formatUnitDisplayName, formatConvenioDisplayName } from "@/utils/formatters";
@@ -118,6 +119,7 @@ export default function Production() {
 
   // Modal de produção
   const [isProductionFormOpen, setIsProductionFormOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   // Filtros
   const [startDate, setStartDate] = useState<string>(
@@ -318,6 +320,14 @@ export default function Production() {
           </div>
           <div className="flex items-center gap-2">
             <Button 
+              variant="outline"
+              className="gap-2"
+              onClick={() => setIsImportModalOpen(true)}
+            >
+              <Upload className="h-4 w-4" />
+              Importar CSV
+            </Button>
+            <Button 
               size="lg"
               className="gap-2 shadow-md"
               onClick={() => setIsProductionFormOpen(true)}
@@ -473,6 +483,15 @@ export default function Production() {
         onSubmit={handleAddProduction}
         units={settings.units}
         userName={user?.name || "Sistema"}
+      />
+
+      {/* Modal de Importação CSV */}
+      <ProductionImportModal
+        open={isImportModalOpen}
+        onOpenChange={setIsImportModalOpen}
+        onImportComplete={() => {
+          // Refresh will happen automatically via realtime
+        }}
       />
     </DashboardLayout>
   );

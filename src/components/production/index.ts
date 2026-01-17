@@ -7,3 +7,4 @@ export { ProcedureDrilldownDrawer } from "./ProcedureDrilldownDrawer";
 export { UnbilledItemsPanel } from "./UnbilledItemsPanel";
 export { ProductionReportExport } from "./ProductionReportExport";
 export type { ProductionReportExportData } from "./ProductionReportExport";
+export { ProductionImportModal } from "./ProductionImportModal";

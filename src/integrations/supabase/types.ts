@@ -476,6 +476,59 @@ export type Database = {
         }
         Relationships: []
       }
+      production_import_batches: {
+        Row: {
+          company_id: string
+          context: Json
+          created_at: string
+          created_by: string
+          error_message: string | null
+          file_name: string | null
+          id: string
+          invalid_rows: number
+          status: string
+          total_rows: number
+          total_value: number | null
+          valid_rows: number
+        }
+        Insert: {
+          company_id: string
+          context: Json
+          created_at?: string
+          created_by: string
+          error_message?: string | null
+          file_name?: string | null
+          id?: string
+          invalid_rows: number
+          status?: string
+          total_rows: number
+          total_value?: number | null
+          valid_rows: number
+        }
+        Update: {
+          company_id?: string
+          context?: Json
+          created_at?: string
+          created_by?: string
+          error_message?: string | null
+          file_name?: string | null
+          id?: string
+          invalid_rows?: number
+          status?: string
+          total_rows?: number
+          total_value?: number | null
+          valid_rows?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_import_batches_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       productions: {
         Row: {
           billed_value: number | null
@@ -491,9 +544,13 @@ export type Database = {
           glossed_value: number | null
           history: Json | null
           id: string
+          import_batch_id: string | null
+          import_row_number: number | null
+          import_source: string
           is_package: boolean | null
           linked_receivable_id: string | null
           matmed_amount: number | null
+          paciente_nome: string | null
           package_qty: number | null
           package_type: string | null
           payer_type: string
@@ -523,9 +580,13 @@ export type Database = {
           glossed_value?: number | null
           history?: Json | null
           id?: string
+          import_batch_id?: string | null
+          import_row_number?: number | null
+          import_source?: string
           is_package?: boolean | null
           linked_receivable_id?: string | null
           matmed_amount?: number | null
+          paciente_nome?: string | null
           package_qty?: number | null
           package_type?: string | null
           payer_type: string
@@ -555,9 +616,13 @@ export type Database = {
           glossed_value?: number | null
           history?: Json | null
           id?: string
+          import_batch_id?: string | null
+          import_row_number?: number | null
+          import_source?: string
           is_package?: boolean | null
           linked_receivable_id?: string | null
           matmed_amount?: number | null
+          paciente_nome?: string | null
           package_qty?: number | null
           package_type?: string | null
           payer_type?: string
@@ -916,6 +981,15 @@ export type Database = {
       has_role_in_company: {
         Args: { _company_id: string; _role_name: string; _user_id: string }
         Returns: boolean
+      }
+      import_productions_batch: {
+        Args: {
+          _company_id: string
+          _context: Json
+          _file_name: string
+          _rows: Json
+        }
+        Returns: Json
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
       link_receivable_to_existing_entry: {
