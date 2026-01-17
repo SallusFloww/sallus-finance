@@ -1,5 +1,10 @@
 import { useState, useCallback, useMemo, useRef } from "react";
 import { format, parse, isValid, startOfMonth, endOfMonth, isWithinInterval } from "date-fns";
+
+// ✅ Helper para parsear data YYYY-MM-DD sem shift de timezone
+function parseDateOnly(yyyyMmDd: string): Date {
+  return parse(yyyyMmDd, "yyyy-MM-dd", new Date());
+}
 import { Upload, Download, FileText, AlertCircle, CheckCircle2, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -129,7 +134,7 @@ export function ProductionImportModal({
     return options.reverse();
   }, []);
 
-  // Summary stats
+  // Summary stats - ✅ Usa parseDateOnly para evitar bug de timezone
   const summary = useMemo(() => {
     const valid = parsedRows.filter((r) => r.isValid);
     const invalid = parsedRows.filter((r) => !r.isValid);
@@ -137,7 +142,7 @@ export function ProductionImportModal({
     const dates = valid
       .map((r) => r.production_date)
       .filter((d): d is string => d !== null)
-      .map((d) => new Date(d))
+      .map((d) => parseDateOnly(d))
       .sort((a, b) => a.getTime() - b.getTime());
 
     return {
@@ -678,8 +683,8 @@ export function ProductionImportModal({
                   </div>
                 </div>
 
-                {/* Preview table */}
-                <ScrollArea className="flex-1 border rounded-md">
+                {/* Preview table - ✅ Altura fixa para mostrar TODAS as linhas com rolagem */}
+                <ScrollArea className="h-[280px] border rounded-md">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -696,7 +701,7 @@ export function ProductionImportModal({
                           <TableCell className="text-muted-foreground">{row.rowNumber}</TableCell>
                           <TableCell>
                             {row.production_date
-                              ? format(new Date(row.production_date), "dd/MM/yyyy")
+                              ? format(parseDateOnly(row.production_date), "dd/MM/yyyy")
                               : row.raw["data_producao"] || "-"}
                           </TableCell>
                           <TableCell className="text-right">
