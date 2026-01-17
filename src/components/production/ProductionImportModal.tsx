@@ -102,7 +102,18 @@ interface ImportContext {
   competencia: string; // YYYY-MM
   payer_type: "CONVENIO" | "PARTICULAR";
   convenio: string;
+  payment_method: string; // ✅ Modo de pagamento (obrigatório para PARTICULAR)
 }
+
+// ✅ Opções de modo de pagamento para PARTICULAR
+const PAYMENT_METHODS = [
+  { id: "PIX", name: "PIX" },
+  { id: "DINHEIRO", name: "Dinheiro" },
+  { id: "CARTAO", name: "Cartão" },
+  { id: "TRANSFERENCIA", name: "Transferência" },
+  { id: "BOLETO", name: "Boleto" },
+  { id: "OUTRO", name: "Outro" },
+] as const;
 
 interface ParsedRow {
   rowNumber: number;
@@ -190,7 +201,11 @@ export function ProductionImportModal({
     competencia: format(new Date(), "yyyy-MM"),
     payer_type: "CONVENIO",
     convenio: "",
+    payment_method: "", // ✅ Novo campo
   });
+
+  // ✅ Estado para paginação do preview
+  const [rowsPerPage, setRowsPerPage] = useState<number>(50);
 
   // Upload state
   const [fileName, setFileName] = useState<string>("");
@@ -295,8 +310,16 @@ export function ProductionImportModal({
   const isContextValid = useMemo(() => {
     if (!context.production_type || !context.unit || !context.competencia) return false;
     if (context.payer_type === "CONVENIO" && !context.convenio) return false;
+    // ✅ Modo de pagamento obrigatório para PARTICULAR
+    if (context.payer_type === "PARTICULAR" && !context.payment_method) return false;
     return true;
   }, [context]);
+
+  // ✅ Linhas paginadas para exibição (com limite)
+  const paginatedRows = useMemo(() => {
+    if (rowsPerPage === 0) return filteredRows; // 0 = Todas
+    return filteredRows.slice(0, rowsPerPage);
+  }, [filteredRows, rowsPerPage]);
 
   // Parse date from various formats
   const parseDate = useCallback(
@@ -628,12 +651,14 @@ export function ProductionImportModal({
       const competenciaFormatted = normalizeCompetencia(context.competencia);
 
       // Convert context to plain object for JSON serialization
+      // ✅ Incluir payment_method quando PARTICULAR
       const contextForRpc = {
         production_type: context.production_type,
         unit: context.unit,
         competencia: competenciaFormatted,
         payer_type: context.payer_type,
         convenio: context.convenio || null,
+        payment_method: context.payer_type === "PARTICULAR" ? context.payment_method : null,
       };
 
       // ✅ Gerar hash para anti-duplicação
@@ -708,12 +733,14 @@ export function ProductionImportModal({
       competencia: format(new Date(), "yyyy-MM"),
       payer_type: "CONVENIO",
       convenio: "",
+      payment_method: "",
     });
     setFileName("");
     setParsedRows([]);
     setPatientSearch("");
     setSelectedDate(null);
     setShowOnlyInvalid(false);
+    setRowsPerPage(50);
     setDuplicateLineCount(0);
     setDuplicateCheckState({
       checking: false,
@@ -824,7 +851,12 @@ export function ProductionImportModal({
                   <Label>Pagador *</Label>
                   <Select
                     value={context.payer_type}
-                    onValueChange={(v) => setContext((c) => ({ ...c, payer_type: v as "CONVENIO" | "PARTICULAR", convenio: v === "PARTICULAR" ? "" : c.convenio }))}
+                    onValueChange={(v) => setContext((c) => ({ 
+                      ...c, 
+                      payer_type: v as "CONVENIO" | "PARTICULAR", 
+                      convenio: v === "PARTICULAR" ? "" : c.convenio,
+                      payment_method: v === "CONVENIO" ? "" : c.payment_method, 
+                    }))}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -864,6 +896,28 @@ export function ProductionImportModal({
                     </Select>
                   </div>
                 )}
+
+                {/* ✅ Modo de Pagamento (obrigatório para PARTICULAR) */}
+                {context.payer_type === "PARTICULAR" && (
+                  <div className="space-y-2 col-span-2">
+                    <Label>Modo de Pagamento *</Label>
+                    <Select
+                      value={context.payment_method}
+                      onValueChange={(v) => setContext((c) => ({ ...c, payment_method: v }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PAYMENT_METHODS.map((pm) => (
+                          <SelectItem key={pm.id} value={pm.id}>
+                            {pm.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-2 pt-4">
@@ -898,6 +952,11 @@ export function ProductionImportModal({
                       {context.payer_type === "PARTICULAR" ? "Particular" : getPayerName(context.convenio)}
                     </strong>
                   </span>
+                  {context.payer_type === "PARTICULAR" && context.payment_method && (
+                    <span>
+                      Pagamento: <strong>{PAYMENT_METHODS.find(p => p.id === context.payment_method)?.name}</strong>
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -1010,10 +1069,29 @@ export function ProductionImportModal({
                           setSelectedDate(null);
                         }}
                       >
-                        <X className="h-3 w-3 mr-1" />
-                        Limpar
-                      </Button>
+                      <X className="h-3 w-3 mr-1" />
+                      Limpar
+                    </Button>
                     )}
+
+                    {/* ✅ Seletor de linhas por página */}
+                    <div className="flex items-center gap-2 ml-auto">
+                      <Label className="text-xs text-muted-foreground whitespace-nowrap">Exibir:</Label>
+                      <Select
+                        value={String(rowsPerPage)}
+                        onValueChange={(v) => setRowsPerPage(Number(v))}
+                      >
+                        <SelectTrigger className="h-8 w-[90px] text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="50">50</SelectItem>
+                          <SelectItem value="100">100</SelectItem>
+                          <SelectItem value="300">300</SelectItem>
+                          <SelectItem value="0">Todas</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
 
                   {/* ✅ Chips por data */}
@@ -1032,59 +1110,62 @@ export function ProductionImportModal({
                     </div>
                   )}
 
-                  {/* ✅ Preview table com header sticky e linhas compactas */}
-                  <ScrollArea className="h-[280px] border rounded-md">
+                  {/* ✅ Preview table com header sticky e altura auditável (max-h-96 = 384px) */}
+                  <ScrollArea className="max-h-96 border rounded-md">
                     <Table>
-                      <TableHeader className="sticky top-0 bg-background z-10">
+                      <TableHeader className="sticky top-0 bg-background z-10 shadow-sm">
                         <TableRow>
-                          <TableHead className="w-10 py-2 text-xs">#</TableHead>
-                          <TableHead className="py-2 text-xs">Data</TableHead>
-                          <TableHead className="text-right py-2 text-xs">Valor</TableHead>
+                          <TableHead className="w-12 py-2 text-xs">#</TableHead>
+                          <TableHead className="w-24 py-2 text-xs">Data</TableHead>
+                          <TableHead className="w-24 text-right py-2 text-xs">Valor</TableHead>
                           <TableHead className="py-2 text-xs">Paciente</TableHead>
-                          <TableHead className="w-28 py-2 text-xs">Status</TableHead>
+                          <TableHead className="w-20 py-2 text-xs">Status</TableHead>
+                          <TableHead className="py-2 text-xs">Motivo</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredRows.map((row) => (
+                        {paginatedRows.map((row) => (
                           <TableRow 
                             key={row.rowNumber} 
                             className={`${!row.isValid ? "bg-destructive/5" : ""} ${row.isPossibleDuplicate ? "bg-amber-500/10" : ""}`}
                           >
-                            <TableCell className="text-muted-foreground py-1.5 text-xs">{row.rowNumber}</TableCell>
+                            <TableCell className="text-muted-foreground py-1.5 text-xs font-mono">{row.rowNumber}</TableCell>
                             <TableCell className="py-1.5 text-sm">
                               {row.production_date
                                 ? format(parseDateOnly(row.production_date), "dd/MM/yyyy")
                                 : row.raw["data_producao"] || "-"}
                             </TableCell>
-                            <TableCell className="text-right py-1.5 text-sm">
+                            <TableCell className="text-right py-1.5 text-sm font-mono">
                               {row.unit_value !== null ? formatCurrency(row.unit_value) : row.raw["valor_unitario"] || "-"}
                             </TableCell>
-                            <TableCell className="text-muted-foreground py-1.5 text-sm truncate max-w-[150px]">{row.paciente_nome || "-"}</TableCell>
+                            <TableCell className="text-muted-foreground py-1.5 text-sm truncate max-w-[180px]" title={row.paciente_nome}>
+                              {row.paciente_nome || "-"}
+                            </TableCell>
                             <TableCell className="py-1.5">
                               {row.isValid ? (
                                 row.isPossibleDuplicate ? (
-                                  <Badge variant="outline" className="text-amber-600 border-amber-600/30 text-xs">
-                                    <AlertTriangle className="h-3 w-3 mr-1" />
+                                  <Badge variant="outline" className="text-amber-600 border-amber-600/30 text-xs px-1.5">
                                     Dup?
                                   </Badge>
                                 ) : (
-                                  <Badge variant="outline" className="text-green-600 border-green-600/30 text-xs">
-                                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                                  <Badge variant="outline" className="text-green-600 border-green-600/30 text-xs px-1.5">
                                     OK
                                   </Badge>
                                 )
                               ) : (
-                                <Badge variant="destructive" className="text-xs">
-                                  <X className="h-3 w-3 mr-1" />
-                                  {row.errors[0]}
+                                <Badge variant="destructive" className="text-xs px-1.5">
+                                  ERRO
                                 </Badge>
                               )}
                             </TableCell>
+                            <TableCell className="py-1.5 text-xs text-destructive">
+                              {!row.isValid ? row.errors[0] : ""}
+                            </TableCell>
                           </TableRow>
                         ))}
-                        {filteredRows.length === 0 && (
+                        {paginatedRows.length === 0 && (
                           <TableRow>
-                            <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                            <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                               Nenhuma linha encontrada com os filtros aplicados.
                             </TableCell>
                           </TableRow>
@@ -1092,6 +1173,16 @@ export function ProductionImportModal({
                       </TableBody>
                     </Table>
                   </ScrollArea>
+                  
+                  {/* ✅ Indicador de paginação */}
+                  {rowsPerPage > 0 && filteredRows.length > rowsPerPage && (
+                    <p className="text-xs text-muted-foreground text-center">
+                      Exibindo {paginatedRows.length} de {filteredRows.length} linhas. 
+                      <Button variant="link" size="sm" className="h-auto p-0 ml-1" onClick={() => setRowsPerPage(0)}>
+                        Ver todas
+                      </Button>
+                    </p>
+                  )}
                 </>
               )}
 
