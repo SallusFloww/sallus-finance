@@ -48,6 +48,7 @@ import { useCompanySettings } from "@/hooks/useCompanySettings";
 import { supabase } from "@/integrations/supabase/client";
 import { formatCurrency } from "@/utils/formatters";
 import { useGlobalRealtime } from "@/contexts/GlobalRealtimeProvider";
+import { PRODUCTION_TYPE_LABELS } from "@/utils/constants";
 
 // ✅ Helper para parsear data YYYY-MM-DD sem shift de timezone
 function parseDateOnly(yyyyMmDd: string): Date {
@@ -143,7 +144,35 @@ export function ProductionImportModal({
 
   // Extract units, productionTypes, payers from settings
   const units = settings.units || [];
-  const productionTypes = extendedSettings.productionTypes || [];
+  
+  // ✅ FIX: Criar lista base a partir de PRODUCTION_TYPE_LABELS (inclui PACOTE_BOX/GTA)
+  const baseProductionTypes = useMemo((): { id: string; name: string; active: boolean }[] => 
+    Object.entries(PRODUCTION_TYPE_LABELS).map(([id, name]) => ({ id, name: String(name), active: true })),
+    []
+  );
+  
+  // ✅ Merge settings com base para garantir que PACOTE_BOX/GTA sempre apareçam
+  const productionTypes = useMemo((): { id: string; name: string; active: boolean }[] => {
+    const fromSettings = extendedSettings?.productionTypes ?? [];
+    if (!Array.isArray(fromSettings) || fromSettings.length === 0) {
+      return baseProductionTypes;
+    }
+    // Merge: settings sobrepõe base, mas base garante que pacotes existam
+    const merged = new Map<string, { id: string; name: string; active: boolean }>();
+    baseProductionTypes.forEach(t => merged.set(t.id, t));
+    fromSettings.forEach((t: { id?: string; name?: string; active?: boolean }) => {
+      if (t && t.id) {
+        const existing = merged.get(t.id);
+        merged.set(t.id, { 
+          id: t.id, 
+          name: String(t.name ?? existing?.name ?? t.id), 
+          active: t.active ?? existing?.active ?? true 
+        });
+      }
+    });
+    return Array.from(merged.values());
+  }, [baseProductionTypes, extendedSettings?.productionTypes]);
+  
   const payers = (extendedSettings.payers && extendedSettings.payers.length > 0)
     ? extendedSettings.payers
     : (DEFAULT_PAYERS as unknown as typeof extendedSettings.payers);
