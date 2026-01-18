@@ -201,7 +201,8 @@ export function exportProductionReportToExcel({
   if (data.rawProductions && data.rawProductions.length > 0) {
     data.rawProductions.forEach((row) => {
       // Determine payment method display (ONLY for PARTICULAR)
-      const paymentMethodDisplay = row.payer === "PARTICULAR" ? formatPaymentMethodDisplay(row.paymentMethod) : "";
+      const paymentMethodDisplay =
+        row.payer === "PARTICULAR" ? formatPaymentMethodDisplay(row.paymentMethod) || "Não informado" : "";
 
       baseData.push([
         formatDateDisplay(row.productionDate), // Data DD/MM/YYYY
