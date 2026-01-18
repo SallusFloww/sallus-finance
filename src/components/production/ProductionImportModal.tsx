@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { format, parse, isValid, startOfMonth, endOfMonth, isWithinInterval } from "date-fns";
-import { Upload, Download, FileText, AlertCircle, CheckCircle2, X, Loader2, AlertTriangle } from "lucide-react";
+import { Upload, Download, FileText, AlertCircle, Loader2, AlertTriangle, Package } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -39,6 +39,7 @@ import { formatCurrency } from "@/utils/formatters";
 import { useGlobalRealtime } from "@/contexts/GlobalRealtimeProvider";
 import { PRODUCTION_TYPE_LABELS } from "@/utils/constants";
 import { BASE_PRODUCTION_TYPES } from "@/types";
+import { usePackagePricing, PackageType, PackageComponents } from "@/hooks/usePackagePricing";
 
 // ============= TYPES =============
 interface ProductionImportModalProps {
@@ -67,9 +68,17 @@ interface ParsedRow {
   errors: string[];
   isDuplicate: boolean;
   status: RowStatus;
+  // Package breakdown (apenas para PACOTE_BOX / PACOTE_GTA)
+  isPackage?: boolean;
+  consultAmount?: number;
+  feeAmount?: number;
+  matmedAmount?: number;
 }
 
 type Step = "context" | "upload";
+
+// Package types que usam lógica de pacote
+const PACKAGE_PRODUCTION_TYPES = ["PACOTE_BOX", "PACOTE_GTA"];
 
 // ============= CONSTANTS =============
 
@@ -113,6 +122,7 @@ export function ProductionImportModal({
   const { currentCompany } = useAuth();
   const { settings, extendedSettings } = useCompanySettings();
   const { refreshAll } = useGlobalRealtime();
+  const { calculateComponents, validateTotal, getEffectiveRule } = usePackagePricing();
 
   // ============= DERIVED DATA =============
   
@@ -121,8 +131,7 @@ export function ProductionImportModal({
 
   // Tipos de produção - MESMA FONTE do formulário manual (BASE_PRODUCTION_TYPES + PACOTE_BOX/GTA)
   const productionTypes = useMemo(() => {
-    const PACKAGE_TYPES = ["PACOTE_BOX", "PACOTE_GTA"];
-    const allTypes = [...new Set([...BASE_PRODUCTION_TYPES, ...PACKAGE_TYPES])];
+    const allTypes = [...new Set([...BASE_PRODUCTION_TYPES, ...PACKAGE_PRODUCTION_TYPES])];
     return allTypes.map(id => ({
       id,
       name: PRODUCTION_TYPE_LABELS[id] || id,
@@ -156,6 +165,9 @@ export function ProductionImportModal({
   const [fileName, setFileName] = useState("");
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
   const [duplicatesConfirmed, setDuplicatesConfirmed] = useState(false);
+
+  // Verificar se é importação de pacote (depois de context ser definido)
+  const isPackageImport = PACKAGE_PRODUCTION_TYPES.includes(context.production_type);
 
   // Competências disponíveis (últimos 12 meses + próximos 2)
   const competenciaOptions = useMemo(() => {
@@ -266,6 +278,31 @@ export function ProductionImportModal({
     // Paciente (opcional)
     const paciente_nome = (rawRow["paciente_nome"] || rawRow["paciente"] || "").trim();
 
+    // ============= VALIDAÇÃO DE PACOTE =============
+    let isPackage = false;
+    let consultAmount = 0;
+    let feeAmount = 0;
+    let matmedAmount = 0;
+
+    if (isPackageImport && unit_value !== null && production_date && context.convenio) {
+      isPackage = true;
+      const packageType = context.production_type as PackageType;
+      const planId = context.convenio;
+      
+      // Usar a mesma função do lançamento manual
+      const validation = validateTotal(unit_value, planId, packageType, production_date, 1);
+      
+      if (!validation.valid) {
+        errors.push(validation.message || "Valor do pacote menor que consulta+box");
+      } else {
+        // Calcular componentes
+        const components = calculateComponents(unit_value, planId, packageType, production_date, 1);
+        consultAmount = components.consultAmount;
+        feeAmount = components.feeAmount;
+        matmedAmount = components.matmedAmount;
+      }
+    }
+
     return {
       rowNumber,
       production_date,
@@ -275,8 +312,13 @@ export function ProductionImportModal({
       errors,
       isDuplicate: false,
       status: errors.length === 0 ? "OK" : "ERRO",
+      // Package breakdown
+      isPackage,
+      consultAmount,
+      feeAmount,
+      matmedAmount,
     };
-  }, [context.competencia, parseDate, parseValue]);
+  }, [context.competencia, context.convenio, context.production_type, parseDate, parseValue, isPackageImport, validateTotal, calculateComponents]);
 
   // ============= DUPLICATE CHECK =============
 
@@ -457,10 +499,16 @@ export function ProductionImportModal({
     setIsImporting(true);
 
     try {
+      // Preparar linhas com dados de pacote quando aplicável
       const rowsToInsert = validRows.map(r => ({
         production_date: r.production_date,
         unit_value: r.unit_value,
         paciente_nome: r.paciente_nome || null,
+        // Campos de pacote
+        is_package: r.isPackage || false,
+        consult_amount: r.consultAmount || 0,
+        fee_amount: r.feeAmount || 0,
+        matmed_amount: r.matmedAmount || 0,
       }));
 
       const contextForRpc = {
@@ -470,6 +518,9 @@ export function ProductionImportModal({
         payer_type: context.payer_type,
         convenio: context.convenio || null,
         payment_method: context.payer_type === "PARTICULAR" ? context.payment_method : null,
+        // Indicar que é importação de pacote para a RPC usar os valores calculados
+        is_package_import: isPackageImport,
+        package_type: isPackageImport ? context.production_type : null,
       };
 
       const { data, error } = await supabase.rpc("import_productions_batch", {
@@ -701,7 +752,15 @@ export function ProductionImportModal({
           <div className="flex-1 flex flex-col min-h-0 space-y-4">
             {/* Resumo do contexto */}
             <div className="bg-muted/50 rounded-lg p-3 text-sm">
-              <div className="font-medium mb-1">Contexto do Lote:</div>
+              <div className="font-medium mb-1 flex items-center gap-2">
+                Contexto do Lote:
+                {isPackageImport && (
+                  <Badge variant="secondary" className="text-xs gap-1">
+                    <Package className="h-3 w-3" />
+                    Pacote
+                  </Badge>
+                )}
+              </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
                 <span>Tipo: <strong>{productionTypes.find(t => t.id === context.production_type)?.name}</strong></span>
                 <span>Unidade: <strong>{units.find(u => u.id === context.unit)?.name}</strong></span>
@@ -718,6 +777,12 @@ export function ProductionImportModal({
                   <span>Pagamento: <strong>{PAYMENT_METHODS.find(p => p.id === context.payment_method)?.name}</strong></span>
                 )}
               </div>
+              {isPackageImport && (
+                <div className="mt-2 text-xs text-muted-foreground border-t pt-2">
+                  <span className="text-foreground font-medium">Breakdown automático:</span>{" "}
+                  Consulta + Box/Taxa + Mat/Med = Total (usando regras de precificação do convênio selecionado)
+                </div>
+              )}
             </div>
 
             {/* Upload area */}
@@ -748,15 +813,23 @@ export function ProductionImportModal({
                   <span className="ml-auto">Valor válido: <strong>{formatCurrency(summary.totalValue)}</strong></span>
                 </div>
 
-                {/* Tabela de conferência - SIMPLES */}
+                {/* Tabela de conferência - com breakdown para pacotes */}
                 <ScrollArea className="flex-1 border rounded-md">
                   <Table>
                     <TableHeader className="sticky top-0 bg-background z-10">
                       <TableRow>
-                        <TableHead className="w-16 text-xs">Linha</TableHead>
-                        <TableHead className="w-28 text-xs">Data</TableHead>
+                        <TableHead className="w-14 text-xs">Linha</TableHead>
+                        <TableHead className="w-24 text-xs">Data</TableHead>
                         <TableHead className="text-xs">Paciente</TableHead>
-                        <TableHead className="w-28 text-right text-xs">Valor</TableHead>
+                        <TableHead className="w-24 text-right text-xs">Total</TableHead>
+                        {/* Colunas de breakdown para pacotes */}
+                        {isPackageImport && (
+                          <>
+                            <TableHead className="w-20 text-right text-xs">Consulta</TableHead>
+                            <TableHead className="w-20 text-right text-xs">Box/Taxa</TableHead>
+                            <TableHead className="w-20 text-right text-xs">Mat/Med</TableHead>
+                          </>
+                        )}
                         <TableHead className="w-24 text-center text-xs">Status</TableHead>
                         <TableHead className="text-xs">Motivo</TableHead>
                       </TableRow>
@@ -778,12 +851,26 @@ export function ProductionImportModal({
                               ? format(parseDateOnly(row.production_date), "dd/MM/yyyy")
                               : "-"}
                           </TableCell>
-                          <TableCell className="py-1.5 text-sm truncate max-w-[200px]">
+                          <TableCell className="py-1.5 text-sm truncate max-w-[150px]">
                             {row.paciente_nome || <span className="text-muted-foreground">-</span>}
                           </TableCell>
                           <TableCell className="text-right py-1.5 font-mono text-sm">
                             {row.unit_value !== null ? formatCurrency(row.unit_value) : "-"}
                           </TableCell>
+                          {/* Breakdown de pacote */}
+                          {isPackageImport && (
+                            <>
+                              <TableCell className="text-right py-1.5 font-mono text-xs text-muted-foreground">
+                                {row.isValid && row.consultAmount ? formatCurrency(row.consultAmount) : "-"}
+                              </TableCell>
+                              <TableCell className="text-right py-1.5 font-mono text-xs text-muted-foreground">
+                                {row.isValid && row.feeAmount ? formatCurrency(row.feeAmount) : "-"}
+                              </TableCell>
+                              <TableCell className="text-right py-1.5 font-mono text-xs text-muted-foreground">
+                                {row.isValid && row.matmedAmount !== undefined ? formatCurrency(row.matmedAmount) : "-"}
+                              </TableCell>
+                            </>
+                          )}
                           <TableCell className="text-center py-1.5">
                             {row.status === "OK" && (
                               <Badge variant="outline" className="text-green-600 border-green-500/40 text-xs">
