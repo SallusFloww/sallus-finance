@@ -1,9 +1,14 @@
 -- Atualizar RPC import_productions_batch para suportar campos de pacote
-CREATE OR REPLACE FUNCTION public.import_productions_batch(_company_id uuid, _context jsonb, _file_name text, _rows jsonb)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
+CREATE OR REPLACE FUNCTION public.import_productions_batch(
+  _company_id uuid,
+  _context jsonb,
+  _file_name text,
+  _rows jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
 AS $function$
 DECLARE
   _batch_id UUID;
@@ -37,12 +42,15 @@ DECLARE
   _recent_batch UUID;
 BEGIN
   _user_id := auth.uid();
-  
+
   -- Validar permissão
-  IF NOT (has_role_in_company(_user_id, _company_id, 'Admin') OR has_role_in_company(_user_id, _company_id, 'Gestor')) THEN
+  IF NOT (
+    has_role_in_company(_user_id, _company_id, 'Admin')
+    OR has_role_in_company(_user_id, _company_id, 'Gestor')
+  ) THEN
     RAISE EXCEPTION 'Sem permissão para importar produções';
   END IF;
-  
+
   -- PROTEÇÃO: Verificar batch PROCESSING recente do mesmo usuário (60s)
   SELECT id INTO _recent_batch
   FROM production_import_batches
@@ -51,7 +59,7 @@ BEGIN
     AND status = 'PROCESSING'
     AND created_at > (now() - interval '60 seconds')
   LIMIT 1;
-  
+
   IF _recent_batch IS NOT NULL THEN
     RETURN jsonb_build_object(
       'success', false,
@@ -59,7 +67,7 @@ BEGIN
       'duplicate_batch_id', _recent_batch
     );
   END IF;
-  
+
   -- Extrair contexto
   _production_type := _context->>'production_type';
   _unit := _context->>'unit';
@@ -69,12 +77,12 @@ BEGIN
   _payment_method := _context->>'payment_method';
   _is_package_import := COALESCE((_context->>'is_package_import')::BOOLEAN, false);
   _package_type := _context->>'package_type';
-  
+
   -- Normalizar competência para YYYY-MM (se vier MM/YYYY, converter)
   IF _competencia ~ '^\d{2}/\d{4}$' THEN
     _competencia := SUBSTRING(_competencia FROM 4 FOR 4) || '-' || SUBSTRING(_competencia FROM 1 FOR 2);
   END IF;
-  
+
   -- Validar formato YYYY-MM
   IF _competencia !~ '^\d{4}-\d{2}$' THEN
     RETURN jsonb_build_object(
@@ -82,47 +90,47 @@ BEGIN
       'error', 'Competência inválida. Use formato YYYY-MM.'
     );
   END IF;
-  
+
   -- Validar contexto obrigatório
   IF _production_type IS NULL OR _production_type = '' THEN
     RETURN jsonb_build_object('success', false, 'error', 'Tipo de produção é obrigatório');
   END IF;
-  
+
   IF _unit IS NULL OR _unit = '' THEN
     RETURN jsonb_build_object('success', false, 'error', 'Unidade é obrigatória');
   END IF;
-  
+
   IF _payer_type = 'CONVENIO' AND (_convenio IS NULL OR _convenio = '') THEN
     RETURN jsonb_build_object('success', false, 'error', 'Convênio é obrigatório para pagador tipo CONVENIO');
   END IF;
-  
+
   -- Validar payment_method obrigatório para PARTICULAR
   IF _payer_type = 'PARTICULAR' AND (_payment_method IS NULL OR _payment_method = '') THEN
     RETURN jsonb_build_object('success', false, 'error', 'Modo de pagamento é obrigatório para pagador PARTICULAR');
   END IF;
-  
+
   -- Calcular limites da competência para validação de datas
   _comp_year := SUBSTRING(_competencia FROM 1 FOR 4)::INT;
   _comp_month := SUBSTRING(_competencia FROM 6 FOR 2)::INT;
   _competencia_start := make_date(_comp_year, _comp_month, 1);
   _competencia_end := (_competencia_start + interval '1 month' - interval '1 day')::DATE;
-  
+
   _total_rows := jsonb_array_length(_rows);
-  
+
   -- Criar batch
   INSERT INTO production_import_batches (
-    company_id, created_by, context, file_name, 
+    company_id, created_by, context, file_name,
     total_rows, valid_rows, invalid_rows, status
   ) VALUES (
     _company_id, _user_id, _context, _file_name,
     _total_rows, 0, 0, 'PROCESSING'
   ) RETURNING id INTO _batch_id;
-  
+
   -- Processar cada linha com validação
   FOR _row IN SELECT * FROM jsonb_array_elements(_rows)
   LOOP
     _row_num := _row_num + 1;
-    
+
     BEGIN
       -- Validar data
       BEGIN
@@ -130,42 +138,42 @@ BEGIN
       EXCEPTION WHEN OTHERS THEN
         _row_date := NULL;
       END;
-      
+
       IF _row_date IS NULL THEN
         _errors := _errors || jsonb_build_object('row', _row_num, 'error', 'Data inválida');
         _invalid_count := _invalid_count + 1;
         CONTINUE;
       END IF;
-      
+
       -- Validar data dentro da competência
       IF _row_date < _competencia_start OR _row_date > _competencia_end THEN
         _errors := _errors || jsonb_build_object('row', _row_num, 'error', 'Data fora da competência');
         _invalid_count := _invalid_count + 1;
         CONTINUE;
       END IF;
-      
+
       -- Validar valor > 0 (não aceitar 0 ou negativo)
       BEGIN
         _row_value := (_row->>'unit_value')::NUMERIC;
       EXCEPTION WHEN OTHERS THEN
         _row_value := NULL;
       END;
-      
+
       IF _row_value IS NULL OR _row_value <= 0 THEN
         _errors := _errors || jsonb_build_object('row', _row_num, 'error', 'Valor deve ser maior que zero');
         _invalid_count := _invalid_count + 1;
         CONTINUE;
       END IF;
-      
+
       -- Paciente é opcional
       _row_paciente := NULLIF(TRIM(COALESCE(_row->>'paciente_nome', '')), '');
-      
+
       -- Extrair campos de pacote (se existirem na row)
       _row_is_package := COALESCE((_row->>'is_package')::BOOLEAN, false);
       _row_consult_amount := COALESCE((_row->>'consult_amount')::NUMERIC, 0);
       _row_fee_amount := COALESCE((_row->>'fee_amount')::NUMERIC, 0);
       _row_matmed_amount := COALESCE((_row->>'matmed_amount')::NUMERIC, 0);
-      
+
       -- Inserir produção válida com suporte a campos de pacote
       INSERT INTO productions (
         company_id,
@@ -206,7 +214,13 @@ BEGIN
         _payer_type,
         NULLIF(_convenio, ''),
         NULLIF(_payment_method, ''),
-        COALESCE(_row_paciente, _production_type),
+
+        -- ✅ FIX DEFINITIVO: description NÃO pode virar nome do paciente
+        CASE 
+          WHEN _production_type = 'CONSULTA' THEN 'Consulta Médica'
+          ELSE initcap(replace(lower(_production_type), '_', ' '))
+        END,
+
         'PRODUZIDO',
         _batch_id,
         _row_num,
@@ -215,31 +229,31 @@ BEGIN
         -- Valores de pacote
         _row_is_package,
         CASE WHEN _row_is_package THEN _package_type ELSE NULL END,
-        CASE WHEN _row_is_package THEN 1 ELSE 1 END,
+        1,
         _row_consult_amount,
         _row_fee_amount,
         _row_matmed_amount
       );
-      
+
       _valid_count := _valid_count + 1;
       _total_value := _total_value + _row_value;
-      
+
     EXCEPTION WHEN OTHERS THEN
       _errors := _errors || jsonb_build_object('row', _row_num, 'error', SQLERRM);
       _invalid_count := _invalid_count + 1;
     END;
   END LOOP;
-  
+
   -- Atualizar batch com resultado final
   UPDATE production_import_batches
-  SET 
+  SET
     status = CASE WHEN _valid_count > 0 THEN 'SUCCESS' ELSE 'FAILED' END,
     valid_rows = _valid_count,
     invalid_rows = _invalid_count,
     total_value = _total_value,
     error_message = CASE WHEN _invalid_count > 0 THEN _errors::TEXT ELSE NULL END
   WHERE id = _batch_id;
-  
+
   RETURN jsonb_build_object(
     'success', true,
     'batch_id', _batch_id,
@@ -248,7 +262,7 @@ BEGIN
     'total_value', _total_value,
     'errors', _errors
   );
-  
+
 EXCEPTION WHEN OTHERS THEN
   -- Em caso de erro fatal, atualizar batch
   IF _batch_id IS NOT NULL THEN
@@ -256,7 +270,7 @@ EXCEPTION WHEN OTHERS THEN
     SET status = 'FAILED', error_message = SQLERRM
     WHERE id = _batch_id;
   END IF;
-  
+
   RETURN jsonb_build_object(
     'success', false,
     'error', SQLERRM
