@@ -472,7 +472,13 @@ export async function generateProductionReportPDF({
       doc.setFontSize(7);
       doc.setTextColor(120);
       doc.text("Detalhe completo disponível no Excel.", margin, yPos);
+      yPos += 4; // evita sobreposição com a próxima seção
     }
+  }
+
+  // garante respiro após a tabela (mesmo quando não houver a linha acima)
+  if ((doc as any).lastAutoTable?.finalY) {
+    yPos = Math.max(yPos, (doc as any).lastAutoTable.finalY + 8);
   }
 
   // ===== SECTION X: LEITURA EXECUTIVA (So What?) =====
