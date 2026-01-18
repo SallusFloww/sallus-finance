@@ -74,6 +74,25 @@ export interface ProductionReportExportData {
   topUnit: { name: string; quantity: number; percentage: number } | null;
   topConvenio: { name: string; quantity: number; percentage: number } | null;
   topProcedure: { name: string; quantity: number; percentage: number } | null;
+  
+  // Raw productions for Base_Producao sheet (line-by-line export)
+  rawProductions: Array<{
+    productionDate: string;        // YYYY-MM-DD
+    competencia: string;           // YYYY-MM (interno)
+    unit: string;
+    payer: string;                 // PARTICULAR/CONVENIO
+    convenio?: string | null;
+    productionType: string;
+    procedureName: string;         // description
+    patientName?: string | null;
+    quantity: number;
+    unitValue: number;
+    totalValue: number;
+    specialty?: string | null;
+    status?: string;
+    importSource?: string;         // manual/import
+    importBatchId?: string | null;
+  }>;
 }
 
 interface ProductionReportExportProps {
