@@ -37,6 +37,26 @@ function formatConvenioName(convenio: string | null | undefined): string {
   return formatConvenioDisplayName(convenio || "PARTICULAR");
 }
 
+// Format competencia from YYYY-MM to MM/YYYY
+function formatCompetenciaDisplay(competencia: string | null | undefined): string {
+  if (!competencia) return "";
+  const parts = competencia.split("-");
+  if (parts.length === 2) {
+    return `${parts[1]}/${parts[0]}`;
+  }
+  return competencia;
+}
+
+// Format date from YYYY-MM-DD to DD/MM/YYYY
+function formatDateDisplay(dateStr: string | null | undefined): string {
+  if (!dateStr) return "";
+  try {
+    return format(parseISO(dateStr), "dd/MM/yyyy");
+  } catch {
+    return dateStr;
+  }
+}
+
 export function exportProductionReportToExcel({
   data,
   includeEvolution,
@@ -106,59 +126,71 @@ export function exportProductionReportToExcel({
   wsSummary['!cols'] = [{ wch: 30 }, { wch: 35 }, { wch: 15 }];
   XLSX.utils.book_append_sheet(wb, wsSummary, 'Resumo');
   
-  // ===== SHEET 2: BASE_PRODUCAO (Main Pivot-Ready Sheet) =====
-  // This is the most important sheet - flat, no merges, proper types
-  const baseData: (string | number | Date | null)[][] = [];
+  // ===== SHEET 2: BASE_PRODUCAO (Main Pivot-Ready Sheet - RAW PRODUCTIONS) =====
+  // This is the most important sheet - flat, no merges, proper types, LINE BY LINE
+  const baseData: (string | number | null)[][] = [];
   
-  // Header row
+  // Header row with all required columns
   baseData.push([
     'Data',
+    'Competência',
     'Unidade', 
-    'Convenio',
-    'Tipo',
-    'Especialidade',
+    'Pagador',
+    'Convênio',
+    'Tipo de Produção',
     'Procedimento',
-    'Quantidade',
-    'Percentual',
-    'Valor_Est',
+    'Paciente',
+    'Qtde',
+    'Valor Unitário',
+    'Valor Total',
+    'Especialidade',
     'Status',
-    'Idade_Dias'
+    'Origem',
+    'Batch ID'
   ]);
   
-  // Build from consolidated table (already has the dimensions we need)
-  if (data.consolidatedTable.length > 0) {
-    data.consolidatedTable.forEach(row => {
+  // Build from rawProductions (line by line - each production record)
+  if (data.rawProductions && data.rawProductions.length > 0) {
+    data.rawProductions.forEach(row => {
       baseData.push([
-        null, // Date - not available in consolidated
-        formatUnitName(row.unit),
-        formatConvenioName(row.convenio),
-        displayLabel(row.productionType),
-        formatSpecialtyName(row.specialty),
-        '', // Procedimento - not in consolidated
-        row.quantity,
-        row.percentage / 100, // Store as decimal for Excel percentage format
-        null, // Valor_Est
-        'Consolidado',
-        null, // Idade_Dias
+        formatDateDisplay(row.productionDate),        // Data DD/MM/YYYY
+        formatCompetenciaDisplay(row.competencia),    // Competência MM/YYYY
+        formatUnitName(row.unit),                     // Unidade
+        row.payer,                                    // Pagador
+        formatConvenioName(row.convenio),             // Convênio
+        displayLabel(row.productionType),             // Tipo de Produção
+        row.procedureName,                            // Procedimento
+        row.patientName || '',                        // Paciente
+        row.quantity,                                 // Qtde (number)
+        row.unitValue,                                // Valor Unitário (number)
+        row.totalValue,                               // Valor Total (number)
+        formatSpecialtyName(row.specialty),           // Especialidade
+        row.status || '',                             // Status
+        row.importSource || 'manual',                 // Origem
+        row.importBatchId || '',                      // Batch ID
       ]);
     });
   }
   
   const wsBase = XLSX.utils.aoa_to_sheet(baseData);
   
-  // Column widths
+  // Column widths for 15 columns
   wsBase['!cols'] = [
     { wch: 12 },  // Data
+    { wch: 12 },  // Competência
     { wch: 18 },  // Unidade
-    { wch: 25 },  // Convenio
-    { wch: 15 },  // Tipo
-    { wch: 18 },  // Especialidade
+    { wch: 12 },  // Pagador
+    { wch: 25 },  // Convênio
+    { wch: 18 },  // Tipo de Produção
     { wch: 35 },  // Procedimento
-    { wch: 12 },  // Quantidade
-    { wch: 12 },  // Percentual
-    { wch: 14 },  // Valor_Est
+    { wch: 25 },  // Paciente
+    { wch: 8 },   // Qtde
+    { wch: 14 },  // Valor Unitário
+    { wch: 14 },  // Valor Total
+    { wch: 18 },  // Especialidade
     { wch: 12 },  // Status
-    { wch: 12 },  // Idade_Dias
+    { wch: 10 },  // Origem
+    { wch: 36 },  // Batch ID
   ];
   
   // Freeze header row
@@ -166,7 +198,7 @@ export function exportProductionReportToExcel({
   
   // Add autofilter
   const baseLastRow = baseData.length;
-  wsBase['!autofilter'] = { ref: `A1:K${baseLastRow}` };
+  wsBase['!autofilter'] = { ref: `A1:O${baseLastRow}` };
   
   XLSX.utils.book_append_sheet(wb, wsBase, 'Base_Producao');
   
@@ -234,7 +266,7 @@ export function exportProductionReportToExcel({
   
   // ===== SHEET 6: EVOLUCAO =====
   if (includeEvolution && data.evolutionData.length > 0) {
-    const evoData: (string | number | Date)[][] = [];
+    const evoData: (string | number)[][] = [];
     evoData.push(['Data', 'Quantidade']);
     
     data.evolutionData.forEach(row => {
@@ -251,23 +283,54 @@ export function exportProductionReportToExcel({
     XLSX.utils.book_append_sheet(wb, wsEvo, 'Evolucao');
   }
   
-  // ===== SHEET 7: PENDENCIAS_OPERACIONAIS =====
+  // ===== SHEET 7: CONSOLIDADA_COMPONENTES (Table format with columns) =====
+  if (includeConsolidated && data.consolidatedTable.length > 0) {
+    const consData: (string | number)[][] = [];
+    consData.push(['Componente', 'Unidade', 'Convênio', 'Especialidade', 'Quantidade', 'Participação (%)']);
+    
+    data.consolidatedTable.forEach(row => {
+      consData.push([
+        displayLabel(row.productionType),
+        formatUnitName(row.unit),
+        formatConvenioName(row.convenio),
+        formatSpecialtyName(row.specialty),
+        row.quantity,
+        row.percentage / 100, // decimal for percentage format
+      ]);
+    });
+    
+    const wsCons = XLSX.utils.aoa_to_sheet(consData);
+    wsCons['!cols'] = [
+      { wch: 18 },  // Componente
+      { wch: 18 },  // Unidade
+      { wch: 25 },  // Convênio
+      { wch: 18 },  // Especialidade
+      { wch: 12 },  // Quantidade
+      { wch: 16 },  // Participação
+    ];
+    wsCons['!freeze'] = { xSplit: 0, ySplit: 1 };
+    wsCons['!autofilter'] = { ref: `A1:F${consData.length}` };
+    XLSX.utils.book_append_sheet(wb, wsCons, 'Consolidada_Componentes');
+  }
+  
+  // ===== SHEET 8: PENDENCIAS_OPERACIONAIS =====
   // Produção pendente de fechamento (encaminhamento administrativo)
   if (includeUnbilled && data.unbilledProductions.length > 0) {
-    const pendData: (string | number | Date)[][] = [];
-    pendData.push(['Data', 'Unidade', 'Convenio', 'Tipo', 'Quantidade', 'Idade_Dias', 'Status']);
+    const pendData: (string | number)[][] = [];
+    pendData.push(['Data', 'Competência', 'Unidade', 'Convênio', 'Tipo', 'Quantidade', 'Idade_Dias', 'Status']);
     
     data.unbilledProductions.forEach(p => {
       const prodDate = parseISO(p.productionDate);
       const ageDays = differenceInDays(now, prodDate);
       
       pendData.push([
-        prodDate, // Date type
+        formatDateDisplay(p.productionDate),
+        formatCompetenciaDisplay(p.competencia),
         formatUnitName(p.unit),
         formatConvenioName(p.convenio),
         displayLabel(p.productionType),
-        p.quantity, // Number
-        ageDays, // Number
+        p.quantity,
+        ageDays,
         'Pendente',
       ]);
     });
@@ -276,8 +339,9 @@ export function exportProductionReportToExcel({
     
     wsPend['!cols'] = [
       { wch: 12 },  // Data
+      { wch: 12 },  // Competência
       { wch: 18 },  // Unidade
-      { wch: 25 },  // Convenio
+      { wch: 25 },  // Convênio
       { wch: 18 },  // Tipo
       { wch: 12 },  // Quantidade
       { wch: 12 },  // Idade_Dias
@@ -285,7 +349,7 @@ export function exportProductionReportToExcel({
     ];
     
     wsPend['!freeze'] = { xSplit: 0, ySplit: 1 };
-    wsPend['!autofilter'] = { ref: `A1:G${pendData.length}` };
+    wsPend['!autofilter'] = { ref: `A1:H${pendData.length}` };
     
     XLSX.utils.book_append_sheet(wb, wsPend, 'Pendencias_Operacionais');
   }

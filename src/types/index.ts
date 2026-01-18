@@ -537,6 +537,16 @@ export interface Production {
   // Quantidade do pacote (geralmente 1)
   packageQty?: number;
   
+  // ============= CAMPOS DE IMPORTAÇÃO =============
+  // Nome do paciente (importação CSV)
+  patientName?: string;
+  // ID do lote de importação
+  importBatchId?: string;
+  // Número da linha no arquivo de importação
+  importRowNumber?: number;
+  // Origem do registro (manual/import)
+  importSource?: string;
+  
   // ============= AUDITORIA =============
   notes?: string;
   createdBy: string;

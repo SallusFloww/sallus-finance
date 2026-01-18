@@ -598,15 +598,30 @@ export default function ProductionReport() {
       });
   }, [filteredProductions, totalQuantity]);
 
-  // Top 10 procedimentos/exames
+  // Helper: Canonical procedure name for grouping/reports
+  const canonicalProcedureName = useCallback((name: string): string => {
+    if (!name) return "";
+    const normalized = name
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, ""); // remove acentos
+    
+    if (normalized === "consulta" || normalized === "consulta medica") {
+      return "Consulta";
+    }
+    return name.trim(); // retorna original com capitalização
+  }, []);
+
+  // Top 10 procedimentos/exames (with canonical name normalization)
   const topProcedures: TopProcedure[] = useMemo(() => {
-    const byProcedure: Record<string, { quantity: number; code?: string }> = {};
+    const byProcedure: Record<string, { quantity: number; code?: string; originalName: string }> = {};
     filteredProductions.forEach((p) => {
-      const key = p.description;
-      if (!byProcedure[key]) {
-        byProcedure[key] = { quantity: 0, code: p.procedureCode };
+      const canonical = canonicalProcedureName(p.description);
+      if (!byProcedure[canonical]) {
+        byProcedure[canonical] = { quantity: 0, code: p.procedureCode, originalName: p.description };
       }
-      byProcedure[key].quantity += p.quantity;
+      byProcedure[canonical].quantity += p.quantity;
     });
 
     const sorted = Object.entries(byProcedure)
@@ -625,7 +640,7 @@ export default function ProductionReport() {
         cumulativePercentage: cumulative,
       };
     });
-  }, [filteredProductions, totalQuantity]);
+  }, [filteredProductions, totalQuantity, canonicalProcedureName]);
 
   // Análise Pareto 80/20
   const paretoAnalysis = useMemo(() => {
@@ -979,11 +994,31 @@ export default function ProductionReport() {
     topUnit: strategicKPIs.topUnit,
     topConvenio: strategicKPIs.topConvenio,
     topProcedure: topProcedure ? { name: topProcedure.name, quantity: topProcedure.quantity, percentage: topProcedure.percentage } : null,
+    
+    // Raw productions for Base_Producao (line-by-line)
+    rawProductions: filteredProductions.map(p => ({
+      productionDate: p.productionDate,
+      competencia: p.competencia,
+      unit: p.unit,
+      payer: p.payerType || (p.convenio ? "CONVENIO" : "PARTICULAR"),
+      convenio: p.convenio,
+      productionType: p.productionType,
+      procedureName: p.description,
+      patientName: p.patientName || null,
+      quantity: p.quantity,
+      unitValue: p.unitValue,
+      totalValue: p.estimatedValue || (p.quantity * p.unitValue),
+      specialty: p.specialty,
+      status: p.status,
+      importSource: p.importBatchId ? "import" : "manual",
+      importBatchId: p.importBatchId || null,
+    })),
   }), [
     startDate, endDate, selectedUnit, selectedConvenio, selectedType, selectedSpecialty,
     totalQuantity, previousTotalQuantity, variationData, isSmallSample,
     unitRanking, specialtyRanking, typeBreakdown, convenioRanking, topProcedures,
-    evolutionData, consolidatedTable, unbilledProductions, strategicKPIs, topProcedure
+    evolutionData, consolidatedTable, unbilledProductions, strategicKPIs, topProcedure,
+    filteredProductions
   ]);
 
   return (

@@ -63,6 +63,11 @@ interface DBProduction {
   consult_amount: number | null;
   fee_amount: number | null;
   matmed_amount: number | null;
+  // Campos de importação CSV
+  paciente_nome: string | null;
+  import_batch_id: string | null;
+  import_row_number: number | null;
+  import_source: string;
 }
 
 // Converter de DB para domínio - leitura das colunas de pacote
@@ -106,6 +111,11 @@ function toProduction(db: DBProduction): Production {
     feeAmount: Number(db.fee_amount ?? 0),
     matmedAmount: Number(db.matmed_amount ?? 0),
     packageQty: Number(db.package_qty ?? db.quantity ?? 1),
+    // Campos de importação CSV
+    patientName: db.paciente_nome || undefined,
+    importBatchId: db.import_batch_id || undefined,
+    importRowNumber: db.import_row_number ?? undefined,
+    importSource: db.import_source || "manual",
   };
 }
 
