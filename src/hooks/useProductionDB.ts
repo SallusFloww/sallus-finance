@@ -34,6 +34,7 @@ interface DBProduction {
   specialty: string | null;
   payer_type: string;
   convenio: string | null;
+  payment_method: string | null; // HOTFIX: Coluna payment_method para PARTICULAR
   production_type: string;
   description: string;
   procedure_code: string | null;
@@ -87,7 +88,8 @@ function toProduction(db: DBProduction): Production {
         : "SEM_ESPECIALIDADE",
     payerType: db.payer_type as "CONVENIO" | "PARTICULAR",
     convenio: db.convenio || undefined,
-    paymentMethod: undefined, // Coluna não existe no banco ainda
+    // HOTFIX: Mapear payment_method do banco
+    paymentMethod: db.payment_method || undefined,
     productionType: db.production_type,
     description: db.description,
     procedureCode: db.procedure_code || undefined,
@@ -258,6 +260,8 @@ export function useProductionDB() {
       specialty: safeSpecialty ?? "SEM_ESPECIALIDADE",
       payer_type: data.payerType,
       convenio: data.convenio || null,
+      // HOTFIX: Persistir payment_method para PARTICULAR
+      payment_method: data.payerType === "PARTICULAR" ? (data.paymentMethod || null) : null,
       production_type: data.productionType,
       description: data.description,
       procedure_code: data.procedureCode || null,
