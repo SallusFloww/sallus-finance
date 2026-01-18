@@ -46,6 +46,7 @@ function parseBRNumber(v: unknown): number {
 
 function parseAnyDate(input: unknown): Date | null {
   if (!input) return null;
+  if (typeof input === "number") return null; // já é serial do Excel (ou número), não reparsear
   if (input instanceof Date && !isNaN(input.getTime())) return input;
 
   const s = String(input).trim();
@@ -120,6 +121,13 @@ function applyDateFormat(ws: XLSX.WorkSheet, colLetter: string, startRow: number
     const addr = `${colLetter}${r}`;
     const cell = ws[addr] as XLSX.CellObject | undefined;
     if (!cell) continue;
+
+    // Se já veio como serial numérico, só aplica a máscara
+    if (typeof cell.v === "number") {
+      cell.t = "n";
+      (cell as any).z = "dd/mm/yyyy";
+      continue;
+    }
 
     const d = parseAnyDate(cell.v);
     if (!d) continue;
@@ -339,7 +347,7 @@ export function exportProductionReportToExcel({
   const wsBase = XLSX.utils.aoa_to_sheet(baseData);
 
   wsBase["!cols"] = [
-    { wch: 12 }, // Data
+    { wch: 14 }, // Data
     { wch: 12 }, // Competência
     { wch: 18 }, // Unidade
     { wch: 12 }, // Pagador
