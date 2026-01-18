@@ -130,13 +130,14 @@ export function exportProductionReportToExcel({
   // This is the most important sheet - flat, no merges, proper types, LINE BY LINE
   const baseData: (string | number | null)[][] = [];
   
-  // Header row with all required columns
+  // Header row with all required columns (including payment method)
   baseData.push([
     'Data',
     'Competência',
     'Unidade', 
     'Pagador',
     'Convênio',
+    'Modo de Pagamento',
     'Tipo de Produção',
     'Procedimento',
     'Paciente',
@@ -152,12 +153,18 @@ export function exportProductionReportToExcel({
   // Build from rawProductions (line by line - each production record)
   if (data.rawProductions && data.rawProductions.length > 0) {
     data.rawProductions.forEach(row => {
+      // Determine payment method display
+      const paymentMethodDisplay = row.payer === "PARTICULAR" && row.paymentMethod 
+        ? row.paymentMethod 
+        : "";
+      
       baseData.push([
         formatDateDisplay(row.productionDate),        // Data DD/MM/YYYY
         formatCompetenciaDisplay(row.competencia),    // Competência MM/YYYY
         formatUnitName(row.unit),                     // Unidade
         row.payer,                                    // Pagador
         formatConvenioName(row.convenio),             // Convênio
+        paymentMethodDisplay,                         // Modo de Pagamento
         displayLabel(row.productionType),             // Tipo de Produção
         row.procedureName,                            // Procedimento
         row.patientName || '',                        // Paciente
@@ -174,13 +181,14 @@ export function exportProductionReportToExcel({
   
   const wsBase = XLSX.utils.aoa_to_sheet(baseData);
   
-  // Column widths for 15 columns
+  // Column widths for 16 columns
   wsBase['!cols'] = [
     { wch: 12 },  // Data
     { wch: 12 },  // Competência
     { wch: 18 },  // Unidade
     { wch: 12 },  // Pagador
     { wch: 25 },  // Convênio
+    { wch: 18 },  // Modo de Pagamento
     { wch: 18 },  // Tipo de Produção
     { wch: 35 },  // Procedimento
     { wch: 25 },  // Paciente
@@ -198,7 +206,7 @@ export function exportProductionReportToExcel({
   
   // Add autofilter
   const baseLastRow = baseData.length;
-  wsBase['!autofilter'] = { ref: `A1:O${baseLastRow}` };
+  wsBase['!autofilter'] = { ref: `A1:P${baseLastRow}` };
   
   XLSX.utils.book_append_sheet(wb, wsBase, 'Base_Producao');
   

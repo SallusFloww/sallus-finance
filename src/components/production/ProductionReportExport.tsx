@@ -82,6 +82,7 @@ export interface ProductionReportExportData {
     unit: string;
     payer: string;                 // PARTICULAR/CONVENIO
     convenio?: string | null;
+    paymentMethod?: string | null; // HOTFIX: Modo de pagamento para PARTICULAR
     productionType: string;
     procedureName: string;         // description
     patientName?: string | null;
