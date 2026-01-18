@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { format, parse, isValid, startOfMonth, endOfMonth, isWithinInterval } from "date-fns";
-import { Upload, Download, FileText, AlertCircle, Loader2, AlertTriangle, Package } from "lucide-react";
+import { Upload, Download, FileText, AlertCircle, Loader2, AlertTriangle, Package, Search, ArrowUpDown } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -31,6 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useCompanySettings } from "@/hooks/useCompanySettings";
@@ -77,6 +78,11 @@ interface ParsedRow {
 
 type Step = "context" | "upload";
 
+// Filter types for preview table
+type FilterType = "all" | "errors" | "duplicates" | "new";
+type SortField = "rowNumber" | "date" | "status";
+type SortDirection = "asc" | "desc";
+
 // Package types que usam lógica de pacote
 const PACKAGE_PRODUCTION_TYPES = ["PACOTE_BOX", "PACOTE_GTA"];
 
@@ -113,6 +119,16 @@ function parseDateOnly(yyyyMmDd: string): Date {
   return parse(yyyyMmDd, "yyyy-MM-dd", new Date());
 }
 
+// Status priority for sorting (ERRO > DUPLICADA > OK)
+function getStatusPriority(status: RowStatus): number {
+  switch (status) {
+    case "ERRO": return 0;
+    case "DUPLICADA": return 1;
+    case "OK": return 2;
+    default: return 3;
+  }
+}
+
 // ============= COMPONENT =============
 export function ProductionImportModal({
   open,
@@ -130,6 +146,7 @@ export function ProductionImportModal({
   const units = settings?.units?.filter(u => u.active !== false) || [];
 
   // Tipos de produção - MESMA FONTE do formulário manual (BASE_PRODUCTION_TYPES + PACOTE_BOX/GTA)
+  // GARANTIR que pacotes SEMPRE apareçam, independente das configurações da empresa
   const productionTypes = useMemo(() => {
     const allTypes = [...new Set([...BASE_PRODUCTION_TYPES, ...PACKAGE_PRODUCTION_TYPES])];
     return allTypes.map(id => ({
@@ -165,6 +182,15 @@ export function ProductionImportModal({
   const [fileName, setFileName] = useState("");
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
   const [duplicatesConfirmed, setDuplicatesConfirmed] = useState(false);
+  
+  // NEW: Toggle para incluir duplicadas (por padrão DESMARCADO = só importa NOVAS)
+  const [includeDuplicates, setIncludeDuplicates] = useState(false);
+  
+  // NEW: Filtros e ordenação da tabela
+  const [filterType, setFilterType] = useState<FilterType>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortField, setSortField] = useState<SortField>("rowNumber");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 
   // Verificar se é importação de pacote (depois de context ser definido)
   const isPackageImport = PACKAGE_PRODUCTION_TYPES.includes(context.production_type);
@@ -199,18 +225,26 @@ export function ProductionImportModal({
     const valid = parsedRows.filter(r => r.isValid);
     const invalid = parsedRows.filter(r => !r.isValid);
     const duplicates = parsedRows.filter(r => r.isValid && r.isDuplicate);
+    const newRows = parsedRows.filter(r => r.isValid && !r.isDuplicate);
 
     return {
       total,
       validCount: valid.length,
       invalidCount: invalid.length,
       duplicateCount: duplicates.length,
+      newCount: newRows.length,
       totalValue: valid.reduce((sum, r) => sum + (r.unit_value || 0), 0),
+      newTotalValue: newRows.reduce((sum, r) => sum + (r.unit_value || 0), 0),
     };
   }, [parsedRows]);
 
   const hasDuplicates = summary.duplicateCount > 0;
-  const canImport = summary.validCount > 0 && (!hasDuplicates || duplicatesConfirmed);
+  
+  // Quantas linhas serão importadas de fato
+  const rowsToImportCount = includeDuplicates ? summary.validCount : summary.newCount;
+  
+  // Pode importar se tem linhas novas (ou duplicadas + confirmado)
+  const canImport = rowsToImportCount > 0 && (!includeDuplicates || !hasDuplicates || duplicatesConfirmed);
 
   // ============= PARSE HELPERS =============
 
@@ -489,8 +523,12 @@ export function ProductionImportModal({
       return;
     }
 
-    const validRows = parsedRows.filter(r => r.isValid);
-    if (validRows.length === 0) {
+    // NOVO: Filtrar linhas - por padrão só NOVAS, a menos que includeDuplicates
+    const rowsToProcess = includeDuplicates 
+      ? parsedRows.filter(r => r.isValid)
+      : parsedRows.filter(r => r.isValid && !r.isDuplicate);
+      
+    if (rowsToProcess.length === 0) {
       toast.error("Nenhuma linha válida para importar");
       return;
     }
@@ -500,7 +538,7 @@ export function ProductionImportModal({
 
     try {
       // Preparar linhas com dados de pacote quando aplicável
-      const rowsToInsert = validRows.map(r => ({
+      const rowsToInsert = rowsToProcess.map(r => ({
         production_date: r.production_date,
         unit_value: r.unit_value,
         paciente_nome: r.paciente_nome || null,
@@ -558,7 +596,62 @@ export function ProductionImportModal({
       importingRef.current = false;
       setIsImporting(false);
     }
-  }, [currentCompany?.id, parsedRows, context, fileName, onImportComplete, refreshAll]);
+  }, [currentCompany?.id, parsedRows, context, fileName, onImportComplete, refreshAll, includeDuplicates]);
+
+  // ============= FILTERED & SORTED ROWS =============
+
+  const filteredAndSortedRows = useMemo(() => {
+    let rows = [...parsedRows];
+
+    // Apply filter
+    switch (filterType) {
+      case "errors":
+        rows = rows.filter(r => r.status === "ERRO");
+        break;
+      case "duplicates":
+        rows = rows.filter(r => r.status === "DUPLICADA");
+        break;
+      case "new":
+        rows = rows.filter(r => r.status === "OK" && !r.isDuplicate);
+        break;
+    }
+
+    // Apply search (by paciente_nome)
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      rows = rows.filter(r => 
+        r.paciente_nome.toLowerCase().includes(query)
+      );
+    }
+
+    // Apply sorting
+    rows.sort((a, b) => {
+      let comparison = 0;
+      switch (sortField) {
+        case "rowNumber":
+          comparison = a.rowNumber - b.rowNumber;
+          break;
+        case "date":
+          comparison = (a.production_date || "").localeCompare(b.production_date || "");
+          break;
+        case "status":
+          comparison = getStatusPriority(a.status) - getStatusPriority(b.status);
+          break;
+      }
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
+
+    return rows;
+  }, [parsedRows, filterType, searchQuery, sortField, sortDirection]);
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
 
   // ============= RESET =============
 
@@ -575,6 +668,11 @@ export function ProductionImportModal({
     setFileName("");
     setParsedRows([]);
     setDuplicatesConfirmed(false);
+    setIncludeDuplicates(false);
+    setFilterType("all");
+    setSearchQuery("");
+    setSortField("rowNumber");
+    setSortDirection("asc");
     onOpenChange(false);
   }, [onOpenChange]);
 
@@ -807,125 +905,218 @@ export function ProductionImportModal({
                 {/* Stats simples no topo */}
                 <div className="flex flex-wrap gap-4 text-sm py-2 px-3 bg-muted/30 rounded-md">
                   <span>Total: <strong>{summary.total}</strong></span>
-                  <span className="text-green-600">Válidas: <strong>{summary.validCount}</strong></span>
+                  <span className="text-green-600">Novas: <strong>{summary.newCount}</strong></span>
                   <span className="text-destructive">Com erro: <strong>{summary.invalidCount}</strong></span>
                   <span className="text-amber-600">Duplicadas: <strong>{summary.duplicateCount}</strong></span>
-                  <span className="ml-auto">Valor válido: <strong>{formatCurrency(summary.totalValue)}</strong></span>
+                  <span className="ml-auto">Valor novas: <strong>{formatCurrency(summary.newTotalValue)}</strong></span>
+                </div>
+
+                {/* Filtros e busca */}
+                <div className="flex flex-wrap items-center gap-2 py-2">
+                  <div className="flex items-center gap-1 border rounded-md p-0.5">
+                    <Button
+                      variant={filterType === "all" ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => setFilterType("all")}
+                    >
+                      Todos
+                    </Button>
+                    <Button
+                      variant={filterType === "errors" ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => setFilterType("errors")}
+                    >
+                      Só erros
+                    </Button>
+                    <Button
+                      variant={filterType === "duplicates" ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => setFilterType("duplicates")}
+                    >
+                      Só duplicadas
+                    </Button>
+                    <Button
+                      variant={filterType === "new" ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => setFilterType("new")}
+                    >
+                      Só novas
+                    </Button>
+                  </div>
+                  <div className="relative flex-1 max-w-xs">
+                    <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      type="text"
+                      placeholder="Buscar por paciente..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="h-8 pl-8 text-sm"
+                    />
+                  </div>
+                  <span className="text-xs text-muted-foreground ml-auto">
+                    Exibindo {filteredAndSortedRows.length} de {parsedRows.length}
+                  </span>
                 </div>
 
                 {/* Tabela de conferência - com breakdown para pacotes */}
-                <ScrollArea className="flex-1 border rounded-md">
-                  <Table>
-                    <TableHeader className="sticky top-0 bg-background z-10">
-                      <TableRow>
-                        <TableHead className="w-14 text-xs">Linha</TableHead>
-                        <TableHead className="w-24 text-xs">Data</TableHead>
-                        <TableHead className="text-xs">Paciente</TableHead>
-                        <TableHead className="w-24 text-right text-xs">Total</TableHead>
-                        {/* Colunas de breakdown para pacotes */}
-                        {isPackageImport && (
-                          <>
-                            <TableHead className="w-20 text-right text-xs">Consulta</TableHead>
-                            <TableHead className="w-20 text-right text-xs">Box/Taxa</TableHead>
-                            <TableHead className="w-20 text-right text-xs">Mat/Med</TableHead>
-                          </>
-                        )}
-                        <TableHead className="w-24 text-center text-xs">Status</TableHead>
-                        <TableHead className="text-xs">Motivo</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {parsedRows.map(row => (
-                        <TableRow
-                          key={row.rowNumber}
-                          className={
-                            row.status === "ERRO" ? "bg-destructive/5" :
-                            row.status === "DUPLICADA" ? "bg-amber-500/5" : ""
-                          }
-                        >
-                          <TableCell className="text-muted-foreground font-mono text-xs py-1.5">
-                            {row.rowNumber}
-                          </TableCell>
-                          <TableCell className="py-1.5 text-sm">
-                            {row.production_date
-                              ? format(parseDateOnly(row.production_date), "dd/MM/yyyy")
-                              : "-"}
-                          </TableCell>
-                          <TableCell className="py-1.5 text-sm truncate max-w-[150px]">
-                            {row.paciente_nome || <span className="text-muted-foreground">-</span>}
-                          </TableCell>
-                          <TableCell className="text-right py-1.5 font-mono text-sm">
-                            {row.unit_value !== null ? formatCurrency(row.unit_value) : "-"}
-                          </TableCell>
-                          {/* Breakdown de pacote */}
+                <div className="border rounded-md overflow-hidden">
+                  <div className="max-h-[340px] overflow-auto">
+                    <Table>
+                      <TableHeader className="sticky top-0 bg-background z-10">
+                        <TableRow>
+                          <TableHead 
+                            className="w-14 text-xs cursor-pointer select-none"
+                            onClick={() => toggleSort("rowNumber")}
+                          >
+                            <span className="flex items-center gap-1">
+                              Linha
+                              {sortField === "rowNumber" && <ArrowUpDown className="h-3 w-3" />}
+                            </span>
+                          </TableHead>
+                          <TableHead 
+                            className="w-24 text-xs cursor-pointer select-none"
+                            onClick={() => toggleSort("date")}
+                          >
+                            <span className="flex items-center gap-1">
+                              Data
+                              {sortField === "date" && <ArrowUpDown className="h-3 w-3" />}
+                            </span>
+                          </TableHead>
+                          <TableHead className="text-xs">Paciente</TableHead>
+                          <TableHead className="w-24 text-right text-xs">Valor</TableHead>
+                          {/* Colunas de breakdown para pacotes */}
                           {isPackageImport && (
                             <>
-                              <TableCell className="text-right py-1.5 font-mono text-xs text-muted-foreground">
-                                {row.isValid && row.consultAmount ? formatCurrency(row.consultAmount) : "-"}
-                              </TableCell>
-                              <TableCell className="text-right py-1.5 font-mono text-xs text-muted-foreground">
-                                {row.isValid && row.feeAmount ? formatCurrency(row.feeAmount) : "-"}
-                              </TableCell>
-                              <TableCell className="text-right py-1.5 font-mono text-xs text-muted-foreground">
-                                {row.isValid && row.matmedAmount !== undefined ? formatCurrency(row.matmedAmount) : "-"}
-                              </TableCell>
+                              <TableHead className="w-20 text-right text-xs">Consulta</TableHead>
+                              <TableHead className="w-20 text-right text-xs">Box/Taxa</TableHead>
+                              <TableHead className="w-20 text-right text-xs">Mat/Med</TableHead>
                             </>
                           )}
-                          <TableCell className="text-center py-1.5">
-                            {row.status === "OK" && (
-                              <Badge variant="outline" className="text-green-600 border-green-500/40 text-xs">
-                                OK
-                              </Badge>
-                            )}
-                            {row.status === "DUPLICADA" && (
-                              <Badge variant="outline" className="text-amber-600 border-amber-500/40 text-xs">
-                                DUPLICADA
-                              </Badge>
-                            )}
-                            {row.status === "ERRO" && (
-                              <Badge variant="destructive" className="text-xs">
-                                ERRO
-                              </Badge>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground py-1.5">
-                            {row.status === "ERRO" && row.errors.join(", ")}
-                            {row.status === "DUPLICADA" && "Registro já existe"}
-                          </TableCell>
+                          <TableHead 
+                            className="w-24 text-center text-xs cursor-pointer select-none"
+                            onClick={() => toggleSort("status")}
+                          >
+                            <span className="flex items-center justify-center gap-1">
+                              Status
+                              {sortField === "status" && <ArrowUpDown className="h-3 w-3" />}
+                            </span>
+                          </TableHead>
+                          <TableHead className="text-xs">Motivo</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </ScrollArea>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredAndSortedRows.map(row => (
+                          <TableRow
+                            key={row.rowNumber}
+                            className={
+                              row.status === "ERRO" ? "bg-destructive/5" :
+                              row.status === "DUPLICADA" ? "bg-amber-500/5" : ""
+                            }
+                          >
+                            <TableCell className="text-muted-foreground font-mono text-xs py-1.5">
+                              {row.rowNumber}
+                            </TableCell>
+                            <TableCell className="py-1.5 text-sm">
+                              {row.production_date
+                                ? format(parseDateOnly(row.production_date), "dd/MM/yyyy")
+                                : "-"}
+                            </TableCell>
+                            <TableCell className="py-1.5 text-sm truncate max-w-[150px]">
+                              {row.paciente_nome || <span className="text-muted-foreground">-</span>}
+                            </TableCell>
+                            <TableCell className="text-right py-1.5 font-mono text-sm">
+                              {row.unit_value !== null ? formatCurrency(row.unit_value) : "-"}
+                            </TableCell>
+                            {/* Breakdown de pacote */}
+                            {isPackageImport && (
+                              <>
+                                <TableCell className="text-right py-1.5 font-mono text-xs text-muted-foreground">
+                                  {row.isValid && row.consultAmount ? formatCurrency(row.consultAmount) : "-"}
+                                </TableCell>
+                                <TableCell className="text-right py-1.5 font-mono text-xs text-muted-foreground">
+                                  {row.isValid && row.feeAmount ? formatCurrency(row.feeAmount) : "-"}
+                                </TableCell>
+                                <TableCell className="text-right py-1.5 font-mono text-xs text-muted-foreground">
+                                  {row.isValid && row.matmedAmount !== undefined ? formatCurrency(row.matmedAmount) : "-"}
+                                </TableCell>
+                              </>
+                            )}
+                            <TableCell className="text-center py-1.5">
+                              {row.status === "OK" && (
+                                <Badge variant="outline" className="text-green-600 border-green-500/40 text-xs">
+                                  OK
+                                </Badge>
+                              )}
+                              {row.status === "DUPLICADA" && (
+                                <Badge variant="outline" className="text-amber-600 border-amber-500/40 text-xs">
+                                  DUPLICADA
+                                </Badge>
+                              )}
+                              {row.status === "ERRO" && (
+                                <Badge variant="destructive" className="text-xs">
+                                  ERRO
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground py-1.5">
+                              {row.status === "ERRO" && row.errors.join(", ")}
+                              {row.status === "DUPLICADA" && "Registro já existe"}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
 
-                {/* Alerta de duplicadas + checkbox obrigatório */}
+                {/* Toggle para incluir duplicadas + confirmação */}
                 {hasDuplicates && (
                   <div className="flex items-start space-x-3 p-3 border rounded-md bg-amber-500/5 border-amber-500/30">
                     <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                    <div className="flex-1 space-y-2">
+                    <div className="flex-1 space-y-3">
                       <p className="text-sm font-medium text-amber-800">
-                        Existem {summary.duplicateCount} linha(s) duplicada(s)
+                        Existem {summary.duplicateCount} linha(s) duplicada(s). Por padrão, serão importadas apenas as <strong>{summary.newCount}</strong> linhas novas.
                       </p>
+                      
+                      {/* Toggle para incluir duplicadas */}
                       <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id="confirm-duplicates"
-                          checked={duplicatesConfirmed}
-                          onCheckedChange={checked => setDuplicatesConfirmed(!!checked)}
+                        <Switch
+                          id="include-duplicates"
+                          checked={includeDuplicates}
+                          onCheckedChange={setIncludeDuplicates}
                         />
-                        <Label htmlFor="confirm-duplicates" className="text-sm cursor-pointer">
-                          Confirmo que revisei as duplicidades
+                        <Label htmlFor="include-duplicates" className="text-sm cursor-pointer">
+                          Incluir duplicadas na importação
                         </Label>
                       </div>
+                      
+                      {/* Checkbox de confirmação (só aparece se toggle ativo) */}
+                      {includeDuplicates && (
+                        <div className="flex items-center space-x-2 pl-4 border-l-2 border-amber-400">
+                          <Checkbox
+                            id="confirm-duplicates"
+                            checked={duplicatesConfirmed}
+                            onCheckedChange={checked => setDuplicatesConfirmed(!!checked)}
+                          />
+                          <Label htmlFor="confirm-duplicates" className="text-sm cursor-pointer">
+                            Confirmo que revisei as duplicidades
+                          </Label>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
 
-                {/* Nenhuma linha válida */}
-                {summary.validCount === 0 && (
+                {/* Nenhuma linha para importar */}
+                {rowsToImportCount === 0 && summary.total > 0 && (
                   <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />
                     <AlertDescription>
-                      Nenhuma linha válida para importar. Corrija os erros no CSV.
+                      Nenhuma linha para importar. {summary.invalidCount > 0 && "Corrija os erros no CSV."} {summary.duplicateCount > 0 && summary.newCount === 0 && "Todas as linhas válidas são duplicadas."}
                     </AlertDescription>
                   </Alert>
                 )}
@@ -944,12 +1135,12 @@ export function ProductionImportModal({
                 <Button
                   onClick={handleImport}
                   disabled={isImporting || !canImport}
-                  variant={hasDuplicates ? "destructive" : "default"}
+                  variant={includeDuplicates && hasDuplicates ? "destructive" : "default"}
                 >
                   {isImporting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  {hasDuplicates
-                    ? `⚠️ Importar mesmo assim (${summary.duplicateCount} duplicadas)`
-                    : `Importar (${summary.validCount})`
+                  {includeDuplicates && hasDuplicates
+                    ? `⚠️ Importar mesmo assim (${rowsToImportCount})`
+                    : `Importar (${rowsToImportCount} novas)`
                   }
                 </Button>
               </div>
