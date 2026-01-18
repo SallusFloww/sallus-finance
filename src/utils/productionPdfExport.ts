@@ -210,8 +210,10 @@ export async function generateProductionReportPDF({
     [
       "Especialidade Destaque",
       (() => {
-        if (topSpec) return `${topSpec.name} (${formatPercent(topSpec.percentage)})`;
-        return "Distribuição homogênea";
+        if (!topSpec) return "Distribuição homogênea";
+        // Regra executiva: só destaca quando houver concentração real
+        if ((topSpec.percentage ?? 0) < 25) return "Distribuição homogênea";
+        return `${topSpec.name} (${formatPercent(topSpec.percentage)})`;
       })(),
     ],
     ["Mix Principal", topMix ? `${topMix.label} (${formatPercent(topMix.percentage)})` : "-"],
@@ -414,14 +416,21 @@ export async function generateProductionReportPDF({
     yPos += 5;
 
     // Limit to 20 rows
+    // Recalcular % com base no TOTAL do período (evita inconsistência de base)
+    const safeTotal = Math.max(
+      1,
+      data.totalQuantity || data.consolidatedTable.reduce((sum, r) => sum + (r.quantity || 0), 0),
+    );
+
     const consData = data.consolidatedTable.slice(0, 20).map((row) => {
       const convName = formatConvenioName(row.convenio);
+      const pct = (Number(row.quantity || 0) / safeTotal) * 100;
       return [
         displayLabel(row.productionType),
         formatUnitName(row.unit),
         convName.length > 20 ? convName.substring(0, 17) + "..." : convName,
         row.quantity.toLocaleString("pt-BR"),
-        formatPercent(row.percentage),
+        formatPercent(pct),
       ];
     });
 
@@ -452,6 +461,20 @@ export async function generateProductionReportPDF({
     doc.setTextColor(30);
     doc.text("Pendências — Detalhe", margin, yPos);
     yPos += 5;
+
+    // Nota de escopo (Top 5)
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(80);
+    const unbilledTotal = data.unbilledProductions.length;
+    doc.text(
+      unbilledTotal > 5
+        ? `Exibindo Top 5 pendências mais antigas (de ${unbilledTotal})`
+        : `Exibindo todas as pendências (${unbilledTotal})`,
+      margin,
+      yPos,
+    );
+    yPos += 4;
 
     // Top 5 by age (idade sempre >= 0)
     const sortedByAge = [...data.unbilledProductions]
