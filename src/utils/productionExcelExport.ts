@@ -22,6 +22,34 @@ interface ExportOptions {
   includeUnbilled: boolean;
 }
 
+// ===== Excel numeric helpers (BR currency safe) =====
+function parseBRNumber(v: unknown): number {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+
+  const s = String(v ?? "").trim();
+  if (!s) return 0;
+
+  // "1.234,56" -> "1234.56"
+  const normalized = s.replace(/\./g, "").replace(",", ".");
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function applyCurrencyFormat(ws: XLSX.WorkSheet, colLetter: string, startRow: number, endRow: number) {
+  for (let r = startRow; r <= endRow; r++) {
+    const addr = `${colLetter}${r}`;
+    const cell = ws[addr] as XLSX.CellObject | undefined;
+    if (!cell) continue;
+
+    // Force numeric type
+    cell.v = parseBRNumber(cell.v);
+    cell.t = "n";
+
+    // Currency mask (pt-BR friendly)
+    (cell as any).z = '"R$" #,##0.00';
+  }
+}
+
 // Format number as percentage
 function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`;
@@ -63,36 +91,18 @@ function formatDateDisplay(dateStr: string | null | undefined): string {
   }
 }
 
-/**
- * Convert payment method ID -> friendly name for Excel export
- * Uses PAYMENT_METHODS_PARTICULAR as canonical source
- * Falls back to legacy values if database has older records
- */
-function formatPaymentMethodDisplay(method: string | null | undefined): string {
-  if (!method) return "";
+// Format payment method (centralized list for PARTICULAR)
+function formatPaymentMethodDisplay(paymentMethod: string | null | undefined): string {
+  const raw = (paymentMethod || "").trim();
+  if (!raw) return "Não informado";
 
-  // canonical mapping (current)
-  const match = PAYMENT_METHODS_PARTICULAR.find((pm) => pm.id === method);
-  if (match) return match.name;
+  // If it matches known list, keep standardized label; otherwise keep as-is
+  const found = (PAYMENT_METHODS_PARTICULAR as any)?.find(
+    (m: any) => (m?.value || m) === raw || (m?.label || m) === raw,
+  );
+  if (found) return (found.label || found.value || raw) as string;
 
-  // legacy fallback (old values that might exist in db)
-  const legacy: Record<string, string> = {
-    CASH: "Dinheiro",
-    CARD: "Cartão",
-    TRANSFER: "Transferência",
-    CARTAO: "Cartão",
-    TRANSFERENCIA: "Transferência",
-    BOLETO: "Boleto",
-    OUTRO: "Outro",
-    PIX: "Pix",
-    DINHEIRO: "Dinheiro",
-    CARTAO_DEBITO: "Cartão Débito",
-    CARTAO_CREDITO: "Cartão Crédito",
-    CREDITO_VISTA: "Crédito à vista",
-    CREDITO_PARCELADO: "Crédito parcelado",
-  };
-
-  return legacy[method] || method;
+  return raw;
 }
 
 export function exportProductionReportToExcel({
@@ -174,10 +184,9 @@ export function exportProductionReportToExcel({
   XLSX.utils.book_append_sheet(wb, wsSummary, "Resumo");
 
   // ===== SHEET 2: BASE_PRODUCAO (Main Pivot-Ready Sheet - RAW PRODUCTIONS) =====
-  // This is the most important sheet - flat, no merges, proper types, LINE BY LINE
   const baseData: (string | number | null)[][] = [];
 
-  // Header row with all required columns (including payment method)
+  // Header row with all required columns
   baseData.push([
     "Data",
     "Competência",
@@ -197,30 +206,28 @@ export function exportProductionReportToExcel({
     "Batch ID",
   ]);
 
-  // Build from rawProductions (line by line - each production record)
+  // Build from rawProductions
   if (data.rawProductions && data.rawProductions.length > 0) {
-    data.rawProductions.forEach((row) => {
-      // Determine payment method display (ONLY for PARTICULAR)
-      const paymentMethodDisplay =
-        row.payer === "PARTICULAR" ? formatPaymentMethodDisplay(row.paymentMethod) || "Não informado" : "";
+    data.rawProductions.forEach((row: any) => {
+      const paymentMethodDisplay = row.payer === "PARTICULAR" ? formatPaymentMethodDisplay(row.paymentMethod) : "";
 
       baseData.push([
-        formatDateDisplay(row.productionDate), // Data DD/MM/YYYY
-        formatCompetenciaDisplay(row.competencia), // Competência MM/YYYY
-        formatUnitName(row.unit), // Unidade
-        row.payer, // Pagador
-        formatConvenioName(row.convenio), // Convênio
-        paymentMethodDisplay, // Modo de Pagamento (friendly)
-        displayLabel(row.productionType), // Tipo de Produção
-        row.procedureName, // Procedimento
-        row.patientName || "", // Paciente
-        row.quantity, // Qtde (number)
-        row.unitValue, // Valor Unitário (number)
-        row.totalValue, // Valor Total (number)
-        formatSpecialtyName(row.specialty), // Especialidade
-        row.status || "", // Status
-        row.importSource || "manual", // Origem
-        row.importBatchId || "", // Batch ID
+        formatDateDisplay(row.productionDate),
+        formatCompetenciaDisplay(row.competencia),
+        formatUnitName(row.unit),
+        row.payer,
+        formatConvenioName(row.convenio),
+        paymentMethodDisplay,
+        displayLabel(row.productionType),
+        row.procedureName,
+        row.patientName || "",
+        row.quantity,
+        parseBRNumber(row.unitValue),
+        parseBRNumber(row.totalValue),
+        formatSpecialtyName(row.specialty),
+        row.status || "",
+        row.importSource || "manual",
+        row.importBatchId || "",
       ]);
     });
   }
@@ -253,6 +260,10 @@ export function exportProductionReportToExcel({
   // Add autofilter
   const baseLastRow = baseData.length;
   wsBase["!autofilter"] = { ref: `A1:P${baseLastRow}` };
+
+  // Apply currency format: K (Valor Unitário) and L (Valor Total)
+  applyCurrencyFormat(wsBase, "K", 2, baseLastRow);
+  applyCurrencyFormat(wsBase, "L", 2, baseLastRow);
 
   XLSX.utils.book_append_sheet(wb, wsBase, "Base_Producao");
 
@@ -325,7 +336,7 @@ export function exportProductionReportToExcel({
     XLSX.utils.book_append_sheet(wb, wsEvo, "Evolucao");
   }
 
-  // ===== SHEET 7: CONSOLIDADA_COMPONENTES (Table format with columns) =====
+  // ===== SHEET 7: CONSOLIDADA_COMPONENTES =====
   if (includeConsolidated && data.consolidatedTable.length > 0) {
     const consData: (string | number)[][] = [];
     consData.push(["Componente", "Unidade", "Convênio", "Especialidade", "Quantidade", "Participação (%)"]);
@@ -356,12 +367,11 @@ export function exportProductionReportToExcel({
   }
 
   // ===== SHEET 8: PENDENCIAS_OPERACIONAIS =====
-  // Produção pendente de fechamento (encaminhamento administrativo)
   if (includeUnbilled && data.unbilledProductions.length > 0) {
     const pendData: (string | number)[][] = [];
     pendData.push(["Data", "Competência", "Unidade", "Convênio", "Tipo", "Quantidade", "Idade_Dias", "Status"]);
 
-    data.unbilledProductions.forEach((p) => {
+    data.unbilledProductions.forEach((p: any) => {
       const prodDate = parseISO(p.productionDate);
       const ageDays = differenceInDays(now, prodDate);
 
@@ -400,7 +410,6 @@ export function exportProductionReportToExcel({
   const startStr = format(parseISO(data.startDate), "yyyy-MM-dd");
   const endStr = format(parseISO(data.endDate), "yyyy-MM-dd");
   const unitSuffix = data.selectedUnit === "all" ? "Todas" : formatUnitName(data.selectedUnit).replace(/\s+/g, "_");
-
   const filename = `Relatorio_Producao_EXEC_${startStr}_a_${endStr}_${unitSuffix}.xlsx`;
 
   // Write and download
