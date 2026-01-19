@@ -975,6 +975,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cleanup_company_data_by_window: {
+        Args: {
+          p_confirm_text?: string
+          p_dry_run?: boolean
+          p_minutes: number
+        }
+        Returns: Json
+      }
       get_user_companies: { Args: { _user_id: string }; Returns: string[] }
       get_user_permissions: {
         Args: { _user_id: string }
