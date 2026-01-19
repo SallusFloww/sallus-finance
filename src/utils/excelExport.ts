@@ -5,7 +5,6 @@ import {
   FINANCIAL_CATEGORY_LABELS,
   NON_OPERATIONAL_SUBTYPE_LABELS,
   SPECIALTY_LABELS,
-  RECEIPT_TYPE_LABELS,
   OPERADORA_LABELS,
 } from "@/utils/constants";
 import { format } from "date-fns";
@@ -18,6 +17,10 @@ interface ExportOptions {
   filename?: string;
   sheetName?: string;
 }
+
+/** ===========================
+ * Helpers
+ * =========================== */
 
 // Get financial category label
 function getFinancialCategoryLabel(category: FinancialCategory): string {
@@ -32,12 +35,8 @@ function getNonOperationalSubtypeLabel(subtype?: NonOperationalSubtype): string 
 
 // Get unit label
 function getUnitLabel(unit: string, financialCategory: FinancialCategory): string {
-  if (financialCategory === "NAO_OPERACIONAL") {
-    return "Corporativo";
-  }
-  if (financialCategory === "COMPARTILHADO") {
-    return "Estrutura Compartilhada";
-  }
+  if (financialCategory === "NAO_OPERACIONAL") return "Corporativo";
+  if (financialCategory === "COMPARTILHADO") return "Estrutura Compartilhada";
   return UNIT_LABELS[unit] || unit || "";
 }
 
@@ -46,18 +45,15 @@ function getOriginLabel(tx: Transaction): string {
   if (tx.receiptType === "CONVENIO" && tx.operadora) {
     return OPERADORA_LABELS[tx.operadora] || tx.operadora;
   }
-  if (tx.receiptType === "PARTICULAR") {
-    return "Particular";
-  }
-  if (tx.nonOperationalSubtype) {
-    return getNonOperationalSubtypeLabel(tx.nonOperationalSubtype);
-  }
+  if (tx.receiptType === "PARTICULAR") return "Particular";
+  if (tx.nonOperationalSubtype) return getNonOperationalSubtypeLabel(tx.nonOperationalSubtype);
   return "";
 }
 
 // Normalize category name for export (e.g., "Recebimento de Convênio" → "Convênio")
 function normalizeCategoryForExport(category: string, categoryMap: Map<string, string>): string {
   const label = categoryMap.get(category) || category;
+
   // Standardize "Recebimento de Convênio" to "Convênio"
   if (
     label.toLowerCase().includes("recebimento de convênio") ||
@@ -70,10 +66,20 @@ function normalizeCategoryForExport(category: string, categoryMap: Map<string, s
   return label;
 }
 
-// Transform transaction to Excel row with separate Entrada/Saída columns
+// Excel number formats (premium BR)
+const BRL_FORMAT = '"R$" #,##0.00;[Red]-"R$" #,##0.00';
+const DATE_FORMAT = "dd/mm/yyyy";
+
+/**
+ * Transform transaction to Excel row with separate Entrada/Saída columns
+ * ✅ Status real (Realizado/Previsto/Cancelado)
+ * ✅ Data como Date (parseLocalDate) para virar data real no Excel (cellDates)
+ */
 function transactionToRow(tx: Transaction, categories: Map<string, string>): Record<string, unknown> {
   const isIncome = tx.type === "INCOME";
   const amount = Math.abs(tx.amount);
+
+  const statusLabel = isCancelled(tx.status) ? "Cancelado" : isRealized(tx.status) ? "Realizado" : "Previsto";
 
   return {
     // HOTFIX P0: usa parseLocalDate para YYYY-MM-DD (evita UTC shift)
@@ -85,7 +91,7 @@ function transactionToRow(tx: Transaction, categories: Map<string, string>): Rec
     Categoria: normalizeCategoryForExport(tx.category, categories),
     "Subcategoria / Referência": tx.specialty ? SPECIALTY_LABELS[tx.specialty] || tx.specialty : tx.reference || "",
     "Convênio / Origem": getOriginLabel(tx),
-    Status: isRealized(tx.status) ? "Realizado" : "Previsto",
+    Status: statusLabel,
     "Entrada (R$)": isIncome ? amount : null,
     "Saída (R$)": !isIncome ? amount : null,
     Observações: tx.notes || "",
@@ -93,43 +99,63 @@ function transactionToRow(tx: Transaction, categories: Map<string, string>): Rec
 }
 
 // Apply professional styling to worksheet
-function applyProfessionalStyling(ws: XLSX.WorkSheet, rowCount: number): void {
-  // Set column widths
+function applyProfessionalStyling(ws: XLSX.WorkSheet): void {
+  // Column widths (premium)
   ws["!cols"] = [
     { wch: 18 }, // Data
     { wch: 10 }, // Tipo
-    { wch: 35 }, // Descrição
+    { wch: 40 }, // Descrição
     { wch: 28 }, // Classificação
     { wch: 22 }, // Unidade
     { wch: 18 }, // Categoria
-    { wch: 22 }, // Subcategoria
+    { wch: 26 }, // Subcategoria/Referência
     { wch: 18 }, // Convênio/Origem
     { wch: 12 }, // Status
-    { wch: 15 }, // Entrada (R$)
-    { wch: 15 }, // Saída (R$)
-    { wch: 30 }, // Observações
+    { wch: 16 }, // Entrada (R$)
+    { wch: 16 }, // Saída (R$)
+    { wch: 34 }, // Observações
   ];
 
-  // Freeze header row
+  // Freeze header row (SheetJS extension used by your project)
   ws["!freeze"] = { xSplit: 0, ySplit: 1 };
 
-  // Set row heights
-  ws["!rows"] = [{ hpt: 22 }]; // Header row height
+  // Header row height
+  ws["!rows"] = [{ hpt: 22 }];
 }
 
-// Main export function
-export function exportTransactionsToExcel({
-  transactions,
-  filename = "movimentacoes-sallusflow",
-  sheetName = "Movimentações",
-}: ExportOptions): void {
-  if (transactions.length === 0) {
-    return;
-  }
+/**
+ * Apply formats to columns (BRL + date) and enable AutoFilter
+ * NOTE: SheetJS doesn't support "real" Excel Table in community build,
+ * but freeze+autofilter+formats already give the premium UX.
+ */
+function applyFormatsAndFilter(ws: XLSX.WorkSheet): void {
+  const ref = ws["!ref"] || "A1";
+  const range = XLSX.utils.decode_range(ref);
 
-  // Build category lookup
+  // AutoFilter
+  const lastColLetter = XLSX.utils.encode_col(range.e.c);
+  const lastRow = range.e.r + 1;
+  ws["!autofilter"] = { ref: `A1:${lastColLetter}${lastRow}` };
+
+  // Apply formats
+  for (let r = range.s.r + 1; r <= range.e.r; r++) {
+    // Date column (A - c=0)
+    const dateCell = XLSX.utils.encode_cell({ r, c: 0 });
+    if (ws[dateCell]) ws[dateCell].z = DATE_FORMAT;
+
+    // Entrada (J - c=9)
+    const entradaCell = XLSX.utils.encode_cell({ r, c: 9 });
+    if (ws[entradaCell] && ws[entradaCell].v != null) ws[entradaCell].z = BRL_FORMAT;
+
+    // Saída (K - c=10)
+    const saidaCell = XLSX.utils.encode_cell({ r, c: 10 });
+    if (ws[saidaCell] && ws[saidaCell].v != null) ws[saidaCell].z = BRL_FORMAT;
+  }
+}
+
+// Build category lookup (centralized)
+function buildCategoryLookup(): Map<string, string> {
   const categoryNames = new Map<string, string>();
-  // Common category mappings
   const categoryMappings: Record<string, string> = {
     agua: "Água",
     aluguel: "Aluguel",
@@ -144,14 +170,24 @@ export function exportTransactionsToExcel({
     quimioterapia: "Quimioterapia",
   };
 
-  Object.entries(categoryMappings).forEach(([key, value]) => {
-    categoryNames.set(key, value);
-  });
+  Object.entries(categoryMappings).forEach(([key, value]) => categoryNames.set(key, value));
+  return categoryNames;
+}
 
-  // Transform transactions to rows
+/** ===========================
+ * Export 1: Movimentações (aba única)
+ * =========================== */
+export function exportTransactionsToExcel({
+  transactions,
+  filename = "movimentacoes-sallusflow",
+  sheetName = "Movimentações",
+}: ExportOptions): void {
+  if (!transactions?.length) return;
+
+  const categoryNames = buildCategoryLookup();
+
   const rows = transactions.map((tx) => transactionToRow(tx, categoryNames));
 
-  // Create workbook and worksheet
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.json_to_sheet(rows, {
     header: [
@@ -168,55 +204,24 @@ export function exportTransactionsToExcel({
       "Saída (R$)",
       "Observações",
     ],
-    dateNF: "dd/mm/yyyy",
+    dateNF: DATE_FORMAT,
   });
 
-  // Freeze header + AutoFilter (premium)
-  ws["!freeze"] = { xSplit: 0, ySplit: 1 };
-  const movRange = XLSX.utils.decode_range(ws["!ref"] || "A1");
-  const lastRow = movRange.e.r + 1;
-  const lastCol = movRange.e.c + 1;
-  const lastColLetter = XLSX.utils.encode_col(lastCol - 1);
-  ws["!autofilter"] = { ref: `A1:${lastColLetter}${lastRow}` };
-  // Apply styling
-  applyProfessionalStyling(ws, rows.length + 1);
+  applyProfessionalStyling(ws);
+  applyFormatsAndFilter(ws);
 
-  // Format cells
-  const range = XLSX.utils.decode_range(ws["!ref"] || "A1");
-
-  // Apply number format to Entrada (J) and Saída (K) columns
-  for (let row = range.s.r + 1; row <= range.e.r; row++) {
-    // Entrada column (J - index 9)
-    const entradaCell = XLSX.utils.encode_cell({ r: row, c: 9 });
-    if (ws[entradaCell] && ws[entradaCell].v != null) {
-      ws[entradaCell].z = '\"R$\" #,##0.00;[Red]-\"R$\" #,##0.00';
-    }
-
-    // Saída column (K - index 10)
-    const saidaCell = XLSX.utils.encode_cell({ r: row, c: 10 });
-    if (ws[saidaCell] && ws[saidaCell].v != null) {
-      ws[saidaCell].z = '\"R$\" #,##0.00;[Red]-\"R$\" #,##0.00';
-    }
-
-    // Format date column (A)
-    const dateCell = XLSX.utils.encode_cell({ r: row, c: 0 });
-    if (ws[dateCell]) {
-      ws[dateCell].z = "dd/mm/yyyy";
-    }
-  }
-
-  // Add worksheet to workbook
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
-  // Generate filename with date
   const dateStr = format(new Date(), "yyyy-MM-dd", { locale: ptBR });
   const fullFilename = `${filename}_${dateStr}.xlsx`;
 
-  // Write and download
-  XLSX.writeFile(wb, fullFilename);
+  // ✅ cellDates garante que Date vira data real no Excel (não texto)
+  XLSX.writeFile(wb, fullFilename, { bookType: "xlsx", cellDates: true });
 }
 
-// Generate executive reading text based on data
+/** ===========================
+ * Executive Reading
+ * =========================== */
 function generateExecutiveReading(
   totalIncome: number,
   totalExpense: number,
@@ -227,7 +232,6 @@ function generateExecutiveReading(
 ): string {
   const lines: string[] = [];
 
-  // Operational analysis
   if (operationalResult > 0) {
     lines.push(
       "No período analisado, a operação assistencial apresentou resultado positivo, sustentando o caixa do grupo.",
@@ -240,25 +244,16 @@ function generateExecutiveReading(
     lines.push("No período analisado, a operação assistencial apresentou equilíbrio entre receitas e despesas.");
   }
 
-  // Shared costs analysis
   const sharedRatio = totalIncome > 0 ? (sharedExpense / totalIncome) * 100 : 0;
-  if (sharedRatio <= 15) {
-    lines.push("Os custos compartilhados mantiveram-se dentro do esperado.");
-  } else if (sharedRatio <= 30) {
-    lines.push("Os custos compartilhados representam parcela moderada do faturamento.");
-  } else {
-    lines.push("Os custos compartilhados demandam revisão estrutural.");
-  }
+  if (sharedRatio <= 15) lines.push("Os custos compartilhados mantiveram-se dentro do esperado.");
+  else if (sharedRatio <= 30) lines.push("Os custos compartilhados representam parcela moderada do faturamento.");
+  else lines.push("Os custos compartilhados demandam revisão estrutural.");
 
-  // Non-operational dependency
   const netResult = totalIncome - totalExpense;
   if (totalIncome_nonOp > 0 && netResult > 0) {
     const dependencyRatio = (totalIncome_nonOp / netResult) * 100;
-    if (dependencyRatio > 50) {
-      lines.push("O resultado do período apresenta dependência de eventos não operacionais.");
-    } else {
-      lines.push("Não houve dependência relevante de eventos não operacionais.");
-    }
+    if (dependencyRatio > 50) lines.push("O resultado do período apresenta dependência de eventos não operacionais.");
+    else lines.push("Não houve dependência relevante de eventos não operacionais.");
   } else {
     lines.push("Não houve dependência relevante de eventos não operacionais.");
   }
@@ -266,39 +261,23 @@ function generateExecutiveReading(
   return lines.join(" ");
 }
 
-// Export with Executive Summary sheet (SallusFlow standard)
+/** ===========================
+ * Export 2: Resumo Executivo + Movimentações
+ * =========================== */
 export function exportWithExecutiveSummary({
   transactions,
   filename = "resumo-executivo-sallusflow",
   periodStart,
   periodEnd,
 }: ExportOptions & { periodStart?: Date; periodEnd?: Date }): void {
-  if (transactions.length === 0) {
-    return;
-  }
+  if (!transactions?.length) return;
 
-  // Calculate period from transactions if not provided
   // HOTFIX P0: usa parseLocalDate para YYYY-MM-DD (evita UTC shift)
   const dates = transactions.map((t) => parseLocalDate(t.date).getTime());
   const startDate = periodStart || new Date(Math.min(...dates));
   const endDate = periodEnd || new Date(Math.max(...dates));
 
-  // Build category lookup
-  const categoryNames = new Map<string, string>();
-  const categoryMappings: Record<string, string> = {
-    agua: "Água",
-    aluguel: "Aluguel",
-    energia: "Energia",
-    internet: "Internet",
-    manutencao: "Manutenção",
-    medicamento: "Medicamento",
-    salario: "Salário",
-    consulta: "Consulta",
-    exame: "Exame",
-    convenios: "Convênios",
-    quimioterapia: "Quimioterapia",
-  };
-  Object.entries(categoryMappings).forEach(([key, value]) => categoryNames.set(key, value));
+  const categoryNames = buildCategoryLookup();
 
   // ===== CALCULATIONS - Excluir cancelados =====
   const activeTransactions = transactions.filter((tx) => !isCancelled(tx.status));
@@ -310,7 +289,6 @@ export function exportWithExecutiveSummary({
     .reduce((sum, tx) => sum + tx.amount, 0);
   const netResult = totalIncome - totalExpense;
 
-  // By classification (usando apenas realizadas)
   const operationalIncome = realizedTransactions
     .filter((tx) => tx.type === "INCOME" && tx.financialCategory === "OPERACIONAL")
     .reduce((sum, tx) => sum + tx.amount, 0);
@@ -334,11 +312,10 @@ export function exportWithExecutiveSummary({
 
   const managementResult = operationalResult + sharedResult + nonOperationalResult;
 
-  // Active days
   const uniqueDays = new Set(transactions.map((tx) => tx.date.split("T")[0]));
   const activeDays = uniqueDays.size;
 
-  // Unit analysis
+  // Unit analysis (operacional)
   const unitResults = new Map<string, number>();
   transactions
     .filter((tx) => tx.financialCategory === "OPERACIONAL" && tx.unit)
@@ -354,12 +331,9 @@ export function exportWithExecutiveSummary({
     result,
   }));
 
-  const bestUnit = unitArray.length > 0 ? unitArray.reduce((a, b) => (a.result > b.result ? a : b)) : null;
-  const worstUnit = unitArray.length > 0 ? unitArray.reduce((a, b) => (a.result < b.result ? a : b)) : null;
-  const attentionUnit =
-    unitArray.length > 0 ? unitArray.filter((u) => u.result < 0).sort((a, b) => a.result - b.result)[0] : null;
+  const bestUnit = unitArray.length ? unitArray.reduce((a, b) => (a.result > b.result ? a : b)) : null;
+  const worstUnit = unitArray.length ? unitArray.reduce((a, b) => (a.result < b.result ? a : b)) : null;
 
-  // Executive reading
   const executiveReading = generateExecutiveReading(
     totalIncome,
     totalExpense,
@@ -372,13 +346,11 @@ export function exportWithExecutiveSummary({
   // ===== BUILD EXECUTIVE SUMMARY SHEET =====
   const summaryData: (string | number | null)[][] = [];
 
-  // Block 1 - Identification
   summaryData.push(["Relatório: Resumo Executivo – Fluxo de Caixa SallusFlow"]);
   summaryData.push([`Período analisado: ${format(startDate, "dd/MM/yyyy")} a ${format(endDate, "dd/MM/yyyy")}`]);
   summaryData.push([`Data de geração: ${format(new Date(), "dd/MM/yyyy 'às' HH:mm")}`]);
   summaryData.push([""]);
 
-  // Block 2 - Period Overview
   summaryData.push(["VISÃO GERAL DO PERÍODO"]);
   summaryData.push(["Indicador", "Valor"]);
   summaryData.push(["Total de Entradas", totalIncome]);
@@ -388,7 +360,6 @@ export function exportWithExecutiveSummary({
   summaryData.push(["Número de Dias Ativos", activeDays]);
   summaryData.push([""]);
 
-  // Block 3 - Results by Classification
   summaryData.push(["RESULTADO POR CLASSIFICAÇÃO"]);
   summaryData.push(["Classificação", "Resultado (R$)"]);
   summaryData.push(["Operacional – Unidade", operationalResult]);
@@ -397,7 +368,6 @@ export function exportWithExecutiveSummary({
   summaryData.push(["Resultado Gerencial do Período", managementResult]);
   summaryData.push([""]);
 
-  // Block 4 - Unit Highlights (only if units exist)
   if (unitArray.length > 0) {
     summaryData.push(["DESTAQUES POR UNIDADE"]);
     if (bestUnit && bestUnit.result > 0) {
@@ -412,38 +382,30 @@ export function exportWithExecutiveSummary({
         `${worstUnit.label}: R$ ${worstUnit.result.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
       ]);
     }
-    if (attentionUnit && attentionUnit !== worstUnit) {
-      summaryData.push(["Unidade em atenção", attentionUnit.label]);
-    }
     summaryData.push([""]);
   }
 
-  // Block 5 - Executive Reading
   summaryData.push(["LEITURA EXECUTIVA"]);
   summaryData.push([executiveReading]);
   summaryData.push([""]);
 
-  // Create workbook
   const wb = XLSX.utils.book_new();
 
-  // Executive Summary sheet (first)
+  // Summary sheet
   const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
-
-  // Styling for summary
   wsSummary["!cols"] = [{ wch: 45 }, { wch: 50 }];
-  wsSummary["!rows"] = [{ hpt: 20 }, { hpt: 18 }, { hpt: 18 }, { hpt: 12 }, { hpt: 22 }, { hpt: 18 }];
 
-  // Apply currency format to value cells
+  // Apply BRL format to value cells (keep the existing cell refs, but with correct BRL format)
   const currencyCells = ["B7", "B8", "B9", "B15", "B16", "B17", "B18"];
   currencyCells.forEach((cell) => {
     if (wsSummary[cell] && typeof wsSummary[cell].v === "number") {
-      wsSummary[cell].z = "R$ #,##0.00;[Red]-R$ #,##0.00";
+      wsSummary[cell].z = BRL_FORMAT;
     }
   });
 
   XLSX.utils.book_append_sheet(wb, wsSummary, "Resumo Executivo");
 
-  // Transactions detail sheet (second)
+  // Data sheet (Movimentações)
   const rows = transactions.map((tx) => transactionToRow(tx, categoryNames));
   const wsData = XLSX.utils.json_to_sheet(rows, {
     header: [
@@ -460,33 +422,18 @@ export function exportWithExecutiveSummary({
       "Saída (R$)",
       "Observações",
     ],
-    dateNF: "dd/mm/yyyy",
+    dateNF: DATE_FORMAT,
   });
 
-  applyProfessionalStyling(wsData, rows.length + 1);
-
-  // Format cells in data sheet
-  const range = XLSX.utils.decode_range(wsData["!ref"] || "A1");
-  for (let row = range.s.r + 1; row <= range.e.r; row++) {
-    // Entrada column (J - index 9)
-    const entradaCell = XLSX.utils.encode_cell({ r: row, c: 9 });
-    if (wsData[entradaCell] && wsData[entradaCell].v != null) wsData[entradaCell].z = "#,##0.00";
-    // Saída column (K - index 10)
-    const saidaCell = XLSX.utils.encode_cell({ r: row, c: 10 });
-    if (wsData[saidaCell] && wsData[saidaCell].v != null) wsData[saidaCell].z = "#,##0.00";
-    // Date column
-    const dateCell = XLSX.utils.encode_cell({ r: row, c: 0 });
-    if (wsData[dateCell]) wsData[dateCell].z = "dd/mm/yyyy";
-  }
+  applyProfessionalStyling(wsData);
+  applyFormatsAndFilter(wsData);
 
   XLSX.utils.book_append_sheet(wb, wsData, "Movimentações");
 
-  // Generate filename with date
   const dateStr = format(new Date(), "yyyy-MM-dd", { locale: ptBR });
   const fullFilename = `${filename}_${dateStr}.xlsx`;
 
-  // Write and download
-  XLSX.writeFile(wb, fullFilename);
+  XLSX.writeFile(wb, fullFilename, { bookType: "xlsx", cellDates: true });
 }
 
 // Legacy export with summary (kept for compatibility)
