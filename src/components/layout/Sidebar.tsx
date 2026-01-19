@@ -19,6 +19,7 @@ import {
   LineChart,
   Users,
   CheckSquare,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -38,14 +39,13 @@ interface NavSection {
 }
 
 // =====================================================
-// NAVEGAÇÃO PRINCIPAL - SALLUS FINANCE
+// NAVEGAÇÃO PRINCIPAL — SALLUS FINANCE
 // =====================================================
-// Módulo Financeiro da plataforma SallusFlow
 // Estrutura organizada por fluxo operacional real:
-// Operação → Relatórios (Gerenciais + Executivos) → Administração
-// 
-// ⚠️ NÃO REMOVER relatórios existentes
-// ⚠️ Cada relatório tem rota única e estável
+// Operação → Relatórios → Executivo → Resultados → Administração
+//
+// ⚠️ Itens administrativos são filtrados por permissão
+// ⚠️ Admin visualiza todos os itens
 // =====================================================
 
 const navSections: NavSection[] = [
@@ -53,8 +53,6 @@ const navSections: NavSection[] = [
     title: "Operação",
     items: [
       { to: "/", icon: Wallet, label: "Caixa", permission: "VIEW_DASHBOARD" },
-      // Removido: "Financeiro" estava redundante com Caixa/Movimentações
-      // A rota /financial continua funcionando com redirect para Caixa
       { to: "/transactions", icon: ArrowUpDown, label: "Movimentações", permission: "VIEW_TRANSACTIONS" },
       { to: "/production", icon: Activity, label: "Produção", permission: "VIEW_PRODUCTION" },
       { to: "/suggested-billing", icon: Send, label: "Faturamento Sugerido", permission: "VIEW_BILLING" },
@@ -63,7 +61,6 @@ const navSections: NavSection[] = [
     ],
   },
   {
-    // Seção de Relatórios organizada em Produção, Financeiro e Executivo
     title: "📊 Relatórios",
     items: [
       { to: "/production-report", icon: Activity, label: "Produção", permission: "VIEW_REPORTS" },
@@ -96,6 +93,12 @@ const navSections: NavSection[] = [
       { to: "/import", icon: Upload, label: "Importar", permission: "CREATE_TRANSACTIONS" },
       { to: "/settings", icon: Settings, label: "Configurações", permission: "VIEW_SETTINGS" },
       { to: "/audit", icon: History, label: "Logs", permission: "VIEW_AUDIT" },
+      {
+        to: "/admin/cleanup",
+        icon: Trash2,
+        label: "Limpeza de dados",
+        permission: "VIEW_AUDIT",
+      },
     ],
   },
 ];
@@ -113,19 +116,13 @@ export function Sidebar() {
   const location = useLocation();
   const { hasPermission, currentRole } = useAuth();
 
-  // Filter items based on permissions
-  const filterItems = (items: NavItem[]) => {
-    return items.filter((item) => {
-      // If no permission required, show the item
+  const filterItems = (items: NavItem[]) =>
+    items.filter((item) => {
       if (!item.permission) return true;
-      // Admin sees everything
       if (currentRole?.name === "Admin") return true;
-      // Check specific permission
       return hasPermission(item.permission);
     });
-  };
 
-  // Filter sections that have visible items
   const visibleSections = navSections
     .map((section) => ({
       ...section,
@@ -136,23 +133,24 @@ export function Sidebar() {
   return (
     <aside className="hidden w-56 shrink-0 border-r border-border bg-sidebar lg:block">
       <nav className="flex flex-col gap-0.5 p-3">
-        {visibleSections.map((section, sectionIdx) => (
-          <div key={section.title} className={cn("mb-1", sectionIdx > 0 && "mt-3 pt-3 border-t border-border/50")}>
+        {visibleSections.map((section, idx) => (
+          <div key={section.title} className={cn("mb-1", idx > 0 && "mt-3 pt-3 border-t border-border/50")}>
             <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
               {section.title}
             </div>
+
             <div className="flex flex-col gap-0.5">
               {section.items.map((item) => {
                 const isActive = location.pathname === item.to;
                 return (
                   <NavLink
-                    key={item.to + item.label}
+                    key={item.to}
                     to={item.to}
                     className={cn(
                       "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-all",
                       isActive
                         ? "bg-primary text-primary-foreground shadow-sm"
-                        : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                     )}
                   >
                     <item.icon className="h-4 w-4 shrink-0" />
@@ -173,20 +171,21 @@ export function Sidebar() {
   );
 }
 
-export const MobileNav = forwardRef<HTMLElement, Record<string, never>>(
-  function MobileNav(_, ref) {
-    const location = useLocation();
-    const { hasPermission, currentRole } = useAuth();
+export const MobileNav = forwardRef<HTMLElement, Record<string, never>>(function MobileNav(_, ref) {
+  const location = useLocation();
+  const { hasPermission, currentRole } = useAuth();
 
-    // Filter items based on permissions
-    const visibleItems = mobileNavItems.filter((item) => {
-      if (!item.permission) return true;
-      if (currentRole?.name === "Admin") return true;
-      return hasPermission(item.permission);
-    });
+  const visibleItems = mobileNavItems.filter((item) => {
+    if (!item.permission) return true;
+    if (currentRole?.name === "Admin") return true;
+    return hasPermission(item.permission);
+  });
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur-sm lg:hidden safe-area-bottom">
+    <nav
+      ref={ref}
+      className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur-sm lg:hidden safe-area-bottom"
+    >
       <div className="flex items-center justify-around py-1.5">
         {visibleItems.map((item) => {
           const isActive = location.pathname === item.to;
@@ -196,9 +195,7 @@ export const MobileNav = forwardRef<HTMLElement, Record<string, never>>(
               to={item.to}
               className={cn(
                 "flex flex-col items-center gap-0.5 rounded-lg px-3 py-1 transition-all min-w-[56px]",
-                isActive
-                  ? "text-primary"
-                  : "text-muted-foreground hover:text-foreground"
+                isActive ? "text-primary" : "text-muted-foreground hover:text-foreground",
               )}
             >
               <item.icon className={cn("h-5 w-5", isActive && "scale-110")} />
