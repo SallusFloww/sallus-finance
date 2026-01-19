@@ -72,7 +72,12 @@ const navSections: NavSection[] = [
   {
     title: "📈 Executivo",
     items: [
+      // ✅ NOVO: BI v2 (PowerBI-like)
+      { to: "/bi-v2", icon: BarChart3, label: "BI v2", badge: "BETA", permission: "VIEW_BI" },
+
+      // BI atual
       { to: "/bi", icon: BarChart3, label: "BI", badge: "NOVO", permission: "VIEW_BI" },
+
       { to: "/executive-report", icon: PieChart, label: "Relatório Executivo", permission: "VIEW_REPORTS" },
       { to: "/monthly-report", icon: FileText, label: "Rel. Mensal", badge: "PDF", permission: "VIEW_REPORTS" },
     ],
@@ -109,6 +114,10 @@ const mobileNavItems: NavItem[] = [
   { to: "/transactions", icon: ArrowUpDown, label: "Mov.", permission: "VIEW_TRANSACTIONS" },
   { to: "/receivables", icon: Banknote, label: "Receber", permission: "VIEW_RECEIVABLES" },
   { to: "/dre", icon: Receipt, label: "DRE" },
+
+  // ✅ opcional: BI v2 no mobile também (se quiser, mantém; se não quiser, pode remover)
+  { to: "/bi-v2", icon: BarChart3, label: "BI v2", permission: "VIEW_BI" },
+
   { to: "/settings", icon: Settings, label: "Config", permission: "VIEW_SETTINGS" },
 ];
 
