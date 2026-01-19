@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useState } from "react";
+import React, { useMemo, useCallback } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { differenceInCalendarDays, subDays } from "date-fns";
@@ -70,9 +70,8 @@ function KpiDelta({ value }: { value: number }) {
 /**
  * ✅ KPI CARD - POWER BI PREMIUM (CLEAN)
  * - Cards brancos como Power BI
- * - Borda lateral verde (marca)
  * - Hover com ring
- * - Active bem visível
+ * - Active com ring forte
  * - Clicável (teclado incluso)
  */
 function KpiCard(props: {
@@ -98,14 +97,10 @@ function KpiCard(props: {
         }
       }}
       className={cn(
-        // base clean
         "bg-white/95 backdrop-blur border-white/40 transition-all duration-200",
-        // interações BI
         "cursor-pointer select-none hover:-translate-y-0.5 hover:shadow-lg hover:ring-1 hover:ring-emerald-400/40",
-        // marca
         "border-l-4 border-l-emerald-600/80",
-        // active
-        active && "ring-2 ring-emerald-400/70 shadow-xl bg-white",
+        active && "ring-2 ring-emerald-400/80 shadow-xl bg-white",
       )}
     >
       <CardHeader className="pb-2">
@@ -141,12 +136,14 @@ function mapPeriodPresetToAllowed(preset: string): BIAllowedPeriod | undefined {
 }
 
 function BIV2Content() {
-  const { filters, drilldownContext, lastUpdated } = useBIFilters();
+  const { filters, drilldownContext, lastUpdated, setFilters, clearFilter, clearAllFilters } = useBIFilters();
+
   const { transactions: txContext } = useApp();
   const { settings } = txContext;
 
   const periodAllowed = useMemo(() => mapPeriodPresetToAllowed(filters.periodPreset), [filters.periodPreset]);
 
+  // ✅ mantém compatibilidade com seu hook de dados (useBIData v1/v2)
   const currentFilters: BIFilters = useMemo(
     () => ({
       startDate: filters.startDate,
@@ -155,12 +152,12 @@ function BIV2Content() {
       payerType: "all",
       period: periodAllowed,
     }),
-    [filters, periodAllowed],
+    [filters.startDate, filters.endDate, filters.unit, periodAllowed],
   );
 
   const { kpis, chartData, recentTransactions } = useBIData(currentFilters);
 
-  // período anterior para delta
+  // Período anterior para delta (sempre por data)
   const prevFilters: BIFilters = useMemo(() => {
     const days = differenceInCalendarDays(filters.endDate, filters.startDate) + 1;
     const prevEnd = subDays(filters.startDate, 1);
@@ -173,7 +170,7 @@ function BIV2Content() {
       payerType: "all",
       period: undefined,
     };
-  }, [filters]);
+  }, [filters.startDate, filters.endDate, filters.unit]);
 
   const prev = useBIData(prevFilters);
 
@@ -195,11 +192,10 @@ function BIV2Content() {
       .reduce((sum: number, a: any) => sum + a.value, 0);
   }, [chartData.aging]);
 
-  // score
+  // Regras de score
   const hasProductionData = kpis.produzido > 0 || kpis.faturado > 0;
   const hasBillingData = kpis.faturado > 0 || kpis.recebido > 0;
   const hasCashData = kpis.entradas > 0 || kpis.saidas > 0;
-
   const isScoreInFormation = !canCalculateScore(hasProductionData, hasBillingData, hasCashData, 0);
 
   const drilldownData = useMemo(() => {
@@ -215,7 +211,7 @@ function BIV2Content() {
 
   const fmtBRL = (v: number) => (v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-  // deltas
+  // ✅ KPIs
   const deltaRecebido = pctDelta(kpis.recebido ?? 0, prev.kpis?.recebido ?? 0);
   const deltaProduzido = pctDelta(kpis.produzido ?? 0, prev.kpis?.produzido ?? 0);
   const deltaFaturado = pctDelta(kpis.faturado ?? 0, prev.kpis?.faturado ?? 0);
@@ -236,16 +232,63 @@ function BIV2Content() {
     }
   }, [lastUpdated]);
 
-  // clique KPI (UI)
-  const [activeKpi, setActiveKpi] = useState<string | null>(null);
+  // ============================================================
+  // ✅ KPI CLICK = CROSS-FILTER REAL (TOGGLE)
+  // ============================================================
 
-  const onKpiClick = useCallback((key: string) => {
-    setActiveKpi((prevKey) => (prevKey === key ? null : key));
+  const isKpiActive = useCallback(
+    (key: "recebido" | "producao" | "faturado" | "entradas" | "saidas" | "resultado") => {
+      // KPIs de competência
+      if (key === "producao") return filters.viewType === "competencia" && filters.origin === "producao";
+      if (key === "faturado") return filters.viewType === "competencia" && filters.origin === "faturamento";
+      if (key === "recebido") return filters.viewType === "competencia" && filters.origin === "recebimento";
 
-    // ✅ quando você me mandar o BIFilterContext completo, eu conecto aqui:
-    // - cross-filter real
-    // - drilldown real
-  }, []);
+      // KPIs de caixa
+      if (key === "entradas") return filters.viewType === "caixa" && filters.origin === "caixa";
+      if (key === "saidas") return filters.viewType === "caixa" && filters.origin === "caixa";
+      if (key === "resultado") return filters.viewType === "caixa" && filters.origin === "caixa";
+
+      return false;
+    },
+    [filters.viewType, filters.origin],
+  );
+
+  const toggleKpiFilter = useCallback(
+    (key: "recebido" | "producao" | "faturado" | "entradas" | "saidas" | "resultado") => {
+      const alreadyActive = isKpiActive(key);
+
+      if (alreadyActive) {
+        // ✅ limpa o que o KPI mexeu (mantém o resto dos filtros do usuário)
+        clearFilter("origin");
+        clearFilter("viewType");
+        // obs: não mexe em unit/payer/category/agingRange etc.
+        return;
+      }
+
+      // ✅ aplica filtros “Power BI like”
+      if (key === "producao") {
+        setFilters({ viewType: "competencia", origin: "producao" });
+        return;
+      }
+
+      if (key === "faturado") {
+        setFilters({ viewType: "competencia", origin: "faturamento" });
+        return;
+      }
+
+      if (key === "recebido") {
+        setFilters({ viewType: "competencia", origin: "recebimento" });
+        return;
+      }
+
+      // Caixa (entradas/saídas/resultado): mesma visão
+      if (key === "entradas" || key === "saidas" || key === "resultado") {
+        setFilters({ viewType: "caixa", origin: "caixa" });
+        return;
+      }
+    },
+    [clearFilter, isKpiActive, setFilters],
+  );
 
   return (
     <DashboardLayout>
@@ -280,6 +323,7 @@ function BIV2Content() {
                 <Badge variant="secondary" className="text-xs">
                   Somente leitura
                 </Badge>
+
                 <Badge
                   variant="outline"
                   className="text-xs flex items-center gap-2 bg-white/5 text-white border-white/15"
@@ -288,6 +332,14 @@ function BIV2Content() {
                   {format(filters.startDate, "dd/MM", { locale: ptBR })} -{" "}
                   {format(filters.endDate, "dd/MM/yyyy", { locale: ptBR })}
                 </Badge>
+
+                <button
+                  onClick={clearAllFilters}
+                  className="text-xs px-2 py-1 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-white/85 transition"
+                  type="button"
+                >
+                  Limpar tudo
+                </button>
               </div>
             </div>
           </div>
@@ -360,61 +412,61 @@ function BIV2Content() {
             </div>
           </div>
 
-          {/* KPIs */}
+          {/* KPIs (com cross-filter real) */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
             <KpiCard
               title="Receita (Recebido)"
               value={fmtBRL(kpis.recebido ?? 0)}
               delta={deltaRecebido}
               icon={<TrendingUp className="h-4 w-4" />}
-              hint="Clique para filtrar"
-              active={activeKpi === "recebido"}
-              onClick={() => onKpiClick("recebido")}
+              hint="Clique para filtrar (Competência)"
+              active={isKpiActive("recebido")}
+              onClick={() => toggleKpiFilter("recebido")}
             />
             <KpiCard
               title="Produção"
               value={fmtBRL(kpis.produzido ?? 0)}
               delta={deltaProduzido}
               icon={<BarChart3 className="h-4 w-4" />}
-              hint="Clique para filtrar"
-              active={activeKpi === "producao"}
-              onClick={() => onKpiClick("producao")}
+              hint="Clique para filtrar (Competência)"
+              active={isKpiActive("producao")}
+              onClick={() => toggleKpiFilter("producao")}
             />
             <KpiCard
               title="Faturado"
               value={fmtBRL(kpis.faturado ?? 0)}
               delta={deltaFaturado}
               icon={<Receipt className="h-4 w-4" />}
-              hint="Clique para filtrar"
-              active={activeKpi === "faturado"}
-              onClick={() => onKpiClick("faturado")}
+              hint="Clique para filtrar (Competência)"
+              active={isKpiActive("faturado")}
+              onClick={() => toggleKpiFilter("faturado")}
             />
             <KpiCard
               title="Entradas (Caixa)"
               value={fmtBRL(kpis.entradas ?? 0)}
               delta={deltaEntradas}
               icon={<TrendingUp className="h-4 w-4" />}
-              hint="Clique para filtrar"
-              active={activeKpi === "entradas"}
-              onClick={() => onKpiClick("entradas")}
+              hint="Clique para filtrar (Caixa)"
+              active={isKpiActive("entradas")}
+              onClick={() => toggleKpiFilter("entradas")}
             />
             <KpiCard
               title="Saídas (Caixa)"
               value={fmtBRL(kpis.saidas ?? 0)}
               delta={deltaSaidas}
               icon={<ArrowUpDown className="h-4 w-4" />}
-              hint="Clique para filtrar"
-              active={activeKpi === "saidas"}
-              onClick={() => onKpiClick("saidas")}
+              hint="Clique para filtrar (Caixa)"
+              active={isKpiActive("saidas")}
+              onClick={() => toggleKpiFilter("saidas")}
             />
             <KpiCard
               title="Resultado"
               value={fmtBRL(resultadoAtual)}
               delta={deltaResultado}
               icon={<TrendingUp className="h-4 w-4" />}
-              hint="Clique para filtrar"
-              active={activeKpi === "resultado"}
-              onClick={() => onKpiClick("resultado")}
+              hint="Clique para filtrar (Caixa)"
+              active={isKpiActive("resultado")}
+              onClick={() => toggleKpiFilter("resultado")}
             />
           </div>
 
