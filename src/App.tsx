@@ -3,11 +3,13 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+
 import { AuthProvider } from "./contexts/AuthContext";
 import { AppProvider } from "./contexts/AppContext";
 import { GlobalRealtimeProvider } from "./contexts/GlobalRealtimeProvider";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { AdminRoute } from "./components/auth/AdminRoute";
+
 import Auth from "./pages/Auth";
 
 import Dashboard from "./pages/Dashboard";
@@ -28,13 +30,14 @@ import Billing from "./pages/Billing";
 import BillingReport from "./pages/BillingReport";
 import AgingReport from "./pages/AgingReport";
 import ExecutiveReport from "./pages/ExecutiveReport";
-
 import MonthlyReport from "./pages/MonthlyReport";
+
 import BI from "./pages/BI";
+import BIV2 from "./pages/BIV2"; // ✅ NOVO BI (PowerBI-like)
+
 import Users from "./pages/Users";
 import AdminDiagnostics from "./pages/AdminDiagnostics";
-import AdminCleanup from "./pages/AdminCleanup"; // ✅ NOVO
-import Financial from "./pages/Financial";
+import AdminCleanup from "./pages/AdminCleanup"; // ✅ limpeza rápida
 import Conciliation from "./pages/Conciliation";
 import QA from "./pages/QA";
 import NotFound from "./pages/NotFound";
@@ -49,7 +52,7 @@ function AppRoutes() {
       <Route path="/auth" element={<Auth />} />
       <Route path="/i/:token" element={<InviteRedirect />} />
 
-      {/* Protected Routes (requires authentication) */}
+      {/* Protected Routes */}
       <Route
         path="/"
         element={
@@ -58,6 +61,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/trends"
         element={
@@ -66,6 +70,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/trends-history"
         element={
@@ -74,6 +79,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/score"
         element={
@@ -82,6 +88,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/dre"
         element={
@@ -91,7 +98,7 @@ function AppRoutes() {
         }
       />
 
-      {/* Protected Routes with specific permissions */}
+      {/* Specific permissions */}
       <Route
         path="/transactions"
         element={
@@ -100,6 +107,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/import"
         element={
@@ -108,6 +116,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/reports"
         element={
@@ -116,6 +125,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/audit"
         element={
@@ -124,6 +134,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/receivables"
         element={
@@ -132,6 +143,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/production"
         element={
@@ -140,6 +152,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/production-report"
         element={
@@ -148,6 +161,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/suggested-billing"
         element={
@@ -156,6 +170,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/billing"
         element={
@@ -164,6 +179,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/billing-report"
         element={
@@ -172,6 +188,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/aging-report"
         element={
@@ -180,6 +197,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/executive-report"
         element={
@@ -188,6 +206,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/monthly-report"
         element={
@@ -196,6 +215,8 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
+      {/* BI atual */}
       <Route
         path="/bi"
         element={
@@ -204,6 +225,17 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
+      {/* ✅ BI v2 (novo) */}
+      <Route
+        path="/bi-v2"
+        element={
+          <ProtectedRoute requiredPermission="VIEW_BI">
+            <BIV2 />
+          </ProtectedRoute>
+        }
+      />
+
       <Route
         path="/conciliation"
         element={
@@ -212,10 +244,11 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
       {/* Redirect: /financial removed from menu, redirect to Caixa */}
       <Route path="/financial" element={<Navigate to="/" replace />} />
 
-      {/* Admin Routes (requires Admin role) */}
+      {/* Admin Routes */}
       <Route
         path="/settings"
         element={
@@ -224,6 +257,7 @@ function AppRoutes() {
           </AdminRoute>
         }
       />
+
       <Route
         path="/users"
         element={
@@ -232,6 +266,7 @@ function AppRoutes() {
           </AdminRoute>
         }
       />
+
       <Route
         path="/admin/diagnostics"
         element={
@@ -240,6 +275,7 @@ function AppRoutes() {
           </AdminRoute>
         }
       />
+
       <Route
         path="/admin/cleanup"
         element={
@@ -248,6 +284,7 @@ function AppRoutes() {
           </AdminRoute>
         }
       />
+
       <Route
         path="/qa"
         element={
