@@ -404,13 +404,13 @@ export function exportTransactionsToExcel({
     // Entrada column (J - index 9)
     const entradaCell = XLSX.utils.encode_cell({ r: row, c: 9 });
     if (ws[entradaCell] && ws[entradaCell].v != null) {
-      ws[entradaCell].z = "#,##0.00";
+      ws[entradaCell].z = '"R$" #,##0.00;[Red]"R$" -#,##0.00';
     }
 
     // Saída column (K - index 10)
     const saidaCell = XLSX.utils.encode_cell({ r: row, c: 10 });
     if (ws[saidaCell] && ws[saidaCell].v != null) {
-      ws[saidaCell].z = "#,##0.00";
+      ws[saidaCell].z = '"R$" #,##0.00;[Red]"R$" -#,##0.00';
     }
 
     // Format date column (A)
@@ -419,6 +419,9 @@ export function exportTransactionsToExcel({
       ws[dateCell].z = "dd/mm/yyyy";
     }
   }
+
+  // AutoFilter (header)
+  ws["!autofilter"] = { ref: "A1:L1" };
 
   // Add worksheet to workbook
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
@@ -689,14 +692,17 @@ export function exportWithExecutiveSummary({
   for (let row = range.s.r + 1; row <= range.e.r; row++) {
     // Entrada column (J - index 9)
     const entradaCell = XLSX.utils.encode_cell({ r: row, c: 9 });
-    if (wsData[entradaCell] && wsData[entradaCell].v != null) wsData[entradaCell].z = "#,##0.00";
+    if (wsData[entradaCell] && wsData[entradaCell].v != null)
+      wsData[entradaCell].z = '"R$" #,##0.00;[Red]"R$" -#,##0.00';
     // Saída column (K - index 10)
     const saidaCell = XLSX.utils.encode_cell({ r: row, c: 10 });
-    if (wsData[saidaCell] && wsData[saidaCell].v != null) wsData[saidaCell].z = "#,##0.00";
+    if (wsData[saidaCell] && wsData[saidaCell].v != null) wsData[saidaCell].z = '"R$" #,##0.00;[Red]"R$" -#,##0.00';
     // Date column
     const dateCell = XLSX.utils.encode_cell({ r: row, c: 0 });
     if (wsData[dateCell]) wsData[dateCell].z = "dd/mm/yyyy";
   }
+  // AutoFilter (header)
+  wsData["!autofilter"] = { ref: "A1:L1" };
 
   XLSX.utils.book_append_sheet(wb, wsData, "Movimentações");
 
