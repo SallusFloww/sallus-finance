@@ -34,26 +34,20 @@ import {
   Calendar,
   ArrowUpRight,
   ArrowDownRight,
-  Wallet,
   TrendingUp,
   Receipt,
   ArrowUpDown,
   Layers,
 } from "lucide-react";
 
-/**
- * BI v2 — PowerBI-like
- * - Visual limpo e hierarquia clara
- * - KPIs com delta vs período anterior
- * - Mantém useBIData / charts / drilldown existentes (sem quebrar nada)
- */
+type BIAllowedPeriod = "current" | "3m" | "6m" | "12m";
 
-type BiFiltersPayload = {
+type BIFilters = {
   startDate: Date;
   endDate: Date;
   unit: string;
   payerType: "all";
-  period?: string;
+  period?: BIAllowedPeriod;
 };
 
 function pctDelta(curr: number, prev: number) {
@@ -92,31 +86,49 @@ function KpiCard(props: { title: string; value: string; delta: number; icon: Rea
   );
 }
 
+function mapPeriodPresetToAllowed(preset: string): BIAllowedPeriod | undefined {
+  // seu BI v1 usa filters.periodPreset. Vamos mapear de forma segura:
+  // - se vier "custom" => undefined
+  // - se vier algo fora => undefined
+  const normalized = (preset || "").toLowerCase();
+
+  if (normalized === "custom") return undefined;
+
+  // alguns projetos usam "current" ou "mes_atual"
+  if (normalized === "current" || normalized === "mes_atual" || normalized === "month" || normalized === "mês atual") {
+    return "current";
+  }
+
+  // alguns usam "3m","6m","12m" ou "3M"
+  if (normalized === "3m") return "3m";
+  if (normalized === "6m") return "6m";
+  if (normalized === "12m") return "12m";
+
+  return undefined;
+}
+
 function BIV2Content() {
   const { filters, drilldownContext, lastUpdated } = useBIFilters();
   const { transactions: txContext } = useApp();
   const { settings } = txContext;
 
-  // -----------------------------
-  // Filtros atuais (padrão já usado no BI v1)
-  // -----------------------------
-  const currentFilters: BiFiltersPayload = useMemo(
+  const periodAllowed = useMemo(() => mapPeriodPresetToAllowed(filters.periodPreset), [filters.periodPreset]);
+
+  const currentFilters: BIFilters = useMemo(
     () => ({
       startDate: filters.startDate,
       endDate: filters.endDate,
       unit: filters.unit,
-      payerType: "all" as const,
-      period: filters.periodPreset === "custom" ? undefined : filters.periodPreset,
+      payerType: "all",
+      period: periodAllowed, // ✅ union correto
     }),
-    [filters],
+    [filters, periodAllowed],
   );
 
   const { kpis, chartData, recentTransactions } = useBIData(currentFilters);
 
-  // -----------------------------
-  // Período anterior (para delta PowerBI-like)
-  // -----------------------------
-  const prevFilters: BiFiltersPayload = useMemo(() => {
+  // Período anterior para delta (sempre por data para fidelidade)
+  const prevFilters: BIFilters = useMemo(() => {
     const days = differenceInCalendarDays(filters.endDate, filters.startDate) + 1;
     const prevEnd = subDays(filters.startDate, 1);
     const prevStart = subDays(prevEnd, Math.max(days - 1, 0));
@@ -125,16 +137,13 @@ function BIV2Content() {
       startDate: prevStart,
       endDate: prevEnd,
       unit: filters.unit,
-      payerType: "all" as const,
-      period: undefined, // força por data para delta fiel
+      payerType: "all",
+      period: undefined,
     };
   }, [filters]);
 
   const prev = useBIData(prevFilters);
 
-  // -----------------------------
-  // Dropdowns (puxados do chartData atual)
-  // -----------------------------
   const uniquePayers = useMemo(() => {
     const payers = new Set<string>();
     chartData.receivedByPayer.forEach((p: any) => payers.add(p.payer));
@@ -147,28 +156,19 @@ function BIV2Content() {
     return Array.from(cats);
   }, [chartData.topExpenseCategories]);
 
-  // Aging crítico
   const agingCritical = useMemo(() => {
     return chartData.aging
       .filter((a: any) => a.range === "61-90 dias" || a.range === "90+ dias")
       .reduce((sum: number, a: any) => sum + a.value, 0);
   }, [chartData.aging]);
 
-  // Score em formação (mesma regra do v1)
+  // Regras de score (mesmo padrão do v1, só sem weightedScore aqui)
   const hasProductionData = kpis.produzido > 0 || kpis.faturado > 0;
   const hasBillingData = kpis.faturado > 0 || kpis.recebido > 0;
   const hasCashData = kpis.entradas > 0 || kpis.saidas > 0;
 
-  const isScoreInFormation = !canCalculateScore(
-    hasProductionData,
-    hasBillingData,
-    hasCashData,
-    // se seu useBIData não traz score, a regra usa o globalScore; aqui mantemos compatível:
-    // como não temos useWeightedScore no v2, passamos 0 e a regra já trata "em formação"
-    0,
-  );
+  const isScoreInFormation = !canCalculateScore(hasProductionData, hasBillingData, hasCashData, 0);
 
-  // Drilldown data (reaproveita padrão)
   const drilldownData = useMemo(() => {
     if (!drilldownContext) return [];
     return recentTransactions.slice(0, 30).map((t: any) => ({
@@ -180,20 +180,28 @@ function BIV2Content() {
     }));
   }, [drilldownContext, recentTransactions]);
 
-  // -----------------------------
-  // KPIs (6 cards no máximo, PowerBI-like)
-  // -----------------------------
-  const deltaSaldo = pctDelta(kpis.saldo ?? 0, prev.kpis?.saldo ?? 0);
+  const fmtBRL = (v: number) => (v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+  // ✅ KPIs alinhados ao seu BIKPIs (sem saldo)
   const deltaRecebido = pctDelta(kpis.recebido ?? 0, prev.kpis?.recebido ?? 0);
   const deltaProduzido = pctDelta(kpis.produzido ?? 0, prev.kpis?.produzido ?? 0);
   const deltaFaturado = pctDelta(kpis.faturado ?? 0, prev.kpis?.faturado ?? 0);
+  const deltaEntradas = pctDelta(kpis.entradas ?? 0, prev.kpis?.entradas ?? 0);
   const deltaSaidas = pctDelta(kpis.saidas ?? 0, prev.kpis?.saidas ?? 0);
-  const deltaResultado = pctDelta(
-    (kpis.entradas ?? 0) - (kpis.saidas ?? 0),
-    (prev.kpis?.entradas ?? 0) - (prev.kpis?.saidas ?? 0),
-  );
 
-  const fmtBRL = (v: number) => (v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const resultadoAtual = (kpis.entradas ?? 0) - (kpis.saidas ?? 0);
+  const resultadoPrev = (prev.kpis?.entradas ?? 0) - (prev.kpis?.saidas ?? 0);
+  const deltaResultado = pctDelta(resultadoAtual, resultadoPrev);
+
+  const lastUpdatedLabel = useMemo(() => {
+    if (!lastUpdated) return "—";
+    if (typeof lastUpdated === "string") return lastUpdated;
+    try {
+      return format(lastUpdated, "dd/MM HH:mm", { locale: ptBR });
+    } catch {
+      return "—";
+    }
+  }, [lastUpdated]);
 
   return (
     <DashboardLayout>
@@ -209,7 +217,7 @@ function BIV2Content() {
               </Badge>
             </div>
             <p className="text-sm text-muted-foreground">
-              Power BI-like de verdade: menos ruído, mais leitura • Cross-filter • Read-only
+              Power BI-like: hierarquia, leitura e comparação • Cross-filter • Read-only
             </p>
           </div>
 
@@ -225,14 +233,14 @@ function BIV2Content() {
           </div>
         </div>
 
-        {/* Filtros globais (mesmo componente do v1) */}
+        {/* Filtros (mesmos componentes do v1) */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Layers className="h-4 w-4 text-muted-foreground" />
               Filtros
               <span className="text-xs text-muted-foreground font-normal">
-                • Última atualização: {lastUpdated || "—"}
+                • Última atualização: {lastUpdatedLabel}
               </span>
             </CardTitle>
           </CardHeader>
@@ -243,7 +251,7 @@ function BIV2Content() {
           </CardContent>
         </Card>
 
-        {/* Alerts compactos (mantém o que já existe) */}
+        {/* Alerts compactos */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2">
             <Card>
@@ -291,15 +299,8 @@ function BIV2Content() {
           <BIAlertsCard kpis={kpis} agingData={chartData.aging} payerData={chartData.receivedByPayer} />
         </div>
 
-        {/* KPIs PowerBI-like (6 cards) */}
+        {/* KPIs (6 cards) */}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <KpiCard
-            title="Saldo (Caixa)"
-            value={fmtBRL(kpis.saldo ?? 0)}
-            delta={deltaSaldo}
-            icon={<Wallet className="h-4 w-4 text-muted-foreground" />}
-            hint="Base Caixa"
-          />
           <KpiCard
             title="Receita (Recebido)"
             value={fmtBRL(kpis.recebido ?? 0)}
@@ -322,7 +323,14 @@ function BIV2Content() {
             hint="Competência"
           />
           <KpiCard
-            title="Saídas (Pagas)"
+            title="Entradas (Caixa)"
+            value={fmtBRL(kpis.entradas ?? 0)}
+            delta={deltaEntradas}
+            icon={<TrendingUp className="h-4 w-4 text-muted-foreground" />}
+            hint="Entradas"
+          />
+          <KpiCard
+            title="Saídas (Caixa)"
             value={fmtBRL(kpis.saidas ?? 0)}
             delta={deltaSaidas}
             icon={<ArrowUpDown className="h-4 w-4 text-muted-foreground" />}
@@ -330,14 +338,14 @@ function BIV2Content() {
           />
           <KpiCard
             title="Resultado"
-            value={fmtBRL((kpis.entradas ?? 0) - (kpis.saidas ?? 0))}
+            value={fmtBRL(resultadoAtual)}
             delta={deltaResultado}
             icon={<TrendingUp className="h-4 w-4 text-muted-foreground" />}
             hint="Entradas - Saídas"
           />
         </div>
 
-        {/* Gráficos: macro (linha 1) */}
+        {/* Charts Row 1 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Card>
             <CardHeader className="pb-2">
@@ -358,7 +366,7 @@ function BIV2Content() {
           </Card>
         </div>
 
-        {/* Gráficos: drivers (linha 2) */}
+        {/* Charts Row 2 */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <Card>
             <CardHeader className="pb-2">
@@ -388,13 +396,13 @@ function BIV2Content() {
           </Card>
         </div>
 
-        {/* Insights (mantém) */}
+        {/* Insights */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <BIInsightsCard kpis={kpis} agingCritical={agingCritical} />
         </div>
 
         {/* Footer + Drilldown */}
-        <BIFooter lastUpdated={lastUpdated} />
+        <BIFooter lastUpdated={lastUpdatedLabel} />
         <BIDrilldownDrawer data={drilldownData} />
       </div>
     </DashboardLayout>
