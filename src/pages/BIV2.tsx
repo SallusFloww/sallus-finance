@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useState } from "react";
+import React, { useMemo, useCallback, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { differenceInCalendarDays, subDays } from "date-fns";
@@ -56,96 +56,63 @@ function pctDelta(curr: number, prev: number) {
   return ((curr - prev) / Math.abs(prev)) * 100;
 }
 
-function KpiDelta({ value, onDark = false }: { value: number; onDark?: boolean }) {
+function KpiDelta({ value }: { value: number }) {
   const up = value >= 0;
-
   return (
-    <div
-      className={cn(
-        "flex items-center gap-1 text-xs font-medium",
-        onDark ? "text-white/90" : up ? "text-emerald-600" : "text-red-600",
-      )}
-    >
+    <div className={cn("flex items-center gap-1 text-xs font-medium", up ? "text-emerald-600" : "text-red-600")}>
       {up ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
       <span>{Math.abs(value).toFixed(1)}%</span>
-      <span className={cn("font-normal", onDark ? "text-white/70" : "text-muted-foreground")}>vs período anterior</span>
+      <span className="text-muted-foreground font-normal">vs período anterior</span>
     </div>
   );
 }
 
-type KpiCardProps = {
-  id: string;
+/**
+ * ✅ KPI CARD - POWER BI PREMIUM
+ * - Fundo branco/glass
+ * - Borda lateral verde (marca)
+ * - Clicável (hover + active + teclado)
+ */
+function KpiCard(props: {
   title: string;
   value: string;
   delta: number;
   icon: React.ReactNode;
   hint?: string;
-  clickable?: boolean;
   active?: boolean;
   onClick?: () => void;
-  variant?: "default" | "gradient";
-};
-
-function KpiCard(props: KpiCardProps) {
-  const {
-    id,
-    title,
-    value,
-    delta,
-    icon,
-    hint,
-    clickable = true,
-    active = false,
-    onClick,
-    variant = "gradient",
-  } = props;
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (!clickable) return;
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      onClick?.();
-    }
-  };
-
-  const isGradient = variant === "gradient";
+}) {
+  const { title, value, delta, icon, hint, active = false, onClick } = props;
 
   return (
     <Card
-      data-kpi={id}
-      role={clickable ? "button" : undefined}
-      tabIndex={clickable ? 0 : -1}
-      onClick={clickable ? onClick : undefined}
-      onKeyDown={handleKeyDown}
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick?.();
+        }
+      }}
       className={cn(
-        "transition-all duration-200",
-        clickable && "cursor-pointer select-none",
-        clickable && "hover:-translate-y-0.5 hover:shadow-lg",
+        "bg-white/95 backdrop-blur border-white/40 transition-all duration-200",
+        "cursor-pointer select-none hover:-translate-y-0.5 hover:shadow-lg",
+        "border-l-4 border-l-emerald-600/80",
         active && "ring-2 ring-emerald-400/60 shadow-xl",
-        isGradient
-          ? cn(
-              "border-0 text-white",
-              // degradê premium (verde executivo) + leve brilho
-              "bg-gradient-to-br from-emerald-950 via-emerald-800 to-emerald-600",
-            )
-          : "hover:shadow-sm",
       )}
     >
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className={cn("text-xs font-semibold", isGradient ? "text-white/80" : "text-muted-foreground")}>
-            {title}
-          </CardTitle>
-          <div className={cn(isGradient ? "text-white/70" : "text-muted-foreground")}>{icon}</div>
+          <CardTitle className="text-xs font-semibold text-muted-foreground">{title}</CardTitle>
+          <div className="text-muted-foreground">{icon}</div>
         </div>
       </CardHeader>
 
       <CardContent className="space-y-1">
-        <div className={cn("text-lg font-semibold tracking-tight", isGradient && "text-white")}>{value}</div>
-        <KpiDelta value={delta} onDark={isGradient} />
-        {hint && (
-          <div className={cn("text-[10px]", isGradient ? "text-white/70" : "text-muted-foreground")}>{hint}</div>
-        )}
+        <div className="text-lg font-semibold tracking-tight">{value}</div>
+        <KpiDelta value={delta} />
+        {hint && <div className="text-[10px] text-muted-foreground">{hint}</div>}
       </CardContent>
     </Card>
   );
@@ -187,6 +154,7 @@ function BIV2Content() {
 
   const { kpis, chartData, recentTransactions } = useBIData(currentFilters);
 
+  // Período anterior para delta (sempre por data)
   const prevFilters: BIFilters = useMemo(() => {
     const days = differenceInCalendarDays(filters.endDate, filters.startDate) + 1;
     const prevEnd = subDays(filters.startDate, 1);
@@ -221,6 +189,7 @@ function BIV2Content() {
       .reduce((sum: number, a: any) => sum + a.value, 0);
   }, [chartData.aging]);
 
+  // Regras de score
   const hasProductionData = kpis.produzido > 0 || kpis.faturado > 0;
   const hasBillingData = kpis.faturado > 0 || kpis.recebido > 0;
   const hasCashData = kpis.entradas > 0 || kpis.saidas > 0;
@@ -240,6 +209,7 @@ function BIV2Content() {
 
   const fmtBRL = (v: number) => (v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+  // KPIs
   const deltaRecebido = pctDelta(kpis.recebido ?? 0, prev.kpis?.recebido ?? 0);
   const deltaProduzido = pctDelta(kpis.produzido ?? 0, prev.kpis?.produzido ?? 0);
   const deltaFaturado = pctDelta(kpis.faturado ?? 0, prev.kpis?.faturado ?? 0);
@@ -260,53 +230,42 @@ function BIV2Content() {
     }
   }, [lastUpdated]);
 
-  /**
-   * KPI Click (cross-filter / drilldown)
-   * - Aqui está pronto pra plugar filtro real.
-   * - No momento, deixei a função “safe”.
-   *
-   * Se seu contexto expõe algo como:
-   *   const { setFilters, setDrilldownContext } = useBIFilters();
-   * então aqui vira 1 linha:
-   *   setDrilldownContext({ type: key });
-   * ou:
-   *   setFilters((f)=>({...f, metric:key}))
-   */
+  // ✅ KPI Click (UI pronto; plugar filtro real depois)
   const [activeKpi, setActiveKpi] = useState<string | null>(null);
 
   const onKpiClick = useCallback((key: string) => {
     setActiveKpi((prevKey) => (prevKey === key ? null : key));
 
-    // TODO (plugar comportamento real):
-    // Exemplo A: abrir drilldown por KPI:
-    // setDrilldownContext?.({ source: "kpi", metric: key });
-    //
-    // Exemplo B: aplicar filtro global:
-    // applyQuickFilter?.({ metric: key });
+    // ✅ Se você tiver no contexto algo tipo setDrilldownContext/applyQuickFilter,
+    // é aqui que conecta para cross-filter real.
   }, []);
 
   return (
     <DashboardLayout>
-      {/* Fundo BI: degradê verde + textura suave (premium) */}
+      {/* ✅ FUNDO PREMIUM - BI EXECUTIVO */}
       <div className="relative min-h-screen">
+        {/* base gradient */}
         <div
           aria-hidden
-          className={cn(
-            "pointer-events-none absolute inset-0 -z-10",
-            // Base: verde profundo (premium)
-            "bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-700/60",
-          )}
-        />
-        {/* Glow suave no topo (cara de BI moderno) */}
-        <div
-          aria-hidden
-          className={cn(
-            "pointer-events-none absolute -top-24 left-1/2 h-80 w-[60rem] -translate-x-1/2 -z-10 blur-3xl opacity-40",
-            "bg-gradient-to-r from-emerald-400/30 via-emerald-300/20 to-emerald-500/30",
-          )}
+          className="pointer-events-none absolute inset-0 -z-10
+          bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-800/70"
         />
 
-        {/* Conteúdo em “cartões” sobre o fundo */}
+        {/* glow suave no topo */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -top-32 left-1/2 h-[26rem] w-[60rem]
+          -translate-x-1/2 -z-10 blur-3xl opacity-35
+          bg-gradient-to-r from-emerald-500/25 via-emerald-300/15 to-emerald-400/25"
+        />
+
+        {/* vinheta leve */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 -z-10
+          bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.05)_0%,rgba(0,0,0,0.10)_60%,rgba(0,0,0,0.20)_100%)]"
+        />
+
         <div className="space-y-4 animate-fade-in p-4 md:p-6">
           {/* Header */}
           <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
@@ -406,10 +365,9 @@ function BIV2Content() {
             </div>
           </div>
 
-          {/* KPIs (clicáveis, com degradê) */}
+          {/* KPIs */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
             <KpiCard
-              id="recebido"
               title="Receita (Recebido)"
               value={fmtBRL(kpis.recebido ?? 0)}
               delta={deltaRecebido}
@@ -417,10 +375,8 @@ function BIV2Content() {
               hint="Clique para filtrar"
               active={activeKpi === "recebido"}
               onClick={() => onKpiClick("recebido")}
-              variant="gradient"
             />
             <KpiCard
-              id="producao"
               title="Produção"
               value={fmtBRL(kpis.produzido ?? 0)}
               delta={deltaProduzido}
@@ -428,10 +384,8 @@ function BIV2Content() {
               hint="Clique para filtrar"
               active={activeKpi === "producao"}
               onClick={() => onKpiClick("producao")}
-              variant="gradient"
             />
             <KpiCard
-              id="faturado"
               title="Faturado"
               value={fmtBRL(kpis.faturado ?? 0)}
               delta={deltaFaturado}
@@ -439,10 +393,8 @@ function BIV2Content() {
               hint="Clique para filtrar"
               active={activeKpi === "faturado"}
               onClick={() => onKpiClick("faturado")}
-              variant="gradient"
             />
             <KpiCard
-              id="entradas"
               title="Entradas (Caixa)"
               value={fmtBRL(kpis.entradas ?? 0)}
               delta={deltaEntradas}
@@ -450,10 +402,8 @@ function BIV2Content() {
               hint="Clique para filtrar"
               active={activeKpi === "entradas"}
               onClick={() => onKpiClick("entradas")}
-              variant="gradient"
             />
             <KpiCard
-              id="saidas"
               title="Saídas (Caixa)"
               value={fmtBRL(kpis.saidas ?? 0)}
               delta={deltaSaidas}
@@ -461,10 +411,8 @@ function BIV2Content() {
               hint="Clique para filtrar"
               active={activeKpi === "saidas"}
               onClick={() => onKpiClick("saidas")}
-              variant="gradient"
             />
             <KpiCard
-              id="resultado"
               title="Resultado"
               value={fmtBRL(resultadoAtual)}
               delta={deltaResultado}
@@ -472,7 +420,6 @@ function BIV2Content() {
               hint="Clique para filtrar"
               active={activeKpi === "resultado"}
               onClick={() => onKpiClick("resultado")}
-              variant="gradient"
             />
           </div>
 
