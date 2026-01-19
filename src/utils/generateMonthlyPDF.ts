@@ -5,12 +5,96 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 const formatMoney = (value: number): string => {
-  return `R$ ${value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `R$ ${value.toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 };
 
 const formatPercent = (value: number): string => {
   return `${value.toFixed(1)}%`;
 };
+
+/**
+ * Cabeçalho institucional padrão (todas as páginas)
+ * - Esquerda: IMEC + SallusFlow
+ * - Centro: título + competência
+ * - Direita: data de geração + versão
+ *
+ * Retorna o Y inicial recomendado para começar o conteúdo.
+ */
+function addHeader(
+  doc: jsPDF,
+  pageWidth: number,
+  margin: number,
+  competenciaTitle: string,
+  generatedAt: string,
+): number {
+  const headerTop = margin;
+  const headerHeight = 18;
+
+  // Texto base
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139); // slate-500
+
+  // ESQUERDA
+  doc.setFont("helvetica", "bold");
+  doc.text("IMEC Saúde", margin, headerTop);
+  doc.setFont("helvetica", "normal");
+  doc.text("Sistema SallusFlow — Gestão Financeira", margin, headerTop + 5);
+
+  // CENTRO
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(30, 41, 59); // slate-800
+  doc.text("RELATÓRIO EXECUTIVO FINANCEIRO", pageWidth / 2, headerTop, {
+    align: "center",
+  });
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Competência: ${competenciaTitle}`, pageWidth / 2, headerTop + 5, {
+    align: "center",
+  });
+
+  // DIREITA
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Gerado em: ${generatedAt}`, pageWidth - margin, headerTop, {
+    align: "right",
+  });
+  doc.text("Versão: Automática", pageWidth - margin, headerTop + 5, {
+    align: "right",
+  });
+
+  // Linha separadora
+  doc.setDrawColor(226, 232, 240); // slate-200
+  doc.line(margin, headerTop + headerHeight, pageWidth - margin, headerTop + headerHeight);
+
+  // Conteúdo começa abaixo do cabeçalho
+  return headerTop + headerHeight + 10;
+}
+
+// Função auxiliar para adicionar rodapé institucional
+function addFooter(doc: jsPDF, pageWidth: number, pageHeight: number, margin: number, generatedAt: string): void {
+  doc.setTextColor(148, 163, 184); // slate-400
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "normal");
+
+  // Linha separadora do rodapé
+  doc.setDrawColor(226, 232, 240);
+  doc.line(margin, pageHeight - 25, pageWidth - margin, pageHeight - 25);
+
+  // Texto institucional
+  doc.text("Relatório gerado automaticamente pelo Sistema de Gestão Financeira IMEC.", pageWidth / 2, pageHeight - 18, {
+    align: "center",
+  });
+  doc.text(`Dados consolidados até ${generatedAt}.`, pageWidth / 2, pageHeight - 13, {
+    align: "center",
+  });
+  doc.text("Uso exclusivo para fins gerenciais.", pageWidth / 2, pageHeight - 8, {
+    align: "center",
+  });
+}
 
 export function generateMonthlyPDF(data: MonthlyReportData): void {
   const doc = new jsPDF("p", "mm", "a4");
@@ -18,299 +102,203 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 20;
   const contentWidth = pageWidth - 2 * margin;
-  const generatedAt = format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
-  
-  // Verifica se o score está em formação
-  const isScoreInFormation = data.score.globalScore === 0 || 
-    (data.production.totalValue === 0 && data.billing.totalBilled === 0);
-  
-  let yPos = margin;
-  
-  // ===== CAPA =====
-  // Fundo institucional
-  doc.setFillColor(30, 41, 59); // slate-800
-  doc.rect(0, 0, pageWidth, pageHeight, "F");
-  
-  // Header institucional
-  doc.setTextColor(148, 163, 184); // slate-400
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
-  doc.text("SallusFlow — Gestão Financeira Inteligente", margin, margin);
-  
-  // Título principal
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(28);
-  doc.setFont("helvetica", "bold");
-  doc.text("RELATÓRIO EXECUTIVO", pageWidth / 2, 80, { align: "center" });
-  
+
+  const generatedAtShort = format(new Date(), "dd/MM/yyyy 'às' HH:mm", {
+    locale: ptBR,
+  });
+
+  // Data de geração que aparece no cabeçalho (padronizada)
+  const generatedAtLong = format(new Date(data.generatedAt), "dd/MM/yyyy 'às' HH:mm", {
+    locale: ptBR,
+  });
+
   // Competência
-  doc.setFontSize(22);
   const competenciaTitle = data.competenciaFormatted.charAt(0).toUpperCase() + data.competenciaFormatted.slice(1);
-  doc.text(competenciaTitle, pageWidth / 2, 100, { align: "center" });
-  
-  // Score Badge - Com tratamento para "Em Formação"
-  if (isScoreInFormation) {
-    // Score em formação - cor neutra (azul/cinza)
-    doc.setFillColor(100, 116, 139); // slate-500
-    doc.roundedRect(pageWidth / 2 - 50, 130, 100, 50, 5, 5, "F");
-    
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text("SCORE EM FORMAÇÃO", pageWidth / 2, 152, { align: "center" });
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.text("Base de dados ainda em consolidação", pageWidth / 2, 165, { align: "center" });
-  } else {
-    const scoreColor = data.score.globalScore >= 70 ? [34, 197, 94] : data.score.globalScore >= 55 ? [250, 204, 21] : [239, 68, 68];
-    doc.setFillColor(scoreColor[0], scoreColor[1], scoreColor[2]);
-    doc.roundedRect(pageWidth / 2 - 40, 130, 80, 45, 5, 5, "F");
-    
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(28);
-    doc.setFont("helvetica", "bold");
-    doc.text(`${data.score.globalScore}`, pageWidth / 2, 155, { align: "center" });
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text("SCORE FINANCEIRO", pageWidth / 2, 168, { align: "center" });
-  }
-  
-  // Data de geração
-  doc.setTextColor(148, 163, 184); // slate-400
-  doc.setFontSize(10);
-  doc.text(
-    `Gerado em ${format(new Date(data.generatedAt), "dd 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR })}`,
-    pageWidth / 2,
-    pageHeight - 30,
-    { align: "center" }
-  );
-  
-  // ===== PÁGINA 2: RESUMO EXECUTIVO =====
-  doc.addPage();
-  doc.setFillColor(255, 255, 255);
-  doc.rect(0, 0, pageWidth, pageHeight, "F");
-  
-  yPos = margin;
-  
-  // Header institucional
-  doc.setTextColor(100, 116, 139);
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  doc.text("RELATÓRIO EXECUTIVO – " + competenciaTitle.toUpperCase(), margin, yPos);
-  doc.text("SallusFlow", pageWidth - margin, yPos, { align: "right" });
-  yPos += 10;
-  
-  // Título da seção
+
+  // Score em formação
+  const isScoreInFormation =
+    data.score.globalScore === 0 || (data.production.totalValue === 0 && data.billing.totalBilled === 0);
+
+  // =============================================================================
+  // PÁGINA 1: RESUMO EXECUTIVO (SEM CAPA)
+  // =============================================================================
+  let yPos = addHeader(doc, pageWidth, margin, competenciaTitle, generatedAtLong);
+
+  // Título seção
   doc.setTextColor(30, 41, 59);
   doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
   doc.text("Resumo Executivo", margin, yPos);
   yPos += 10;
-  
-  // Linha separadora
+
+  // Linha fina
   doc.setDrawColor(226, 232, 240);
   doc.line(margin, yPos, pageWidth - margin, yPos);
-  yPos += 15;
-  
-  // Score Section no resumo
-  if (isScoreInFormation) {
-    doc.setFillColor(241, 245, 249); // slate-100
-    doc.roundedRect(margin, yPos, contentWidth, 35, 3, 3, "F");
-    
-    doc.setTextColor(71, 85, 105); // slate-600
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.text("SCORE FINANCEIRO: Em Formação", margin + 10, yPos + 12);
-    
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.text("Base de dados ainda em consolidação.", margin + 10, yPos + 22);
-    doc.text("O score será calculado automaticamente conforme o histórico do período for consolidado.", margin + 10, yPos + 30);
-    
-    yPos += 45;
-  } else {
-    yPos += 5;
-  }
-  
-  // KPIs principais - Indicadores Principais
+  yPos += 12;
+
+  // Bloco: Situação geral (compacto e executivo)
+  doc.setFillColor(248, 250, 252); // slate-50
+  doc.roundedRect(margin, yPos, contentWidth, 26, 3, 3, "F");
+
+  doc.setTextColor(30, 41, 59);
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "bold");
+  doc.text("Situação Financeira do Período", margin + 8, yPos + 10);
+
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(71, 85, 105); // slate-600
+
+  const scoreLine = isScoreInFormation
+    ? "Score financeiro: Em formação • Confiabilidade: Parcial • Tendência inicial: Em consolidação"
+    : `Score financeiro: ${data.score.globalScore} (${data.score.globalLabel}) • Confiabilidade: Alta • Tendência: Monitorar`;
+
+  doc.text(scoreLine, margin + 8, yPos + 18);
+
+  yPos += 36;
+
+  // KPIs principais (4 cards)
   doc.setTextColor(30, 41, 59);
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
   doc.text("Indicadores Principais", margin, yPos);
   yPos += 10;
-  
+
   const kpiBoxWidth = (contentWidth - 10) / 2;
-  const kpiBoxHeight = 35;
-  
-  // Saldo em Caixa
+  const kpiBoxHeight = 28;
+
+  // 1) Saldo em Caixa
   doc.setFillColor(240, 253, 244); // green-50
   doc.roundedRect(margin, yPos, kpiBoxWidth, kpiBoxHeight, 3, 3, "F");
-  doc.setTextColor(22, 101, 52); // green-800
+  doc.setTextColor(22, 101, 52);
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
-  doc.text("SALDO EM CAIXA", margin + 5, yPos + 10);
-  doc.setFontSize(14);
+  doc.text("SALDO EM CAIXA", margin + 6, yPos + 9);
+  doc.setFontSize(13);
   doc.setFont("helvetica", "bold");
-  doc.text(formatMoney(data.cash.currentBalance), margin + 5, yPos + 22);
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  doc.text("Posição atual do caixa", margin + 5, yPos + 30);
-  
-  // Faturamento do Período
+  doc.text(formatMoney(data.cash.currentBalance), margin + 6, yPos + 20);
+
+  // 2) Faturamento do Período
   doc.setFillColor(239, 246, 255); // blue-50
   doc.roundedRect(margin + kpiBoxWidth + 10, yPos, kpiBoxWidth, kpiBoxHeight, 3, 3, "F");
-  doc.setTextColor(30, 64, 175); // blue-800
+  doc.setTextColor(30, 64, 175);
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
-  doc.text("FATURAMENTO DO PERÍODO", margin + kpiBoxWidth + 15, yPos + 10);
-  doc.setFontSize(14);
+  doc.text("FATURAMENTO DO PERÍODO", margin + kpiBoxWidth + 16, yPos + 9);
+  doc.setFontSize(13);
   doc.setFont("helvetica", "bold");
-  doc.text(formatMoney(data.billing.totalBilled), margin + kpiBoxWidth + 15, yPos + 22);
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  doc.text("Total faturado no período", margin + kpiBoxWidth + 15, yPos + 30);
-  
+  doc.text(formatMoney(data.billing.totalBilled), margin + kpiBoxWidth + 16, yPos + 20);
+
   yPos += kpiBoxHeight + 10;
-  
-  // Produção Realizada
+
+  // 3) Produção Realizada
   doc.setFillColor(245, 243, 255); // violet-50
   doc.roundedRect(margin, yPos, kpiBoxWidth, kpiBoxHeight, 3, 3, "F");
-  doc.setTextColor(91, 33, 182); // violet-700
+  doc.setTextColor(91, 33, 182);
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
-  doc.text("PRODUÇÃO REALIZADA", margin + 5, yPos + 10);
-  doc.setFontSize(14);
+  doc.text("PRODUÇÃO REALIZADA", margin + 6, yPos + 9);
+  doc.setFontSize(13);
   doc.setFont("helvetica", "bold");
-  doc.text(formatMoney(data.production.totalValue), margin + 5, yPos + 22);
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  doc.text(`${data.production.totalQuantity} procedimentos realizados`, margin + 5, yPos + 30);
-  
-  // Valores em Aberto
+  doc.text(formatMoney(data.production.totalValue), margin + 6, yPos + 20);
+
+  // 4) Valores em Aberto
   doc.setFillColor(255, 247, 237); // orange-50
   doc.roundedRect(margin + kpiBoxWidth + 10, yPos, kpiBoxWidth, kpiBoxHeight, 3, 3, "F");
-  doc.setTextColor(154, 52, 18); // orange-800
+  doc.setTextColor(154, 52, 18);
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
-  doc.text("VALORES EM ABERTO", margin + kpiBoxWidth + 15, yPos + 10);
-  doc.setFontSize(14);
+  doc.text("VALORES EM ABERTO", margin + kpiBoxWidth + 16, yPos + 9);
+  doc.setFontSize(13);
   doc.setFont("helvetica", "bold");
-  doc.text(formatMoney(data.aging.totalOpen), margin + kpiBoxWidth + 15, yPos + 22);
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  doc.text("Títulos a receber", margin + kpiBoxWidth + 15, yPos + 30);
-  
-  yPos += kpiBoxHeight + 20;
-  
+  doc.text(formatMoney(data.aging.totalOpen), margin + kpiBoxWidth + 16, yPos + 20);
+
+  yPos += kpiBoxHeight + 16;
+
   // Funil de Conversão
   doc.setTextColor(30, 41, 59);
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
   doc.text("Funil de Conversão", margin, yPos);
-  yPos += 10;
-  
+  yPos += 8;
+
   autoTable(doc, {
     startY: yPos,
     head: [["Etapa", "Valor", "Taxa"]],
     body: [
       ["Produção", formatMoney(data.production.totalValue), "—"],
-      ["Faturamento", formatMoney(data.billing.totalBilled), formatPercent(data.operationalKPIs.productionToBillingConversion)],
-      ["Recebimento", formatMoney(data.billing.totalReceived), formatPercent(data.operationalKPIs.billingToReceiptConversion)],
+      [
+        "Faturamento",
+        formatMoney(data.billing.totalBilled),
+        formatPercent(data.operationalKPIs.productionToBillingConversion),
+      ],
+      [
+        "Recebimento",
+        formatMoney(data.billing.totalReceived),
+        formatPercent(data.operationalKPIs.billingToReceiptConversion),
+      ],
     ],
     margin: { left: margin, right: margin },
     styles: { fontSize: 9, cellPadding: 4 },
     headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255] },
     alternateRowStyles: { fillColor: [248, 250, 252] },
   });
-  
-  yPos = (doc as any).lastAutoTable.finalY + 5;
-  
-  // Texto explicativo do funil
-  doc.setTextColor(100, 116, 139);
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "italic");
-  doc.text(
-    "Os percentuais representam a relação entre produção, faturamento e valores efetivamente recebidos no período.",
-    margin,
-    yPos
-  );
-  yPos += 4;
-  doc.text(
-    "Valores superiores a 100% indicam recebimentos referentes a períodos anteriores.",
-    margin,
-    yPos
-  );
-  
-  yPos += 15;
-  
-  // Bloco de Alertas
+
+  yPos = (doc as any).lastAutoTable.finalY + 10;
+
+  // Alertas (mais seco e executivo)
   doc.setTextColor(30, 41, 59);
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
   doc.text("Alertas", margin, yPos);
-  yPos += 10;
-  
-  const hasCriticalAlerts = data.alerts.some(
-    alert => alert.type === "critical" && data.aging.criticalPercentage > 0
-  );
-  
+  yPos += 8;
+
+  const hasCriticalAlerts = data.alerts.some((alert) => alert.type === "critical" && data.aging.criticalPercentage > 0);
+
   if (hasCriticalAlerts) {
-    // Alerta ativo
     doc.setFillColor(254, 243, 199); // amber-100
-    doc.roundedRect(margin, yPos, contentWidth, 24, 3, 3, "F");
-    
-    doc.setTextColor(146, 64, 14); // amber-800
+    doc.roundedRect(margin, yPos, contentWidth, 20, 3, 3, "F");
+
+    doc.setTextColor(146, 64, 14);
     doc.setFontSize(10);
     doc.setFont("helvetica", "bold");
-    doc.text("Atenção: existem valores relevantes pendentes de regularização.", margin + 10, yPos + 10);
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.text("Recomenda-se acompanhamento para evitar impactos futuros.", margin + 10, yPos + 19);
-    
-    yPos += 30;
+    doc.text("Risco identificado: pendências relevantes a regularizar.", margin + 8, yPos + 12);
   } else {
-    // Sem alertas
     doc.setFillColor(220, 252, 231); // green-100
     doc.roundedRect(margin, yPos, contentWidth, 18, 3, 3, "F");
-    
-    doc.setTextColor(22, 101, 52); // green-800
+
+    doc.setTextColor(22, 101, 52);
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.text("Nenhum risco relevante identificado no período analisado.", margin + 10, yPos + 12);
-    
-    yPos += 25;
+    doc.text("Nenhum risco financeiro relevante identificado no período.", margin + 8, yPos + 12);
   }
-  
-  // Rodapé da página
-  addFooter(doc, pageWidth, pageHeight, margin, generatedAt);
-  
-  // ===== PÁGINA 3: PRODUÇÃO & FATURAMENTO =====
+
+  // Rodapé
+  addFooter(doc, pageWidth, pageHeight, margin, generatedAtShort);
+
+  // =============================================================================
+  // PÁGINA 2: PRODUÇÃO & FATURAMENTO
+  // =============================================================================
   doc.addPage();
-  yPos = margin;
-  
-  // Header institucional
-  doc.setTextColor(100, 116, 139);
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  doc.text("RELATÓRIO EXECUTIVO – " + competenciaTitle.toUpperCase(), margin, yPos);
-  doc.text("IMEC", pageWidth - margin, yPos, { align: "right" });
-  yPos += 10;
-  
+  yPos = addHeader(doc, pageWidth, margin, competenciaTitle, generatedAtLong);
+
   doc.setTextColor(30, 41, 59);
   doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
   doc.text("Produção & Faturamento", margin, yPos);
   yPos += 10;
-  
+
   doc.setDrawColor(226, 232, 240);
   doc.line(margin, yPos, pageWidth - margin, yPos);
-  yPos += 15;
-  
+  yPos += 12;
+
   // Tabela de Produção
+  doc.setTextColor(30, 41, 59);
   doc.setFontSize(12);
+  doc.setFont("helvetica", "bold");
   doc.text("Produção", margin, yPos);
-  yPos += 8;
-  
+  yPos += 6;
+
   autoTable(doc, {
     startY: yPos,
     head: [["Métrica", "Quantidade", "Valor"]],
@@ -325,15 +313,16 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
     headStyles: { fillColor: [109, 40, 217], textColor: [255, 255, 255] },
     alternateRowStyles: { fillColor: [248, 250, 252] },
   });
-  
-  yPos = (doc as any).lastAutoTable.finalY + 15;
-  
+
+  yPos = (doc as any).lastAutoTable.finalY + 12;
+
   // Tabela de Faturamento
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
+  doc.setTextColor(30, 41, 59);
   doc.text("Faturamento a Receber", margin, yPos);
-  yPos += 8;
-  
+  yPos += 6;
+
   autoTable(doc, {
     startY: yPos,
     head: [["Métrica", "Valor", "% do Total"]],
@@ -341,73 +330,90 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
       ["Faturado", formatMoney(data.billing.totalBilled), "100%"],
       ["Recebido", formatMoney(data.billing.totalReceived), formatPercent(data.billing.receiptRate)],
       ["Glosado", formatMoney(data.billing.totalGlossed), formatPercent(data.billing.glossRate)],
-      ["Em Recurso", formatMoney(data.billing.totalInAppeal), "-"],
-      ["Em Aberto", formatMoney(data.billing.totalOpen), formatPercent(data.billing.totalBilled > 0 ? (data.billing.totalOpen / data.billing.totalBilled) * 100 : 0)],
+      ["Em Recurso", formatMoney(data.billing.totalInAppeal), "—"],
+      [
+        "Em Aberto",
+        formatMoney(data.billing.totalOpen),
+        formatPercent(data.billing.totalBilled > 0 ? (data.billing.totalOpen / data.billing.totalBilled) * 100 : 0),
+      ],
     ],
     margin: { left: margin, right: margin },
     styles: { fontSize: 9, cellPadding: 4 },
     headStyles: { fillColor: [37, 99, 235], textColor: [255, 255, 255] },
     alternateRowStyles: { fillColor: [248, 250, 252] },
   });
-  
-  yPos = (doc as any).lastAutoTable.finalY + 15;
-  
+
+  yPos = (doc as any).lastAutoTable.finalY + 12;
+
   // Aging
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
+  doc.setTextColor(30, 41, 59);
   doc.text("Aging de Contas a Receber", margin, yPos);
-  yPos += 8;
-  
+  yPos += 6;
+
   autoTable(doc, {
     startY: yPos,
     head: [["Faixa", "Valor", "% do Total"]],
     body: [
-      ["0-30 dias", formatMoney(data.aging.bucket0to30), formatPercent(data.aging.totalOpen > 0 ? (data.aging.bucket0to30 / data.aging.totalOpen) * 100 : 0)],
-      ["31-60 dias", formatMoney(data.aging.bucket31to60), formatPercent(data.aging.totalOpen > 0 ? (data.aging.bucket31to60 / data.aging.totalOpen) * 100 : 0)],
-      ["61-90 dias", formatMoney(data.aging.bucket61to90), formatPercent(data.aging.totalOpen > 0 ? (data.aging.bucket61to90 / data.aging.totalOpen) * 100 : 0)],
-      [">90 dias", formatMoney(data.aging.bucketOver90), formatPercent(data.aging.totalOpen > 0 ? (data.aging.bucketOver90 / data.aging.totalOpen) * 100 : 0)],
+      [
+        "0–30 dias",
+        formatMoney(data.aging.bucket0to30),
+        formatPercent(data.aging.totalOpen > 0 ? (data.aging.bucket0to30 / data.aging.totalOpen) * 100 : 0),
+      ],
+      [
+        "31–60 dias",
+        formatMoney(data.aging.bucket31to60),
+        formatPercent(data.aging.totalOpen > 0 ? (data.aging.bucket31to60 / data.aging.totalOpen) * 100 : 0),
+      ],
+      [
+        "61–90 dias",
+        formatMoney(data.aging.bucket61to90),
+        formatPercent(data.aging.totalOpen > 0 ? (data.aging.bucket61to90 / data.aging.totalOpen) * 100 : 0),
+      ],
+      [
+        "> 90 dias",
+        formatMoney(data.aging.bucketOver90),
+        formatPercent(data.aging.totalOpen > 0 ? (data.aging.bucketOver90 / data.aging.totalOpen) * 100 : 0),
+      ],
     ],
     margin: { left: margin, right: margin },
     styles: { fontSize: 9, cellPadding: 4 },
     headStyles: { fillColor: [234, 88, 12], textColor: [255, 255, 255] },
     alternateRowStyles: { fillColor: [248, 250, 252] },
-    didParseCell: (data) => {
-      if (data.section === "body" && data.row.index >= 2) {
-        data.cell.styles.fillColor = [254, 226, 226];
+    didParseCell: (hook) => {
+      // realce leve em faixas mais antigas
+      if (hook.section === "body" && (hook.row.index === 2 || hook.row.index === 3)) {
+        hook.cell.styles.fillColor = [254, 226, 226]; // red-100
       }
-    }
+    },
   });
-  
-  // Rodapé da página
-  addFooter(doc, pageWidth, pageHeight, margin, generatedAt);
-  
-  // ===== PÁGINA 4: CAIXA & SCORE =====
+
+  addFooter(doc, pageWidth, pageHeight, margin, generatedAtShort);
+
+  // =============================================================================
+  // PÁGINA 3: CAIXA & SCORE
+  // =============================================================================
   doc.addPage();
-  yPos = margin;
-  
-  // Header institucional
-  doc.setTextColor(100, 116, 139);
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  doc.text("RELATÓRIO EXECUTIVO – " + competenciaTitle.toUpperCase(), margin, yPos);
-  doc.text("IMEC", pageWidth - margin, yPos, { align: "right" });
-  yPos += 10;
-  
+  yPos = addHeader(doc, pageWidth, margin, competenciaTitle, generatedAtLong);
+
   doc.setTextColor(30, 41, 59);
   doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
   doc.text("Caixa & Score Financeiro", margin, yPos);
   yPos += 10;
-  
+
   doc.setDrawColor(226, 232, 240);
   doc.line(margin, yPos, pageWidth - margin, yPos);
-  yPos += 15;
-  
+  yPos += 12;
+
   // Caixa
   doc.setFontSize(12);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(30, 41, 59);
   doc.text("Demonstrativo de Caixa", margin, yPos);
-  yPos += 8;
-  
+  yPos += 6;
+
   autoTable(doc, {
     startY: yPos,
     head: [["Descrição", "Valor"]],
@@ -422,73 +428,61 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
     styles: { fontSize: 9, cellPadding: 4 },
     headStyles: { fillColor: [22, 163, 74], textColor: [255, 255, 255] },
     alternateRowStyles: { fillColor: [248, 250, 252] },
-    didParseCell: (data) => {
-      if (data.section === "body" && data.row.index === 4) {
-        data.cell.styles.fontStyle = "bold";
-        data.cell.styles.fillColor = [220, 252, 231];
+    didParseCell: (hook) => {
+      if (hook.section === "body" && hook.row.index === 4) {
+        hook.cell.styles.fontStyle = "bold";
+        hook.cell.styles.fillColor = [220, 252, 231];
       }
-    }
+    },
   });
-  
-  yPos = (doc as any).lastAutoTable.finalY + 20;
-  
-  // Score Financeiro
+
+  yPos = (doc as any).lastAutoTable.finalY + 14;
+
+  // Score Financeiro (compacto)
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
+  doc.setTextColor(30, 41, 59);
   doc.text("Score Financeiro", margin, yPos);
-  yPos += 15;
-  
-  // Score visual
-  const scoreBoxWidth = 100;
-  const scoreBoxHeight = isScoreInFormation ? 45 : 50;
-  const scoreX = pageWidth / 2 - scoreBoxWidth / 2;
-  
+  yPos += 8;
+
+  const scoreBoxWidth = contentWidth;
+  const scoreBoxHeight = 22;
+
+  doc.setFillColor(248, 250, 252); // slate-50
+  doc.roundedRect(margin, yPos, scoreBoxWidth, scoreBoxHeight, 3, 3, "F");
+
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(30, 41, 59);
+
   if (isScoreInFormation) {
-    // Score em formação - cor neutra
-    doc.setFillColor(241, 245, 249); // slate-100
-    doc.roundedRect(scoreX, yPos, scoreBoxWidth, scoreBoxHeight, 5, 5, "F");
-    
-    doc.setTextColor(71, 85, 105); // slate-600
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text("Score em Formação", pageWidth / 2, yPos + 18, { align: "center" });
-    doc.setFontSize(8);
+    doc.text("Status: Score em formação", margin + 8, yPos + 10);
     doc.setFont("helvetica", "normal");
-    doc.text("Base de dados ainda em consolidação.", pageWidth / 2, yPos + 30, { align: "center" });
-    doc.text("O score será calculado automaticamente", pageWidth / 2, yPos + 38, { align: "center" });
+    doc.setFontSize(9);
+    doc.setTextColor(71, 85, 105);
+    doc.text("Indicador será consolidado automaticamente conforme o histórico for completado.", margin + 8, yPos + 17);
   } else {
-    const bgColor = data.score.globalScore >= 70 ? [220, 252, 231] : data.score.globalScore >= 55 ? [254, 249, 195] : [254, 226, 226];
-    const fgColor = data.score.globalScore >= 70 ? [22, 101, 52] : data.score.globalScore >= 55 ? [133, 77, 14] : [127, 29, 29];
-    
-    doc.setFillColor(bgColor[0], bgColor[1], bgColor[2]);
-    doc.roundedRect(scoreX, yPos, scoreBoxWidth, scoreBoxHeight, 5, 5, "F");
-    
-    doc.setTextColor(fgColor[0], fgColor[1], fgColor[2]);
-    doc.setFontSize(28);
-    doc.setFont("helvetica", "bold");
-    doc.text(`${data.score.globalScore}`, pageWidth / 2, yPos + 28, { align: "center" });
-    doc.setFontSize(10);
-    doc.text(data.score.globalLabel.toUpperCase(), pageWidth / 2, yPos + 42, { align: "center" });
+    doc.text(`Score Global: ${data.score.globalScore} — ${data.score.globalLabel}`, margin + 8, yPos + 10);
   }
-  
-  yPos += scoreBoxHeight + 15;
-  
-  // Unidades (apenas se não estiver em formação)
+
+  yPos += scoreBoxHeight + 10;
+
+  // Score por unidade (apenas se existir e não estiver em formação)
   if (!isScoreInFormation && data.score.unitScores.length > 0) {
     doc.setTextColor(30, 41, 59);
     doc.setFontSize(10);
     doc.setFont("helvetica", "bold");
     doc.text("Score por Unidade", margin, yPos);
-    yPos += 8;
-    
+    yPos += 6;
+
     autoTable(doc, {
       startY: yPos,
       head: [["Unidade", "Score", "Status", "Peso"]],
-      body: data.score.unitScores.map(u => [
+      body: data.score.unitScores.map((u) => [
         u.unitName,
         u.score.toString(),
         u.status.charAt(0).toUpperCase() + u.status.slice(1),
-        formatPercent(u.weight)
+        formatPercent(u.weight),
       ]),
       margin: { left: margin, right: margin },
       styles: { fontSize: 9, cellPadding: 4 },
@@ -496,104 +490,85 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
       alternateRowStyles: { fillColor: [248, 250, 252] },
     });
   }
-  
-  // Rodapé da página
-  addFooter(doc, pageWidth, pageHeight, margin, generatedAt);
-  
-  // ===== PÁGINA 5: PRÓXIMAS AÇÕES =====
+
+  addFooter(doc, pageWidth, pageHeight, margin, generatedAtShort);
+
+  // =============================================================================
+  // PÁGINA 4: PRÓXIMAS AÇÕES
+  // =============================================================================
   doc.addPage();
-  yPos = margin;
-  
-  // Header institucional
-  doc.setTextColor(100, 116, 139);
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  doc.text("RELATÓRIO EXECUTIVO – " + competenciaTitle.toUpperCase(), margin, yPos);
-  doc.text("IMEC", pageWidth - margin, yPos, { align: "right" });
-  yPos += 10;
-  
+  yPos = addHeader(doc, pageWidth, margin, competenciaTitle, generatedAtLong);
+
   doc.setTextColor(30, 41, 59);
   doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
   doc.text("Próximas Ações", margin, yPos);
   yPos += 10;
-  
+
   doc.setDrawColor(226, 232, 240);
   doc.line(margin, yPos, pageWidth - margin, yPos);
-  yPos += 15;
-  
+  yPos += 12;
+
   // Limitar a 3 ações objetivas
   const actionsToShow = data.nextActions.slice(0, 3);
-  
-  actionsToShow.forEach((action, index) => {
-    const priorityColor = action.priority === "high" ? [254, 243, 199] : action.priority === "medium" ? [254, 249, 195] : [219, 234, 254];
-    const priorityTextColor = action.priority === "high" ? [146, 64, 14] : action.priority === "medium" ? [133, 77, 14] : [30, 64, 175];
-    const priorityLabel = action.priority === "high" ? "ALTA" : action.priority === "medium" ? "MÉDIA" : "BAIXA";
-    
-    doc.setFillColor(priorityColor[0], priorityColor[1], priorityColor[2]);
-    doc.roundedRect(margin, yPos, contentWidth, 28, 3, 3, "F");
-    
-    // Número
-    doc.setTextColor(priorityTextColor[0], priorityTextColor[1], priorityTextColor[2]);
-    doc.setFontSize(16);
-    doc.setFont("helvetica", "bold");
-    doc.text(`${index + 1}`, margin + 8, yPos + 16);
-    
-    // Ação
-    doc.setTextColor(30, 41, 59);
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.text(action.action, margin + 25, yPos + 10);
-    
-    doc.setFontSize(9);
+
+  if (actionsToShow.length === 0) {
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(margin, yPos, contentWidth, 18, 3, 3, "F");
+    doc.setTextColor(71, 85, 105);
+    doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.text(`Impacto estimado: ${action.impact}`, margin + 25, yPos + 20);
-    
-    // Badge prioridade
-    doc.setFillColor(priorityTextColor[0], priorityTextColor[1], priorityTextColor[2]);
-    doc.roundedRect(pageWidth - margin - 35, yPos + 8, 30, 12, 2, 2, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(7);
-    doc.text(priorityLabel, pageWidth - margin - 20, yPos + 16, { align: "center" });
-    
-    yPos += 35;
-  });
-  
-  // Rodapé institucional obrigatório
-  addFooter(doc, pageWidth, pageHeight, margin, generatedAt);
-  
+    doc.text("Nenhuma ação recomendada disponível para o período.", margin + 8, yPos + 12);
+    yPos += 24;
+  } else {
+    actionsToShow.forEach((action, index) => {
+      // Mais sóbrio: menos cor, foco na informação
+      const boxFill = [248, 250, 252] as [number, number, number];
+      const badgeFill =
+        action.priority === "high"
+          ? ([239, 68, 68] as [number, number, number])
+          : action.priority === "medium"
+            ? ([234, 179, 8] as [number, number, number])
+            : ([37, 99, 235] as [number, number, number]);
+
+      const priorityLabel = action.priority === "high" ? "ALTA" : action.priority === "medium" ? "MÉDIA" : "BAIXA";
+
+      doc.setFillColor(boxFill[0], boxFill[1], boxFill[2]);
+      doc.roundedRect(margin, yPos, contentWidth, 26, 3, 3, "F");
+
+      // Número
+      doc.setTextColor(30, 41, 59);
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "bold");
+      doc.text(`${index + 1}.`, margin + 8, yPos + 16);
+
+      // Ação
+      doc.setFontSize(11);
+      doc.text(action.action, margin + 18, yPos + 11);
+
+      // Impacto
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(71, 85, 105);
+      doc.text(`Impacto estimado: ${action.impact}`, margin + 18, yPos + 20);
+
+      // Badge prioridade
+      doc.setFillColor(badgeFill[0], badgeFill[1], badgeFill[2]);
+      doc.roundedRect(pageWidth - margin - 34, yPos + 7, 30, 10, 2, 2, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(7);
+      doc.setFont("helvetica", "bold");
+      doc.text(priorityLabel, pageWidth - margin - 19, yPos + 14, { align: "center" });
+
+      yPos += 32;
+    });
+  }
+
+  addFooter(doc, pageWidth, pageHeight, margin, generatedAtShort);
+
+  // =============================================================================
   // Salvar PDF
+  // =============================================================================
   const fileName = `relatorio-executivo-${data.competencia}.pdf`;
   doc.save(fileName);
-}
-
-// Função auxiliar para adicionar rodapé institucional
-function addFooter(doc: jsPDF, pageWidth: number, pageHeight: number, margin: number, generatedAt: string): void {
-  doc.setTextColor(148, 163, 184);
-  doc.setFontSize(7);
-  doc.setFont("helvetica", "normal");
-  
-  // Linha separadora do rodapé
-  doc.setDrawColor(226, 232, 240);
-  doc.line(margin, pageHeight - 25, pageWidth - margin, pageHeight - 25);
-  
-  // Texto institucional
-  doc.text(
-    "Relatório gerado automaticamente pelo Sistema de Gestão Financeira IMEC.",
-    pageWidth / 2,
-    pageHeight - 18,
-    { align: "center" }
-  );
-  doc.text(
-    `Dados consolidados até ${generatedAt}.`,
-    pageWidth / 2,
-    pageHeight - 13,
-    { align: "center" }
-  );
-  doc.text(
-    "Uso exclusivo para fins gerenciais.",
-    pageWidth / 2,
-    pageHeight - 8,
-    { align: "center" }
-  );
 }
