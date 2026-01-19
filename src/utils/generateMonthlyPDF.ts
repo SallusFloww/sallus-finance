@@ -9,14 +9,24 @@ const formatMoney = (value: number): string =>
 
 const formatPercent = (value: number): string => `${value.toFixed(1)}%`;
 
+// =====================
+// Helpers de robustez
+// =====================
+const safeDivPercent = (num: number, den: number): number => {
+  if (!Number.isFinite(num) || !Number.isFinite(den) || den <= 0) return 0;
+  return (num / den) * 100;
+};
+
+const abs = (n: number) => Math.abs(n);
+
+const numSafe = (v: number): number => (Number.isFinite(v) ? v : 0);
+
 /**
  * Zonas de segurança (evita qualquer sobreposição com rodapé)
- * - footerBlockHeight: onde desenhamos linha + 3 linhas de texto
- * - safeBottom: limite máximo do conteúdo (qualquer coisa deve parar antes disso)
  */
 function getLayoutGuards(pageHeight: number) {
-  const footerBlockHeight = 28; // altura "reservada" para rodapé
-  const safeBottom = pageHeight - footerBlockHeight - 6; // margem extra anti-colisão
+  const footerBlockHeight = 28; // linha + 3 linhas de texto
+  const safeBottom = pageHeight - footerBlockHeight - 6; // folga extra anti-colisão
   return { footerBlockHeight, safeBottom };
 }
 
@@ -89,9 +99,8 @@ function addFooter(doc: jsPDF, pageWidth: number, pageHeight: number, margin: nu
 }
 
 /**
- * Garante que um bloco (com altura "need") não invada o rodapé.
- * Se invadir, reposiciona o yPos para caber (sem criar página nova).
- * Isso resolve a sobreposição no fim da 1ª página.
+ * Garante que um bloco (altura "need") não invada o rodapé.
+ * Reposiciona o yPos para caber (sem criar página nova).
  */
 function clampToSafeBottom(yPos: number, need: number, safeBottom: number, minY: number) {
   if (yPos + need <= safeBottom) return yPos;
@@ -135,7 +144,7 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
   doc.line(margin, yPos, pageWidth - margin, yPos);
   yPos += 10;
 
-  // Situação geral (mais compacto e elegante)
+  // Situação geral
   const situationH = 22;
   doc.setFillColor(248, 250, 252);
   doc.roundedRect(margin, yPos, contentWidth, situationH, 3, 3, "F");
@@ -157,7 +166,7 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
 
   yPos += situationH + 10;
 
-  // Indicadores (harmônico: cards menores + mais alinhamento)
+  // Indicadores
   doc.setTextColor(30, 41, 59);
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
@@ -186,52 +195,65 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
     doc.text(value, x + 6, y + 18);
   };
 
-  drawKPI(margin, yPos, [240, 253, 244], [22, 101, 52], "SALDO EM CAIXA", formatMoney(data.cash.currentBalance));
+  drawKPI(
+    margin,
+    yPos,
+    [240, 253, 244],
+    [22, 101, 52],
+    "SALDO EM CAIXA",
+    formatMoney(numSafe(data.cash.currentBalance)),
+  );
   drawKPI(
     margin + cardW + 10,
     yPos,
     [239, 246, 255],
     [30, 64, 175],
     "FATURAMENTO DO PERÍODO",
-    formatMoney(data.billing.totalBilled),
+    formatMoney(numSafe(data.billing.totalBilled)),
   );
 
   yPos += cardH + 8;
 
-  drawKPI(margin, yPos, [245, 243, 255], [91, 33, 182], "PRODUÇÃO REALIZADA", formatMoney(data.production.totalValue));
+  drawKPI(
+    margin,
+    yPos,
+    [245, 243, 255],
+    [91, 33, 182],
+    "PRODUÇÃO REALIZADA",
+    formatMoney(numSafe(data.production.totalValue)),
+  );
   drawKPI(
     margin + cardW + 10,
     yPos,
     [255, 247, 237],
     [154, 52, 18],
     "VALORES EM ABERTO",
-    formatMoney(data.aging.totalOpen),
+    formatMoney(numSafe(data.aging.totalOpen)),
   );
 
   yPos += cardH + 12;
 
-  // Funil
+  // Funil (CORRIGIDO: calcula taxa com os valores exibidos)
   doc.setTextColor(30, 41, 59);
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
   doc.text("Funil de Conversão", margin, yPos);
   yPos += 6;
 
+  const vProduction = numSafe(data.production.totalValue);
+  const vBilling = numSafe(data.billing.totalBilled);
+  const vReceived = numSafe(data.billing.totalReceived);
+
+  const convProdToBill = safeDivPercent(vBilling, vProduction);
+  const convBillToRec = safeDivPercent(vReceived, vBilling);
+
   autoTable(doc, {
     startY: yPos,
     head: [["Etapa", "Valor", "Taxa"]],
     body: [
-      ["Produção", formatMoney(data.production.totalValue), "—"],
-      [
-        "Faturamento",
-        formatMoney(data.billing.totalBilled),
-        formatPercent(data.operationalKPIs.productionToBillingConversion),
-      ],
-      [
-        "Recebimento",
-        formatMoney(data.billing.totalReceived),
-        formatPercent(data.operationalKPIs.billingToReceiptConversion),
-      ],
+      ["Produção", formatMoney(vProduction), "—"],
+      ["Faturamento", formatMoney(vBilling), formatPercent(convProdToBill)],
+      ["Recebimento", formatMoney(vReceived), formatPercent(convBillToRec)],
     ],
     margin: { left: margin, right: margin },
     styles: { fontSize: 9, cellPadding: 4 },
@@ -241,9 +263,26 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
 
   yPos = (doc as any).lastAutoTable.finalY + 10;
 
-  // Alertas — CORREÇÃO DA SOBREPOSIÇÃO:
-  // 1) calcula altura do bloco
-  // 2) reposiciona para não invadir o rodapé
+  // Aviso forense: divergência produção faturada vs faturamento do período
+  const vProdBilled = numSafe(data.production.billedValue);
+  const diff = abs(vProdBilled - vBilling);
+
+  if (diff > 1) {
+    const warnH = 16;
+    yPos = clampToSafeBottom(yPos, warnH, safeBottom, yPos);
+
+    doc.setFillColor(254, 243, 199); // amber-100
+    doc.roundedRect(margin, yPos, contentWidth, warnH, 3, 3, "F");
+
+    doc.setTextColor(146, 64, 14);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.text("Atenção: bases diferentes entre Produção faturada e Faturamento do período.", margin + 8, yPos + 10);
+
+    yPos += warnH + 8;
+  }
+
+  // Alertas (com proteção anti-rodapé)
   doc.setTextColor(30, 41, 59);
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
@@ -251,9 +290,8 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
   yPos += 6;
 
   const hasCriticalAlerts = data.alerts.some((a) => a.type === "critical" && data.aging.criticalPercentage > 0);
-
   const alertH = hasCriticalAlerts ? 20 : 18;
-  // clamp: garante que o bloco de alerta não "desça" até o rodapé
+
   yPos = clampToSafeBottom(yPos, alertH, safeBottom, yPos);
 
   if (hasCriticalAlerts) {
@@ -299,10 +337,10 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
     startY: yPos,
     head: [["Métrica", "Quantidade", "Valor"]],
     body: [
-      ["Total Produzido", data.production.totalQuantity.toString(), formatMoney(data.production.totalValue)],
-      ["Faturado", data.production.billedQuantity.toString(), formatMoney(data.production.billedValue)],
-      ["Recebido", data.production.receivedQuantity.toString(), formatMoney(data.production.receivedValue)],
-      ["Em Aberto", data.production.openQuantity.toString(), formatMoney(data.production.openValue)],
+      ["Total Produzido", data.production.totalQuantity.toString(), formatMoney(numSafe(data.production.totalValue))],
+      ["Faturado", data.production.billedQuantity.toString(), formatMoney(numSafe(data.production.billedValue))],
+      ["Recebido", data.production.receivedQuantity.toString(), formatMoney(numSafe(data.production.receivedValue))],
+      ["Em Aberto", data.production.openQuantity.toString(), formatMoney(numSafe(data.production.openValue))],
     ],
     margin: { left: margin, right: margin },
     styles: { fontSize: 9, cellPadding: 4 },
@@ -322,14 +360,30 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
     startY: yPos,
     head: [["Métrica", "Valor", "% do Total"]],
     body: [
-      ["Faturado", formatMoney(data.billing.totalBilled), "100%"],
-      ["Recebido", formatMoney(data.billing.totalReceived), formatPercent(data.billing.receiptRate)],
-      ["Glosado", formatMoney(data.billing.totalGlossed), formatPercent(data.billing.glossRate)],
-      ["Em Recurso", formatMoney(data.billing.totalInAppeal), "—"],
+      ["Faturado", formatMoney(numSafe(data.billing.totalBilled)), "100%"],
+      [
+        "Recebido",
+        formatMoney(numSafe(data.billing.totalReceived)),
+        formatPercent(safeDivPercent(numSafe(data.billing.totalReceived), numSafe(data.billing.totalBilled))),
+      ],
+      [
+        "Glosado",
+        formatMoney(numSafe(data.billing.totalGlossed)),
+        formatPercent(
+          numSafe(data.billing.totalBilled) > 0
+            ? (numSafe(data.billing.totalGlossed) / numSafe(data.billing.totalBilled)) * 100
+            : 0,
+        ),
+      ],
+      ["Em Recurso", formatMoney(numSafe(data.billing.totalInAppeal)), "—"],
       [
         "Em Aberto",
-        formatMoney(data.billing.totalOpen),
-        formatPercent(data.billing.totalBilled > 0 ? (data.billing.totalOpen / data.billing.totalBilled) * 100 : 0),
+        formatMoney(numSafe(data.billing.totalOpen)),
+        formatPercent(
+          numSafe(data.billing.totalBilled) > 0
+            ? (numSafe(data.billing.totalOpen) / numSafe(data.billing.totalBilled)) * 100
+            : 0,
+        ),
       ],
     ],
     margin: { left: margin, right: margin },
@@ -352,23 +406,23 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
     body: [
       [
         "0–30 dias",
-        formatMoney(data.aging.bucket0to30),
-        formatPercent(data.aging.totalOpen > 0 ? (data.aging.bucket0to30 / data.aging.totalOpen) * 100 : 0),
+        formatMoney(numSafe(data.aging.bucket0to30)),
+        formatPercent(safeDivPercent(numSafe(data.aging.bucket0to30), numSafe(data.aging.totalOpen))),
       ],
       [
         "31–60 dias",
-        formatMoney(data.aging.bucket31to60),
-        formatPercent(data.aging.totalOpen > 0 ? (data.aging.bucket31to60 / data.aging.totalOpen) * 100 : 0),
+        formatMoney(numSafe(data.aging.bucket31to60)),
+        formatPercent(safeDivPercent(numSafe(data.aging.bucket31to60), numSafe(data.aging.totalOpen))),
       ],
       [
         "61–90 dias",
-        formatMoney(data.aging.bucket61to90),
-        formatPercent(data.aging.totalOpen > 0 ? (data.aging.bucket61to90 / data.aging.totalOpen) * 100 : 0),
+        formatMoney(numSafe(data.aging.bucket61to90)),
+        formatPercent(safeDivPercent(numSafe(data.aging.bucket61to90), numSafe(data.aging.totalOpen))),
       ],
       [
         "> 90 dias",
-        formatMoney(data.aging.bucketOver90),
-        formatPercent(data.aging.totalOpen > 0 ? (data.aging.bucketOver90 / data.aging.totalOpen) * 100 : 0),
+        formatMoney(numSafe(data.aging.bucketOver90)),
+        formatPercent(safeDivPercent(numSafe(data.aging.bucketOver90), numSafe(data.aging.totalOpen))),
       ],
     ],
     margin: { left: margin, right: margin },
@@ -410,11 +464,11 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
     startY: yPos,
     head: [["Descrição", "Valor"]],
     body: [
-      ["Saldo Inicial", formatMoney(data.cash.initialBalance)],
-      ["(+) Total de Entradas", formatMoney(data.cash.totalIncome)],
-      ["(-) Total de Saídas", formatMoney(data.cash.totalExpense)],
-      ["(=) Resultado do Período", formatMoney(data.cash.netResult)],
-      ["Saldo Final", formatMoney(data.cash.currentBalance)],
+      ["Saldo Inicial", formatMoney(numSafe(data.cash.initialBalance))],
+      ["(+) Total de Entradas", formatMoney(numSafe(data.cash.totalIncome))],
+      ["(-) Total de Saídas", formatMoney(numSafe(data.cash.totalExpense))],
+      ["(=) Resultado do Período", formatMoney(numSafe(data.cash.netResult))],
+      ["Saldo Final", formatMoney(numSafe(data.cash.currentBalance))],
     ],
     margin: { left: margin, right: margin },
     styles: { fontSize: 9, cellPadding: 4 },
