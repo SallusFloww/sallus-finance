@@ -68,11 +68,10 @@ function KpiDelta({ value }: { value: number }) {
 }
 
 /**
- * ✅ KPI CARD - POWER BI PREMIUM (CLEAN)
- * - Cards brancos como Power BI
+ * ✅ KPI CARD - POWER BI PREMIUM
+ * - Fundo branco/glass
  * - Borda lateral verde (marca)
- * - Hover e Active
- * - Clicável (teclado incluso)
+ * - Clicável (hover + active + teclado)
  */
 function KpiCard(props: {
   title: string;
@@ -97,15 +96,12 @@ function KpiCard(props: {
         }
       }}
       className={cn(
-        // base clean
-        "bg-white/95 backdrop-blur border-white/40 transition-all duration-200",
-        // interações BI
-        "cursor-pointer select-none hover:-translate-y-0.5 hover:shadow-lg",
-        // marca
-        "border-l-4 border-l-emerald-600/80",
-        // active
-        active && "ring-2 ring-emerald-400/60 shadow-xl",
-      )}
+  "bg-white/95 backdrop-blur border-white/40 transition-all duration-200",
+  "cursor-pointer select-none hover:-translate-y-0.5 hover:shadow-lg hover:ring-1 hover:ring-emerald-400/40",
+  "border-l-4 border-l-emerald-600/80",
+  active && "ring-2 ring-emerald-400/70 shadow-xl bg-white",
+)}
+
     >
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
@@ -159,7 +155,7 @@ function BIV2Content() {
 
   const { kpis, chartData, recentTransactions } = useBIData(currentFilters);
 
-  // período anterior para delta
+  // Período anterior para delta (sempre por data)
   const prevFilters: BIFilters = useMemo(() => {
     const days = differenceInCalendarDays(filters.endDate, filters.startDate) + 1;
     const prevEnd = subDays(filters.startDate, 1);
@@ -194,7 +190,7 @@ function BIV2Content() {
       .reduce((sum: number, a: any) => sum + a.value, 0);
   }, [chartData.aging]);
 
-  // score
+  // Regras de score
   const hasProductionData = kpis.produzido > 0 || kpis.faturado > 0;
   const hasBillingData = kpis.faturado > 0 || kpis.recebido > 0;
   const hasCashData = kpis.entradas > 0 || kpis.saidas > 0;
@@ -214,7 +210,7 @@ function BIV2Content() {
 
   const fmtBRL = (v: number) => (v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-  // deltas
+  // KPIs
   const deltaRecebido = pctDelta(kpis.recebido ?? 0, prev.kpis?.recebido ?? 0);
   const deltaProduzido = pctDelta(kpis.produzido ?? 0, prev.kpis?.produzido ?? 0);
   const deltaFaturado = pctDelta(kpis.faturado ?? 0, prev.kpis?.faturado ?? 0);
@@ -235,31 +231,75 @@ function BIV2Content() {
     }
   }, [lastUpdated]);
 
-  // clique KPI (UI)
+  // ✅ KPI Click (UI pronto; plugar filtro real depois)
   const [activeKpi, setActiveKpi] = useState<string | null>(null);
 
   const onKpiClick = useCallback((key: string) => {
     setActiveKpi((prevKey) => (prevKey === key ? null : key));
+
+    // ✅ Se você tiver no contexto algo tipo setDrilldownContext/applyQuickFilter,
+    // é aqui que conecta para cross-filter real.
   }, []);
 
   return (
     <DashboardLayout>
-      {/* ✅ FUNDO PREMIUM DO BI (SEM -z-10, PRA NÃO SUMIR) */}
-      <div className="relative min-h-screen bg-transparent">
+      {/* ✅ FUNDO PREMIUM - BI EXECUTIVO */}
+      <div className="relative min-h-screen">
         {/* base gradient */}
-        <div className="absolute inset-0 z-0 bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-800/70" />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 -z-10
+          bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-800/70"
+        />
 
-        {/* glow suave topo */}
-        <div className="absolute -top-32 left-1/2 z-0 h-[26rem] w-[60rem] -translate-x-1/2 blur-3xl opacity-35 bg-gradient-to-r from-emerald-500/25 via-emerald-300/15 to-emerald-400/25" />
+        {/* glow suave no topo */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -top-32 left-1/2 h-[26rem] w-[60rem]
+          -translate-x-1/2 -z-10 blur-3xl opacity-35
+          bg-gradient-to-r from-emerald-500/25 via-emerald-300/15 to-emerald-400/25"
+        />
 
         {/* vinheta leve */}
-        <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.05)_0%,rgba(0,0,0,0.10)_60%,rgba(0,0,0,0.20)_100%)]" />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 -z-10
+          bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.05)_0%,rgba(0,0,0,0.10)_60%,rgba(0,0,0,0.20)_100%)]"
+        />
 
-        {/* ✅ CONTEÚDO */}
-        <div className="relative z-10 space-y-4 animate-fade-in p-4 md:p-6">
+        <div className="space-y-4 animate-fade-in p-4 md:p-6">
           {/* Header */}
-          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-            <div>
+<div className="rounded-xl bg-white/5 backdrop-blur border border-white/10 p-3">
+  <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+    <div>
+      <div className="flex items-center gap-2">
+        <BarChart3 className="h-5 w-5 text-white/80" />
+        <h1 className="text-2xl font-bold text-white">BI v2 — Executivo</h1>
+        <Badge variant="secondary" className="text-[10px]">
+          BETA
+        </Badge>
+      </div>
+      <p className="text-sm text-white/70">
+        Power BI-like: hierarquia, leitura e comparação • Cross-filter • Read-only
+      </p>
+    </div>
+
+    <div className="flex items-center gap-2">
+      <Badge variant="secondary" className="text-xs">
+        Somente leitura
+      </Badge>
+      <Badge
+        variant="outline"
+        className="text-xs flex items-center gap-2 bg-white/5 text-white border-white/15"
+      >
+        <Calendar className="h-3.5 w-3.5" />
+        {format(filters.startDate, "dd/MM", { locale: ptBR })} -{" "}
+        {format(filters.endDate, "dd/MM/yyyy", { locale: ptBR })}
+      </Badge>
+    </div>
+  </div>
+</div>
+
               <div className="flex items-center gap-2">
                 <BarChart3 className="h-5 w-5 text-white/80" />
                 <h1 className="text-2xl font-bold text-white">BI v2 — Executivo</h1>
