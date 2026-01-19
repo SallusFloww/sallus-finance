@@ -4,23 +4,24 @@ import { MonthlyReportData } from "@/hooks/useMonthlyReport";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
-const formatMoney = (value: number): string => {
-  return `R$ ${value.toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-};
+const formatMoney = (value: number): string =>
+  `R$ ${value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-const formatPercent = (value: number): string => {
-  return `${value.toFixed(1)}%`;
-};
+const formatPercent = (value: number): string => `${value.toFixed(1)}%`;
 
 /**
- * Cabeçalho institucional padrão (todas as páginas)
- * - Esquerda: IMEC + SallusFlow
- * - Centro: título + competência
- * - Direita: data de geração + versão
- *
+ * Zonas de segurança (evita qualquer sobreposição com rodapé)
+ * - footerBlockHeight: onde desenhamos linha + 3 linhas de texto
+ * - safeBottom: limite máximo do conteúdo (qualquer coisa deve parar antes disso)
+ */
+function getLayoutGuards(pageHeight: number) {
+  const footerBlockHeight = 28; // altura "reservada" para rodapé
+  const safeBottom = pageHeight - footerBlockHeight - 6; // margem extra anti-colisão
+  return { footerBlockHeight, safeBottom };
+}
+
+/**
+ * Cabeçalho institucional padrão
  * Retorna o Y inicial recomendado para começar o conteúdo.
  */
 function addHeader(
@@ -33,67 +34,69 @@ function addHeader(
   const headerTop = margin;
   const headerHeight = 18;
 
-  // Texto base
+  // Esquerda
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(30, 41, 59);
+  doc.text("IMEC Saúde", margin, headerTop);
+
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
-  doc.setTextColor(100, 116, 139); // slate-500
-
-  // ESQUERDA
-  doc.setFont("helvetica", "bold");
-  doc.text("IMEC Saúde", margin, headerTop);
-  doc.setFont("helvetica", "normal");
-  doc.text("Sistema SallusFlow — Gestão Financeira", margin, headerTop + 5);
-
-  // CENTRO
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(30, 41, 59); // slate-800
-  doc.text("RELATÓRIO EXECUTIVO FINANCEIRO", pageWidth / 2, headerTop, {
-    align: "center",
-  });
-  doc.setFont("helvetica", "normal");
   doc.setTextColor(100, 116, 139);
-  doc.text(`Competência: ${competenciaTitle}`, pageWidth / 2, headerTop + 5, {
-    align: "center",
-  });
+  doc.text("Sistema Sallus Finance — Gestão Financeira", margin, headerTop + 5);
 
-  // DIREITA
+  // Centro
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(30, 41, 59);
+  doc.text("RELATÓRIO EXECUTIVO FINANCEIRO", pageWidth / 2, headerTop, { align: "center" });
+
   doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
   doc.setTextColor(100, 116, 139);
-  doc.text(`Gerado em: ${generatedAt}`, pageWidth - margin, headerTop, {
-    align: "right",
-  });
-  doc.text("Versão: Automática", pageWidth - margin, headerTop + 5, {
-    align: "right",
-  });
+  doc.text(`Competência: ${competenciaTitle}`, pageWidth / 2, headerTop + 5, { align: "center" });
 
-  // Linha separadora
-  doc.setDrawColor(226, 232, 240); // slate-200
+  // Direita
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Gerado em: ${generatedAt}`, pageWidth - margin, headerTop, { align: "right" });
+  doc.text("Versão: Automática", pageWidth - margin, headerTop + 5, { align: "right" });
+
+  // Linha
+  doc.setDrawColor(226, 232, 240);
   doc.line(margin, headerTop + headerHeight, pageWidth - margin, headerTop + headerHeight);
 
-  // Conteúdo começa abaixo do cabeçalho
   return headerTop + headerHeight + 10;
 }
 
-// Função auxiliar para adicionar rodapé institucional
+/**
+ * Rodapé institucional
+ */
 function addFooter(doc: jsPDF, pageWidth: number, pageHeight: number, margin: number, generatedAt: string): void {
-  doc.setTextColor(148, 163, 184); // slate-400
+  doc.setTextColor(148, 163, 184);
   doc.setFontSize(7);
   doc.setFont("helvetica", "normal");
 
-  // Linha separadora do rodapé
   doc.setDrawColor(226, 232, 240);
   doc.line(margin, pageHeight - 25, pageWidth - margin, pageHeight - 25);
 
-  // Texto institucional
-  doc.text("Relatório gerado automaticamente pelo Sistema de Gestão Financeira IMEC.", pageWidth / 2, pageHeight - 18, {
+  doc.text("Relatório gerado automaticamente pelo Sallus Finance (IMEC).", pageWidth / 2, pageHeight - 18, {
     align: "center",
   });
-  doc.text(`Dados consolidados até ${generatedAt}.`, pageWidth / 2, pageHeight - 13, {
-    align: "center",
-  });
-  doc.text("Uso exclusivo para fins gerenciais.", pageWidth / 2, pageHeight - 8, {
-    align: "center",
-  });
+  doc.text(`Dados consolidados até ${generatedAt}.`, pageWidth / 2, pageHeight - 13, { align: "center" });
+  doc.text("Uso exclusivo para fins gerenciais.", pageWidth / 2, pageHeight - 8, { align: "center" });
+}
+
+/**
+ * Garante que um bloco (com altura "need") não invada o rodapé.
+ * Se invadir, reposiciona o yPos para caber (sem criar página nova).
+ * Isso resolve a sobreposição no fim da 1ª página.
+ */
+function clampToSafeBottom(yPos: number, need: number, safeBottom: number, minY: number) {
+  if (yPos + need <= safeBottom) return yPos;
+  const newY = safeBottom - need;
+  return Math.max(newY, minY);
 }
 
 export function generateMonthlyPDF(data: MonthlyReportData): void {
@@ -103,14 +106,11 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
   const margin = 20;
   const contentWidth = pageWidth - 2 * margin;
 
-  const generatedAtShort = format(new Date(), "dd/MM/yyyy 'às' HH:mm", {
-    locale: ptBR,
-  });
+  const { safeBottom } = getLayoutGuards(pageHeight);
 
-  // Data de geração que aparece no cabeçalho (padronizada)
-  const generatedAtLong = format(new Date(data.generatedAt), "dd/MM/yyyy 'às' HH:mm", {
-    locale: ptBR,
-  });
+  // Datas
+  const generatedAtFooter = format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
+  const generatedAtHeader = format(new Date(data.generatedAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
 
   // Competência
   const competenciaTitle = data.competenciaFormatted.charAt(0).toUpperCase() + data.competenciaFormatted.slice(1);
@@ -120,107 +120,102 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
     data.score.globalScore === 0 || (data.production.totalValue === 0 && data.billing.totalBilled === 0);
 
   // =============================================================================
-  // PÁGINA 1: RESUMO EXECUTIVO (SEM CAPA)
+  // PÁGINA 1: RESUMO EXECUTIVO
   // =============================================================================
-  let yPos = addHeader(doc, pageWidth, margin, competenciaTitle, generatedAtLong);
+  let yPos = addHeader(doc, pageWidth, margin, competenciaTitle, generatedAtHeader);
 
-  // Título seção
+  // Título
   doc.setTextColor(30, 41, 59);
   doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
   doc.text("Resumo Executivo", margin, yPos);
-  yPos += 10;
+  yPos += 8;
 
-  // Linha fina
   doc.setDrawColor(226, 232, 240);
   doc.line(margin, yPos, pageWidth - margin, yPos);
-  yPos += 12;
+  yPos += 10;
 
-  // Bloco: Situação geral (compacto e executivo)
-  doc.setFillColor(248, 250, 252); // slate-50
-  doc.roundedRect(margin, yPos, contentWidth, 26, 3, 3, "F");
+  // Situação geral (mais compacto e elegante)
+  const situationH = 22;
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(margin, yPos, contentWidth, situationH, 3, 3, "F");
 
   doc.setTextColor(30, 41, 59);
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text("Situação Financeira do Período", margin + 8, yPos + 10);
+  doc.text("Situação Financeira do Período", margin + 8, yPos + 9);
 
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
-  doc.setTextColor(71, 85, 105); // slate-600
+  doc.setTextColor(71, 85, 105);
 
   const scoreLine = isScoreInFormation
-    ? "Score financeiro: Em formação • Confiabilidade: Parcial • Tendência inicial: Em consolidação"
-    : `Score financeiro: ${data.score.globalScore} (${data.score.globalLabel}) • Confiabilidade: Alta • Tendência: Monitorar`;
+    ? "Score: Em formação • Confiabilidade: Parcial • Status: Consolidando base"
+    : `Score: ${data.score.globalScore} (${data.score.globalLabel}) • Confiabilidade: Alta`;
 
-  doc.text(scoreLine, margin + 8, yPos + 18);
+  doc.text(scoreLine, margin + 8, yPos + 16);
 
-  yPos += 36;
+  yPos += situationH + 10;
 
-  // KPIs principais (4 cards)
+  // Indicadores (harmônico: cards menores + mais alinhamento)
   doc.setTextColor(30, 41, 59);
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
   doc.text("Indicadores Principais", margin, yPos);
-  yPos += 10;
+  yPos += 8;
 
-  const kpiBoxWidth = (contentWidth - 10) / 2;
-  const kpiBoxHeight = 28;
+  const cardW = (contentWidth - 10) / 2;
+  const cardH = 24;
 
-  // 1) Saldo em Caixa
-  doc.setFillColor(240, 253, 244); // green-50
-  doc.roundedRect(margin, yPos, kpiBoxWidth, kpiBoxHeight, 3, 3, "F");
-  doc.setTextColor(22, 101, 52);
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  doc.text("SALDO EM CAIXA", margin + 6, yPos + 9);
-  doc.setFontSize(13);
-  doc.setFont("helvetica", "bold");
-  doc.text(formatMoney(data.cash.currentBalance), margin + 6, yPos + 20);
+  const drawKPI = (
+    x: number,
+    y: number,
+    bg: [number, number, number],
+    fg: [number, number, number],
+    label: string,
+    value: string,
+  ) => {
+    doc.setFillColor(bg[0], bg[1], bg[2]);
+    doc.roundedRect(x, y, cardW, cardH, 3, 3, "F");
+    doc.setTextColor(fg[0], fg[1], fg[2]);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(label, x + 6, y + 9);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.text(value, x + 6, y + 18);
+  };
 
-  // 2) Faturamento do Período
-  doc.setFillColor(239, 246, 255); // blue-50
-  doc.roundedRect(margin + kpiBoxWidth + 10, yPos, kpiBoxWidth, kpiBoxHeight, 3, 3, "F");
-  doc.setTextColor(30, 64, 175);
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  doc.text("FATURAMENTO DO PERÍODO", margin + kpiBoxWidth + 16, yPos + 9);
-  doc.setFontSize(13);
-  doc.setFont("helvetica", "bold");
-  doc.text(formatMoney(data.billing.totalBilled), margin + kpiBoxWidth + 16, yPos + 20);
+  drawKPI(margin, yPos, [240, 253, 244], [22, 101, 52], "SALDO EM CAIXA", formatMoney(data.cash.currentBalance));
+  drawKPI(
+    margin + cardW + 10,
+    yPos,
+    [239, 246, 255],
+    [30, 64, 175],
+    "FATURAMENTO DO PERÍODO",
+    formatMoney(data.billing.totalBilled),
+  );
 
-  yPos += kpiBoxHeight + 10;
+  yPos += cardH + 8;
 
-  // 3) Produção Realizada
-  doc.setFillColor(245, 243, 255); // violet-50
-  doc.roundedRect(margin, yPos, kpiBoxWidth, kpiBoxHeight, 3, 3, "F");
-  doc.setTextColor(91, 33, 182);
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  doc.text("PRODUÇÃO REALIZADA", margin + 6, yPos + 9);
-  doc.setFontSize(13);
-  doc.setFont("helvetica", "bold");
-  doc.text(formatMoney(data.production.totalValue), margin + 6, yPos + 20);
+  drawKPI(margin, yPos, [245, 243, 255], [91, 33, 182], "PRODUÇÃO REALIZADA", formatMoney(data.production.totalValue));
+  drawKPI(
+    margin + cardW + 10,
+    yPos,
+    [255, 247, 237],
+    [154, 52, 18],
+    "VALORES EM ABERTO",
+    formatMoney(data.aging.totalOpen),
+  );
 
-  // 4) Valores em Aberto
-  doc.setFillColor(255, 247, 237); // orange-50
-  doc.roundedRect(margin + kpiBoxWidth + 10, yPos, kpiBoxWidth, kpiBoxHeight, 3, 3, "F");
-  doc.setTextColor(154, 52, 18);
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  doc.text("VALORES EM ABERTO", margin + kpiBoxWidth + 16, yPos + 9);
-  doc.setFontSize(13);
-  doc.setFont("helvetica", "bold");
-  doc.text(formatMoney(data.aging.totalOpen), margin + kpiBoxWidth + 16, yPos + 20);
+  yPos += cardH + 12;
 
-  yPos += kpiBoxHeight + 16;
-
-  // Funil de Conversão
+  // Funil
   doc.setTextColor(30, 41, 59);
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
   doc.text("Funil de Conversão", margin, yPos);
-  yPos += 8;
+  yPos += 6;
 
   autoTable(doc, {
     startY: yPos,
@@ -246,54 +241,55 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
 
   yPos = (doc as any).lastAutoTable.finalY + 10;
 
-  // Alertas (mais seco e executivo)
+  // Alertas — CORREÇÃO DA SOBREPOSIÇÃO:
+  // 1) calcula altura do bloco
+  // 2) reposiciona para não invadir o rodapé
   doc.setTextColor(30, 41, 59);
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
   doc.text("Alertas", margin, yPos);
-  yPos += 8;
+  yPos += 6;
 
-  const hasCriticalAlerts = data.alerts.some((alert) => alert.type === "critical" && data.aging.criticalPercentage > 0);
+  const hasCriticalAlerts = data.alerts.some((a) => a.type === "critical" && data.aging.criticalPercentage > 0);
+
+  const alertH = hasCriticalAlerts ? 20 : 18;
+  // clamp: garante que o bloco de alerta não "desça" até o rodapé
+  yPos = clampToSafeBottom(yPos, alertH, safeBottom, yPos);
 
   if (hasCriticalAlerts) {
-    doc.setFillColor(254, 243, 199); // amber-100
-    doc.roundedRect(margin, yPos, contentWidth, 20, 3, 3, "F");
-
+    doc.setFillColor(254, 243, 199);
+    doc.roundedRect(margin, yPos, contentWidth, alertH, 3, 3, "F");
     doc.setTextColor(146, 64, 14);
     doc.setFontSize(10);
     doc.setFont("helvetica", "bold");
     doc.text("Risco identificado: pendências relevantes a regularizar.", margin + 8, yPos + 12);
   } else {
-    doc.setFillColor(220, 252, 231); // green-100
-    doc.roundedRect(margin, yPos, contentWidth, 18, 3, 3, "F");
-
+    doc.setFillColor(220, 252, 231);
+    doc.roundedRect(margin, yPos, contentWidth, alertH, 3, 3, "F");
     doc.setTextColor(22, 101, 52);
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
     doc.text("Nenhum risco financeiro relevante identificado no período.", margin + 8, yPos + 12);
   }
 
-  // Rodapé
-  addFooter(doc, pageWidth, pageHeight, margin, generatedAtShort);
+  addFooter(doc, pageWidth, pageHeight, margin, generatedAtFooter);
 
   // =============================================================================
   // PÁGINA 2: PRODUÇÃO & FATURAMENTO
   // =============================================================================
   doc.addPage();
-  yPos = addHeader(doc, pageWidth, margin, competenciaTitle, generatedAtLong);
+  yPos = addHeader(doc, pageWidth, margin, competenciaTitle, generatedAtHeader);
 
   doc.setTextColor(30, 41, 59);
   doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
   doc.text("Produção & Faturamento", margin, yPos);
-  yPos += 10;
+  yPos += 8;
 
   doc.setDrawColor(226, 232, 240);
   doc.line(margin, yPos, pageWidth - margin, yPos);
-  yPos += 12;
+  yPos += 10;
 
-  // Tabela de Produção
-  doc.setTextColor(30, 41, 59);
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
   doc.text("Produção", margin, yPos);
@@ -314,9 +310,8 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
     alternateRowStyles: { fillColor: [248, 250, 252] },
   });
 
-  yPos = (doc as any).lastAutoTable.finalY + 12;
+  yPos = (doc as any).lastAutoTable.finalY + 10;
 
-  // Tabela de Faturamento
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(30, 41, 59);
@@ -343,9 +338,8 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
     alternateRowStyles: { fillColor: [248, 250, 252] },
   });
 
-  yPos = (doc as any).lastAutoTable.finalY + 12;
+  yPos = (doc as any).lastAutoTable.finalY + 10;
 
-  // Aging
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(30, 41, 59);
@@ -382,32 +376,30 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
     headStyles: { fillColor: [234, 88, 12], textColor: [255, 255, 255] },
     alternateRowStyles: { fillColor: [248, 250, 252] },
     didParseCell: (hook) => {
-      // realce leve em faixas mais antigas
       if (hook.section === "body" && (hook.row.index === 2 || hook.row.index === 3)) {
-        hook.cell.styles.fillColor = [254, 226, 226]; // red-100
+        hook.cell.styles.fillColor = [254, 226, 226];
       }
     },
   });
 
-  addFooter(doc, pageWidth, pageHeight, margin, generatedAtShort);
+  addFooter(doc, pageWidth, pageHeight, margin, generatedAtFooter);
 
   // =============================================================================
   // PÁGINA 3: CAIXA & SCORE
   // =============================================================================
   doc.addPage();
-  yPos = addHeader(doc, pageWidth, margin, competenciaTitle, generatedAtLong);
+  yPos = addHeader(doc, pageWidth, margin, competenciaTitle, generatedAtHeader);
 
   doc.setTextColor(30, 41, 59);
   doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
   doc.text("Caixa & Score Financeiro", margin, yPos);
-  yPos += 10;
+  yPos += 8;
 
   doc.setDrawColor(226, 232, 240);
   doc.line(margin, yPos, pageWidth - margin, yPos);
-  yPos += 12;
+  yPos += 10;
 
-  // Caixa
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(30, 41, 59);
@@ -436,38 +428,30 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
     },
   });
 
-  yPos = (doc as any).lastAutoTable.finalY + 14;
+  yPos = (doc as any).lastAutoTable.finalY + 10;
 
-  // Score Financeiro (compacto)
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(30, 41, 59);
   doc.text("Score Financeiro", margin, yPos);
-  yPos += 8;
+  yPos += 6;
 
-  const scoreBoxWidth = contentWidth;
-  const scoreBoxHeight = 22;
-
-  doc.setFillColor(248, 250, 252); // slate-50
-  doc.roundedRect(margin, yPos, scoreBoxWidth, scoreBoxHeight, 3, 3, "F");
+  const scoreH = 20;
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(margin, yPos, contentWidth, scoreH, 3, 3, "F");
 
   doc.setFontSize(10);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(30, 41, 59);
 
   if (isScoreInFormation) {
-    doc.text("Status: Score em formação", margin + 8, yPos + 10);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(71, 85, 105);
-    doc.text("Indicador será consolidado automaticamente conforme o histórico for completado.", margin + 8, yPos + 17);
+    doc.text("Status: Score em formação", margin + 8, yPos + 12);
   } else {
-    doc.text(`Score Global: ${data.score.globalScore} — ${data.score.globalLabel}`, margin + 8, yPos + 10);
+    doc.text(`Score Global: ${data.score.globalScore} — ${data.score.globalLabel}`, margin + 8, yPos + 12);
   }
 
-  yPos += scoreBoxHeight + 10;
+  yPos += scoreH + 8;
 
-  // Score por unidade (apenas se existir e não estiver em formação)
   if (!isScoreInFormation && data.score.unitScores.length > 0) {
     doc.setTextColor(30, 41, 59);
     doc.setFontSize(10);
@@ -491,25 +475,24 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
     });
   }
 
-  addFooter(doc, pageWidth, pageHeight, margin, generatedAtShort);
+  addFooter(doc, pageWidth, pageHeight, margin, generatedAtFooter);
 
   // =============================================================================
   // PÁGINA 4: PRÓXIMAS AÇÕES
   // =============================================================================
   doc.addPage();
-  yPos = addHeader(doc, pageWidth, margin, competenciaTitle, generatedAtLong);
+  yPos = addHeader(doc, pageWidth, margin, competenciaTitle, generatedAtHeader);
 
   doc.setTextColor(30, 41, 59);
   doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
   doc.text("Próximas Ações", margin, yPos);
-  yPos += 10;
+  yPos += 8;
 
   doc.setDrawColor(226, 232, 240);
   doc.line(margin, yPos, pageWidth - margin, yPos);
-  yPos += 12;
+  yPos += 10;
 
-  // Limitar a 3 ações objetivas
   const actionsToShow = data.nextActions.slice(0, 3);
 
   if (actionsToShow.length === 0) {
@@ -519,11 +502,8 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
     doc.text("Nenhuma ação recomendada disponível para o período.", margin + 8, yPos + 12);
-    yPos += 24;
   } else {
     actionsToShow.forEach((action, index) => {
-      // Mais sóbrio: menos cor, foco na informação
-      const boxFill = [248, 250, 252] as [number, number, number];
       const badgeFill =
         action.priority === "high"
           ? ([239, 68, 68] as [number, number, number])
@@ -533,26 +513,22 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
 
       const priorityLabel = action.priority === "high" ? "ALTA" : action.priority === "medium" ? "MÉDIA" : "BAIXA";
 
-      doc.setFillColor(boxFill[0], boxFill[1], boxFill[2]);
+      doc.setFillColor(248, 250, 252);
       doc.roundedRect(margin, yPos, contentWidth, 26, 3, 3, "F");
 
-      // Número
       doc.setTextColor(30, 41, 59);
       doc.setFontSize(14);
       doc.setFont("helvetica", "bold");
       doc.text(`${index + 1}.`, margin + 8, yPos + 16);
 
-      // Ação
       doc.setFontSize(11);
       doc.text(action.action, margin + 18, yPos + 11);
 
-      // Impacto
       doc.setFontSize(9);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(71, 85, 105);
       doc.text(`Impacto estimado: ${action.impact}`, margin + 18, yPos + 20);
 
-      // Badge prioridade
       doc.setFillColor(badgeFill[0], badgeFill[1], badgeFill[2]);
       doc.roundedRect(pageWidth - margin - 34, yPos + 7, 30, 10, 2, 2, "F");
       doc.setTextColor(255, 255, 255);
@@ -564,11 +540,9 @@ export function generateMonthlyPDF(data: MonthlyReportData): void {
     });
   }
 
-  addFooter(doc, pageWidth, pageHeight, margin, generatedAtShort);
+  addFooter(doc, pageWidth, pageHeight, margin, generatedAtFooter);
 
-  // =============================================================================
-  // Salvar PDF
-  // =============================================================================
+  // Salvar
   const fileName = `relatorio-executivo-${data.competencia}.pdf`;
   doc.save(fileName);
 }
