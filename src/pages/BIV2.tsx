@@ -402,7 +402,7 @@ function BIV2Content() {
         </div>
 
         {/* Footer + Drilldown */}
-        <BIFooter lastUpdated={lastUpdatedLabel} />
+        <BIFooter lastUpdated={lastUpdated ?? null} />
         <BIDrilldownDrawer data={drilldownData} />
       </div>
     </DashboardLayout>
