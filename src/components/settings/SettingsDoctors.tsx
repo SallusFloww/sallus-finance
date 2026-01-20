@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 import { toast } from "sonner";
-import { Pencil, Plus, Save, X, Search, UserRound } from "lucide-react";
+import { Pencil, Plus, Save, X, Search, UserRound, RefreshCw } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 
@@ -24,8 +24,10 @@ type DoctorRow = {
 };
 
 export function SettingsDoctors() {
-  const { profile } = useAuth();
-  const companyId = (profile as any)?.company_id as string | undefined;
+  const { profile, currentCompany } = useAuth();
+
+  // ✅ Fonte correta (multi-tenant): empresa atual
+  const companyId = currentCompany?.id || (profile as any)?.company_id;
 
   const [loading, setLoading] = useState(false);
   const [doctors, setDoctors] = useState<DoctorRow[]>([]);
@@ -39,13 +41,19 @@ export function SettingsDoctors() {
   const [editName, setEditName] = useState("");
 
   const fetchDoctors = async () => {
+    if (!companyId) {
+      setDoctors([]);
+      return;
+    }
+
     try {
       setLoading(true);
 
-      // ⚠️ Aqui respeita seu schema real
+      // ✅ Filtra por company_id (OBRIGATÓRIO)
       const { data, error } = await supabase
         .from("doctors")
         .select("id, company_id, name, specialty_id, active, created_at, updated_at")
+        .eq("company_id", companyId)
         .order("active", { ascending: false })
         .order("name", { ascending: true });
 
@@ -63,7 +71,7 @@ export function SettingsDoctors() {
   useEffect(() => {
     fetchDoctors();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [companyId]);
 
   const totals = useMemo(() => {
     const total = doctors.length;
@@ -117,13 +125,20 @@ export function SettingsDoctors() {
 
   const addDoctor = async () => {
     if (!companyId) {
-      toast.error("Company ID não encontrado. Confirme login/empresa atual.");
+      toast.error("Empresa não definida. Confirme empresa atual.");
       return;
     }
 
     const clean = newName.trim();
     if (!clean) {
       toast.error("Digite o nome do médico(a).");
+      return;
+    }
+
+    // ✅ Anti-duplicidade simples (mesma empresa)
+    const alreadyExists = doctors.some((d) => (d.name || "").trim().toLowerCase() === clean.toLowerCase());
+    if (alreadyExists) {
+      toast.error("Esse médico(a) já está cadastrado.");
       return;
     }
 
@@ -172,13 +187,24 @@ export function SettingsDoctors() {
                 Médicos(as)
               </CardTitle>
               <p className="text-sm text-muted-foreground">
-                Cadastro dinâmico (opcional) usado no formulário de Produção.
+                Cadastro dinâmico usado no formulário de Produção (campo opcional).
               </p>
             </div>
 
             <div className="flex items-center gap-2">
               <Badge variant="secondary">{totals.ativos} ativos</Badge>
               <Badge variant="outline">{totals.inativos} inativos</Badge>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchDoctors}
+                disabled={loading || !companyId}
+                className="gap-2"
+              >
+                <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+                Atualizar
+              </Button>
             </div>
           </div>
         </CardHeader>
@@ -192,6 +218,7 @@ export function SettingsDoctors() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="max-w-xl"
+              disabled={!companyId}
             />
           </div>
 
@@ -209,11 +236,12 @@ export function SettingsDoctors() {
                   placeholder="Ex.: Dra. Isabela / Dr. Bruno"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
+                  disabled={!companyId}
                 />
               </div>
 
               <div className="flex items-end">
-                <Button onClick={addDoctor} disabled={loading} className="gap-2 w-full md:w-auto">
+                <Button onClick={addDoctor} disabled={loading || !companyId} className="gap-2 w-full md:w-auto">
                   <Plus className="h-4 w-4" />
                   Adicionar
                 </Button>
@@ -227,7 +255,11 @@ export function SettingsDoctors() {
 
           {/* Lista */}
           <div className="space-y-2">
-            {loading ? (
+            {!companyId ? (
+              <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                Empresa não definida. Selecione uma empresa válida para gerenciar médicos.
+              </div>
+            ) : loading ? (
               <div className="text-sm text-muted-foreground">Carregando...</div>
             ) : filtered.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
@@ -290,16 +322,12 @@ export function SettingsDoctors() {
               })
             )}
 
-            <div className="text-xs text-muted-foreground">
-              Total: {totals.total} ({totals.ativos} ativos)
-            </div>
+            {companyId && (
+              <div className="text-xs text-muted-foreground">
+                Total: {totals.total} ({totals.ativos} ativos)
+              </div>
+            )}
           </div>
-
-          {!companyId && (
-            <div className="text-xs text-muted-foreground">
-              ⚠️ Company ID não encontrado no perfil — confirme se você está logado e na empresa correta.
-            </div>
-          )}
         </CardContent>
       </Card>
     </div>
