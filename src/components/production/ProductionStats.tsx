@@ -51,18 +51,18 @@ export function ProductionStats({ stats }: ProductionStatsProps) {
   }, [companyId]);
 
   const topDoctors = useMemo(() => {
-    const byDoctor = stats.byDoctor || {};
+    const byDoctor = ((stats as any)?.byDoctor ?? {}) as Record<string, any>;
     return Object.entries(byDoctor)
       .map(([doctorId, data]) => ({
         doctorId,
         name: doctorNameById[doctorId] || "Médico não encontrado",
-        count: data.count,
-        quantity: data.quantity,
-        value: data.value,
+        count: Number((data as any)?.count ?? 0),
+        quantity: Number((data as any)?.quantity ?? 0),
+        value: Number((data as any)?.value ?? 0),
       }))
       .sort((a, b) => b.quantity - a.quantity)
       .slice(0, 7);
-  }, [stats.byDoctor, doctorNameById]);
+  }, [(stats as any)?.byDoctor, doctorNameById]);
 
   return (
     <div className="space-y-4">
