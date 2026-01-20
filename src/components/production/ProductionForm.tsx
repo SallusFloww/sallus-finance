@@ -20,9 +20,10 @@ import { toast } from "sonner";
 import { Activity, Check, ChevronsUpDown, Plus, Calculator, Package, AlertCircle, Info } from "lucide-react";
 import { SPECIALTIES } from "@/utils/constants";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { useCompanySettings } from "@/hooks/useCompanySettings";
 import { usePackagePricing } from "@/hooks/usePackagePricing";
-import { useDoctors } from "@/hooks/useDoctors";
 import { PackageFields } from "./PackageFields";
 import { PRODUCTION_TYPE_LABELS } from "@/utils/constants";
 
@@ -118,15 +119,50 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
   // Pricing hook para pacotes
   const { validateTotal } = usePackagePricing();
   // Médicos(as) - opcional (para análises por profissional)
-  const { data: doctorsRaw = [], isLoading: doctorsLoading } = useDoctors();
+  const { currentCompany, profile } = useAuth();
+  const companyId = (currentCompany as any)?.id || (profile as any)?.company_id;
 
-  const doctorOptions = (doctorsRaw || [])
-    .filter((d: any) => (d?.active ?? d?.is_active ?? true) === true)
-    .map((d: any) => ({
-      id: String(d?.id ?? ""),
-      name: String(d?.name ?? d?.full_name ?? d?.display_name ?? "").trim(),
-    }))
-    .filter((d: any) => Boolean(d.id) && Boolean(d.name));
+  const [doctorOptions, setDoctorOptions] = useState<{ id: string; name: string }[]>([]);
+  const [doctorsLoading, setDoctorsLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchDoctors = async () => {
+      if (!companyId) {
+        setDoctorOptions([]);
+        return;
+      }
+
+      try {
+        setDoctorsLoading(true);
+        const { data, error } = await supabase
+          .from("doctors")
+          .select("id, name, active, company_id")
+          .eq("company_id", companyId)
+          .eq("active", true)
+          .order("name", { ascending: true });
+
+        if (error) {
+          console.error(error);
+          setDoctorOptions([]);
+          return;
+        }
+
+        const normalized = (data ?? [])
+          .map((d: any) => ({
+            id: String(d?.id ?? ""),
+            name: String(d?.name ?? "").trim(),
+          }))
+          .filter((d: any) => Boolean(d.id) && Boolean(d.name));
+
+        setDoctorOptions(normalized);
+      } finally {
+        setDoctorsLoading(false);
+      }
+    };
+
+    // Só busca quando o modal abre, pra evitar fetch desnecessário
+    if (open) fetchDoctors();
+  }, [companyId, open]);
 
   // Combinar sugestões padrão com salvas do banco
   const savedExamTypes = getSavedExamTypes();
