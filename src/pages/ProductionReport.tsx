@@ -10,22 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableFooter,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Activity,
   TrendingUp,
@@ -62,11 +48,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useProductionDB } from "@/hooks/useProductionDB";
 import { usePackagePricing, PackagePricingRule } from "@/hooks/usePackagePricing";
-import { 
-  startOfMonth, 
-  endOfMonth, 
-  format, 
-  parseISO, 
+import {
+  startOfMonth,
+  endOfMonth,
+  format,
+  parseISO,
   differenceInDays,
   subDays,
   eachDayOfInterval,
@@ -76,12 +62,28 @@ import {
   isWithinInterval,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { LineChart as RechartsLine, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import {
+  LineChart as RechartsLine,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from "recharts";
 import { Production } from "@/types";
 import { ProceduresDetailPanel } from "@/components/production/ProceduresDetailPanel";
 import { UnbilledItemsPanel } from "@/components/production/UnbilledItemsPanel";
 import { ProductionReportExport, ProductionReportExportData } from "@/components/production/ProductionReportExport";
-import { formatUnitDisplayName, formatSpecialtyDisplayName, formatConvenioDisplayName, displayLabel } from "@/utils/formatters";
+import {
+  formatUnitDisplayName,
+  formatSpecialtyDisplayName,
+  formatConvenioDisplayName,
+  displayLabel,
+} from "@/utils/formatters";
 
 // Labels para tipos de produção OFICIAIS (incluindo visão por componentes)
 const PRODUCTION_TYPE_LABELS: Record<string, string> = {
@@ -141,14 +143,18 @@ interface ReportItem {
  * - Pacotes (PACOTE_BOX/PACOTE_GTA) são "explodidos" em 3 itens: CONSULTA, BOX_TAXA, MAT_MED
  * - BOX_PS avulso é normalizado para BOX_TAXA
  * - Demais tipos mantêm seu reportType original
- * 
+ *
  * NORMALIZAÇÃO DE LEGADOS:
  * Registros antigos podem ter consultAmount/feeAmount unitários (não multiplicados pela quantidade).
  * Se detectarmos que os valores batem exatamente com a regra unitária, recalculamos.
  */
 function toReportItems(
   productions: Production[],
-  getRule?: (planId: string, packageType: "PACOTE_BOX" | "PACOTE_GTA", referenceDate: string) => PackagePricingRule | null
+  getRule?: (
+    planId: string,
+    packageType: "PACOTE_BOX" | "PACOTE_GTA",
+    referenceDate: string,
+  ) => PackagePricingRule | null,
 ): ReportItem[] {
   const items: ReportItem[] = [];
 
@@ -166,26 +172,27 @@ function toReportItems(
 
     if (isPackage) {
       // Explodir pacote em 3 componentes - respeitando packageQty
-      const total = Number(p.estimatedValue || ((p.quantity ?? 1) * (p.unitValue ?? 0)) || 0);
+      const total = Number(p.estimatedValue || (p.quantity ?? 1) * (p.unitValue ?? 0) || 0);
       const baseQty = Math.max(1, Math.floor(Number(p.packageQty ?? p.quantity ?? 1)));
-      
+
       // Valores atuais do registro
       let consult = Number(p.consultAmount || 0);
       let fee = Number(p.feeAmount || 0);
       let matmed = Number(p.matmedAmount || 0);
-      
+
       // AUDIT_FIX: Normalizar registros legados - "unitário" OU "ausente/zerado"
       if (getRule && p.convenio && p.packageType) {
         const rule = getRule(p.convenio, p.packageType as "PACOTE_BOX" | "PACOTE_GTA", p.productionDate);
         if (rule) {
           // Caso 1: Legacy "unitário" - valores batem com regra unitária mas qty > 1
-          const isLegacyUnitario = baseQty > 1 &&
+          const isLegacyUnitario =
+            baseQty > 1 &&
             Math.abs(consult - Number(rule.consultDefaultAmount)) < 0.06 &&
             Math.abs(fee - Number(rule.feeDefaultAmount)) < 0.06;
-          
+
           // Caso 2: Legacy "missing" - componentes zerados/ausentes mas total existe
-          const isLegacyMissing = (consult === 0 && fee === 0 && total > 0);
-          
+          const isLegacyMissing = consult === 0 && fee === 0 && total > 0;
+
           if (isLegacyUnitario || isLegacyMissing) {
             // Recalcular com multiplicação pela quantidade
             consult = Math.round(Number(rule.consultDefaultAmount) * baseQty * 100) / 100;
@@ -194,7 +201,7 @@ function toReportItems(
           }
         }
       }
-      
+
       items.push({
         ...baseItem,
         id: `${p.id}:CONSULTA`,
@@ -230,7 +237,7 @@ function toReportItems(
         id: p.id,
         reportType,
         quantity: p.quantity,
-        amount: p.estimatedValue || (p.quantity * p.unitValue),
+        amount: p.estimatedValue || p.quantity * p.unitValue,
         description: p.description,
         isFromPackage: false,
       });
@@ -280,7 +287,6 @@ interface SpecialtyRanking {
   percentage: number;
   concentrationLevel: "alta" | "ok" | "baixa";
 }
-
 
 interface DoctorRanking {
   id: string;
@@ -363,24 +369,21 @@ export default function ProductionReport() {
     fetchDoctors();
   }, [companyId]);
 
-
   // Filtros
-  const [startDate, setStartDate] = useState<string>(
-    format(startOfMonth(new Date()), "yyyy-MM-dd")
-  );
-  const [endDate, setEndDate] = useState<string>(
-    format(endOfMonth(new Date()), "yyyy-MM-dd")
-  );
+  const [startDate, setStartDate] = useState<string>(format(startOfMonth(new Date()), "yyyy-MM-dd"));
+  const [endDate, setEndDate] = useState<string>(format(endOfMonth(new Date()), "yyyy-MM-dd"));
   const [selectedUnit, setSelectedUnit] = useState<string>("all");
   const [selectedConvenio, setSelectedConvenio] = useState<string>("all");
   const [selectedType, setSelectedType] = useState<string>("all");
   const [selectedSpecialty, setSelectedSpecialty] = useState<string>("all");
-  
+
   // Estados para novos componentes
   const [evolutionGranularity, setEvolutionGranularity] = useState<"daily" | "weekly">("daily");
-  const [evolutionBreakdown, setEvolutionBreakdown] = useState<"geral" | "unidade" | "convenio" | "especialidade">("geral");
+  const [evolutionBreakdown, setEvolutionBreakdown] = useState<"geral" | "unidade" | "convenio" | "especialidade">(
+    "geral",
+  );
   const [drilldownOpen, setDrilldownOpen] = useState(false);
-  const [drilldownData, setDrilldownData] = useState<{title: string; items: ReportItem[]}>({ title: "", items: [] });
+  const [drilldownData, setDrilldownData] = useState<{ title: string; items: ReportItem[] }>({ title: "", items: [] });
 
   // Unidades únicas das produções
   const uniqueUnits = useMemo(() => {
@@ -399,7 +402,7 @@ export default function ProductionReport() {
       }
     });
     // Adicionar "Sem especialidade" se houver produções sem specialty
-    const hasWithoutSpecialty = productions.some(p => !p.specialty || p.specialty.trim() === "");
+    const hasWithoutSpecialty = productions.some((p) => !p.specialty || p.specialty.trim() === "");
     const result = Array.from(specialties).sort();
     if (hasWithoutSpecialty) {
       result.push("__SEM_ESPECIALIDADE__");
@@ -416,16 +419,16 @@ export default function ProductionReport() {
       convenio: selectedConvenio !== "all" ? selectedConvenio : undefined,
       productionType: selectedType !== "all" ? selectedType : undefined,
     });
-    
+
     // Filtro adicional por especialidade (CORREÇÃO: sem fallback para unit)
     if (selectedSpecialty !== "all") {
       if (selectedSpecialty === "__SEM_ESPECIALIDADE__") {
-        filtered = filtered.filter(p => !p.specialty || p.specialty.trim() === "");
+        filtered = filtered.filter((p) => !p.specialty || p.specialty.trim() === "");
       } else {
-        filtered = filtered.filter(p => p.specialty === selectedSpecialty);
+        filtered = filtered.filter((p) => p.specialty === selectedSpecialty);
       }
     }
-    
+
     return filtered;
   }, [filterProductions, startDate, endDate, selectedUnit, selectedConvenio, selectedType, selectedSpecialty]);
 
@@ -441,7 +444,7 @@ export default function ProductionReport() {
     const start = parseISO(startDate);
     const previousEnd = subDays(start, 1);
     const previousStart = subDays(previousEnd, periodDays - 1);
-    
+
     let filtered = filterProductions({
       startDate: previousStart,
       endDate: previousEnd,
@@ -449,16 +452,16 @@ export default function ProductionReport() {
       convenio: selectedConvenio !== "all" ? selectedConvenio : undefined,
       productionType: selectedType !== "all" ? selectedType : undefined,
     });
-    
+
     // CORREÇÃO: Filtro de especialidade sem fallback para unit
     if (selectedSpecialty !== "all") {
       if (selectedSpecialty === "__SEM_ESPECIALIDADE__") {
-        filtered = filtered.filter(p => !p.specialty || p.specialty.trim() === "");
+        filtered = filtered.filter((p) => !p.specialty || p.specialty.trim() === "");
       } else {
-        filtered = filtered.filter(p => p.specialty === selectedSpecialty);
+        filtered = filtered.filter((p) => p.specialty === selectedSpecialty);
       }
     }
-    
+
     return filtered;
   }, [filterProductions, startDate, periodDays, selectedUnit, selectedConvenio, selectedType, selectedSpecialty]);
 
@@ -523,16 +526,20 @@ export default function ProductionReport() {
 
     return {
       totalQuantity,
-      topUnit: topUnit ? {
-        name: formatUnitName(topUnit[0]),
-        quantity: topUnit[1],
-        percentage: totalQuantity > 0 ? (topUnit[1] / totalQuantity) * 100 : 0,
-      } : null,
-      topConvenio: topConvenio ? {
-        name: topConvenio[0],
-        quantity: topConvenio[1],
-        percentage: totalQuantity > 0 ? (topConvenio[1] / totalQuantity) * 100 : 0,
-      } : null,
+      topUnit: topUnit
+        ? {
+            name: formatUnitName(topUnit[0]),
+            quantity: topUnit[1],
+            percentage: totalQuantity > 0 ? (topUnit[1] / totalQuantity) * 100 : 0,
+          }
+        : null,
+      topConvenio: topConvenio
+        ? {
+            name: topConvenio[0],
+            quantity: topConvenio[1],
+            percentage: totalQuantity > 0 ? (topConvenio[1] / totalQuantity) * 100 : 0,
+          }
+        : null,
       mixAssistencial,
     };
   }, [filteredProductions, totalQuantity]);
@@ -561,20 +568,18 @@ export default function ProductionReport() {
   // Ranking por especialidade — APENAS Centro Clínico
   const specialtyRanking: SpecialtyRanking[] = useMemo(() => {
     const bySpecialty: Record<string, number> = {};
-    
+
     // Filtrar APENAS produções do Centro Clínico
     const centroClinicoProductions = filteredProductions.filter((p) => {
       const unitNorm = (p.unit ?? "").toLowerCase().replace(/[\s\-_]+/g, "");
       return unitNorm === "centroclinico" || unitNorm.includes("centroclinico");
     });
-    
+
     // Total de quantidade do Centro Clínico para cálculo de percentual
     const centroClinicoTotal = centroClinicoProductions.reduce((sum, p) => sum + p.quantity, 0);
-    
+
     centroClinicoProductions.forEach((p) => {
-      const spec = (p.specialty && p.specialty.trim() !== "") 
-        ? p.specialty 
-        : "__SEM_ESPECIALIDADE__";
+      const spec = p.specialty && p.specialty.trim() !== "" ? p.specialty : "__SEM_ESPECIALIDADE__";
       bySpecialty[spec] = (bySpecialty[spec] || 0) + p.quantity;
     });
 
@@ -591,11 +596,10 @@ export default function ProductionReport() {
         let concentrationLevel: "alta" | "ok" | "baixa" = "ok";
         if (percentage > 70) concentrationLevel = "alta";
         else if (percentage < 10) concentrationLevel = "baixa";
-        
-        const displayName = specialty === "__SEM_ESPECIALIDADE__" 
-          ? "Sem especialidade"
-          : formatSpecialtyDisplayName(specialty);
-        
+
+        const displayName =
+          specialty === "__SEM_ESPECIALIDADE__" ? "Sem especialidade" : formatSpecialtyDisplayName(specialty);
+
         return {
           key: specialty, // AUDIT_FIX: store original value for filtering
           name: displayName,
@@ -639,7 +643,7 @@ export default function ProductionReport() {
   // AUDIT_FIX: Moved before managementAlerts to avoid forward reference
   // Check if specialty field exists (real specialties, not unit fallback)
   const hasRealSpecialty = useMemo(() => {
-    return productions.some(p => p.specialty && p.specialty.trim() !== "");
+    return productions.some((p) => p.specialty && p.specialty.trim() !== "");
   }, [productions]);
 
   const typeBreakdown: TypeBreakdown[] = useMemo(() => {
@@ -687,7 +691,7 @@ export default function ProductionReport() {
       .toLowerCase()
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, ""); // remove acentos
-    
+
     if (normalized === "consulta" || normalized === "consulta medica") {
       return "Consulta";
     }
@@ -735,19 +739,21 @@ export default function ProductionReport() {
     }
 
     // Por procedimento
-    const procedureFor80 = topProcedures.findIndex(p => p.cumulativePercentage >= 80) + 1;
+    const procedureFor80 = topProcedures.findIndex((p) => p.cumulativePercentage >= 80) + 1;
 
     return {
       conveniosFor80,
       totalConvenios: convenioRanking.length,
       proceduresFor80: procedureFor80 || topProcedures.length,
       totalProcedures: topProcedures.length,
-      riskText: conveniosFor80 <= 2 
-        ? "Risco de dependência: poucos convênios concentram 80% da produção"
-        : "Boa diversificação: produção distribuída entre múltiplos convênios",
-      opportunityText: procedureFor80 <= 3
-        ? "Oportunidade de diversificação: poucos procedimentos dominam a produção"
-        : "Mix assistencial equilibrado",
+      riskText:
+        conveniosFor80 <= 2
+          ? "Risco de dependência: poucos convênios concentram 80% da produção"
+          : "Boa diversificação: produção distribuída entre múltiplos convênios",
+      opportunityText:
+        procedureFor80 <= 3
+          ? "Oportunidade de diversificação: poucos procedimentos dominam a produção"
+          : "Mix assistencial equilibrado",
     };
   }, [convenioRanking, topProcedures]);
 
@@ -759,9 +765,9 @@ export default function ProductionReport() {
 
     if (useWeekly) {
       const weeks = eachWeekOfInterval({ start, end }, { weekStartsOn: 1 });
-      return weeks.map(weekStart => {
+      return weeks.map((weekStart) => {
         const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
-        const weekProductions = filteredProductions.filter(p => {
+        const weekProductions = filteredProductions.filter((p) => {
           const prodDate = parseISO(p.productionDate);
           return isWithinInterval(prodDate, { start: weekStart, end: weekEnd });
         });
@@ -773,22 +779,22 @@ export default function ProductionReport() {
         };
 
         if (evolutionBreakdown === "unidade") {
-          uniqueUnits.forEach(unit => {
+          uniqueUnits.forEach((unit) => {
             dataPoint[formatUnitName(unit)] = weekProductions
-              .filter(p => p.unit === unit)
+              .filter((p) => p.unit === unit)
               .reduce((sum, p) => sum + p.quantity, 0);
           });
         } else if (evolutionBreakdown === "convenio") {
-          uniqueConvenios.forEach(conv => {
+          uniqueConvenios.forEach((conv) => {
             dataPoint[conv] = weekProductions
-              .filter(p => p.convenio === conv)
+              .filter((p) => p.convenio === conv)
               .reduce((sum, p) => sum + p.quantity, 0);
           });
         } else if (evolutionBreakdown === "especialidade") {
-          uniqueSpecialties.forEach(spec => {
+          uniqueSpecialties.forEach((spec) => {
             const specLabel = spec === "__SEM_ESPECIALIDADE__" ? "Sem especialidade" : formatSpecialtyDisplayName(spec);
             dataPoint[specLabel] = weekProductions
-              .filter(p => {
+              .filter((p) => {
                 if (spec === "__SEM_ESPECIALIDADE__") return !p.specialty || p.specialty.trim() === "";
                 return p.specialty === spec;
               })
@@ -800,9 +806,9 @@ export default function ProductionReport() {
       });
     } else {
       const days = eachDayOfInterval({ start, end });
-      return days.map(day => {
+      return days.map((day) => {
         const dayStr = format(day, "yyyy-MM-dd");
-        const dayProductions = filteredProductions.filter(p => p.productionDate === dayStr);
+        const dayProductions = filteredProductions.filter((p) => p.productionDate === dayStr);
 
         const dataPoint: TimeSeriesData = {
           date: dayStr,
@@ -811,22 +817,20 @@ export default function ProductionReport() {
         };
 
         if (evolutionBreakdown === "unidade") {
-          uniqueUnits.forEach(unit => {
+          uniqueUnits.forEach((unit) => {
             dataPoint[formatUnitName(unit)] = dayProductions
-              .filter(p => p.unit === unit)
+              .filter((p) => p.unit === unit)
               .reduce((sum, p) => sum + p.quantity, 0);
           });
         } else if (evolutionBreakdown === "convenio") {
-          uniqueConvenios.forEach(conv => {
-            dataPoint[conv] = dayProductions
-              .filter(p => p.convenio === conv)
-              .reduce((sum, p) => sum + p.quantity, 0);
+          uniqueConvenios.forEach((conv) => {
+            dataPoint[conv] = dayProductions.filter((p) => p.convenio === conv).reduce((sum, p) => sum + p.quantity, 0);
           });
         } else if (evolutionBreakdown === "especialidade") {
-          uniqueSpecialties.forEach(spec => {
+          uniqueSpecialties.forEach((spec) => {
             const specLabel = spec === "__SEM_ESPECIALIDADE__" ? "Sem especialidade" : formatSpecialtyDisplayName(spec);
             dataPoint[specLabel] = dayProductions
-              .filter(p => {
+              .filter((p) => {
                 if (spec === "__SEM_ESPECIALIDADE__") return !p.specialty || p.specialty.trim() === "";
                 return p.specialty === spec;
               })
@@ -837,7 +841,17 @@ export default function ProductionReport() {
         return dataPoint;
       });
     }
-  }, [filteredProductions, startDate, endDate, periodDays, evolutionGranularity, evolutionBreakdown, uniqueUnits, uniqueConvenios, uniqueSpecialties]);
+  }, [
+    filteredProductions,
+    startDate,
+    endDate,
+    periodDays,
+    evolutionGranularity,
+    evolutionBreakdown,
+    uniqueUnits,
+    uniqueConvenios,
+    uniqueSpecialties,
+  ]);
 
   // Cores para o gráfico
   const chartColors = ["#8b5cf6", "#10b981", "#f59e0b", "#ef4444", "#3b82f6", "#ec4899", "#06b6d4", "#84cc16"];
@@ -853,17 +867,16 @@ export default function ProductionReport() {
         type: "concentration",
         severity: "warning",
         message: `Concentração em ${topConvenio.name}: ${topConvenio.percentage.toFixed(0)}%`,
-        interpretation: "A dependência de um único convênio representa risco de receita. Recomenda-se estratégia de diversificação.",
+        interpretation:
+          "A dependência de um único convênio representa risco de receita. Recomenda-se estratégia de diversificação.",
       });
     }
 
     // AUDIT_FIX: Especialidade concentrada (>70%) - não disparar se for "Sem especialidade" ou sem especialidades reais
     const topSpecialty = specialtyRanking[0];
-    const isRealSpecialtyConcentration = topSpecialty && 
-      topSpecialty.percentage > 70 && 
-      hasRealSpecialty && 
-      topSpecialty.key !== "__SEM_ESPECIALIDADE__";
-    
+    const isRealSpecialtyConcentration =
+      topSpecialty && topSpecialty.percentage > 70 && hasRealSpecialty && topSpecialty.key !== "__SEM_ESPECIALIDADE__";
+
     if (isRealSpecialtyConcentration) {
       alerts.push({
         type: "specialty",
@@ -874,9 +887,9 @@ export default function ProductionReport() {
     }
 
     // Produção não faturada (visão macro)
-    const unbilledCount = filteredProductions.filter(p => p.status === "PRODUZIDO").length;
+    const unbilledCount = filteredProductions.filter((p) => p.status === "PRODUZIDO").length;
     const unbilledQty = filteredProductions
-      .filter(p => p.status === "PRODUZIDO")
+      .filter((p) => p.status === "PRODUZIDO")
       .reduce((sum, p) => sum + p.quantity, 0);
     if (unbilledCount > 0) {
       alerts.push({
@@ -918,7 +931,7 @@ export default function ProductionReport() {
   // ═══════════════════════════════════════════════════════════════════════════
   const reportItems = useMemo(() => {
     return toReportItems(filteredProductions, (planId, packageType, referenceDate) =>
-      getEffectiveRule(planId, packageType, referenceDate)
+      getEffectiveRule(planId, packageType, referenceDate),
     );
   }, [filteredProductions, getEffectiveRule]);
 
@@ -932,7 +945,7 @@ export default function ProductionReport() {
     const aggregation: Record<string, AggregatedRow> = {};
 
     reportItems.forEach((item) => {
-      const specialty = (item.specialty && item.specialty.trim() !== "") ? item.specialty : "";
+      const specialty = item.specialty && item.specialty.trim() !== "" ? item.specialty : "";
       const key = `${item.reportType}|${item.unit}|${item.convenio}|${specialty}`;
 
       if (!aggregation[key]) {
@@ -983,14 +996,17 @@ export default function ProductionReport() {
     setDrilldownOpen(true);
   }, []);
 
-  const handleSpecialtyFilter = useCallback((specialty: string) => {
-    setSelectedSpecialty(specialty === selectedSpecialty ? "all" : specialty);
-  }, [selectedSpecialty]);
+  const handleSpecialtyFilter = useCallback(
+    (specialty: string) => {
+      setSelectedSpecialty(specialty === selectedSpecialty ? "all" : specialty);
+    },
+    [selectedSpecialty],
+  );
 
   // AUDIT_FIX: CSV now exports consolidated rows (not flatMap of items)
   const handleExportCSV = useCallback(() => {
     const headers = ["Componente", "Unidade", "Especialidade", "Convênio", "Qtd", "Valor (R$)", "% Valor"];
-    const rows = consolidatedTable.map(row => [
+    const rows = consolidatedTable.map((row) => [
       getProductionTypeLabel(row.reportType),
       formatUnitName(row.unit),
       row.specialty ? formatSpecialtyDisplayName(row.specialty) : "Sem especialidade",
@@ -999,8 +1015,8 @@ export default function ProductionReport() {
       row.amount.toFixed(2),
       row.percentage.toFixed(2),
     ]);
-    
-    const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+
+    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
@@ -1012,101 +1028,131 @@ export default function ProductionReport() {
 
   // Top procedure for executive summary
   const topProcedure = topProcedures[0];
-  
+
   // Small sample check
   const isSmallSample = previousTotalQuantity > 0 && previousTotalQuantity < 10;
-  
+
   // Unbilled count for secondary alert
-  const unbilledCount = filteredProductions.filter(p => p.status === "PRODUZIDO").length;
+  const unbilledCount = filteredProductions.filter((p) => p.status === "PRODUZIDO").length;
   const unbilledQty = filteredProductions
-    .filter(p => p.status === "PRODUZIDO")
+    .filter((p) => p.status === "PRODUZIDO")
     .reduce((sum, p) => sum + p.quantity, 0);
-  
+
   // Alerts without unbilled (production-focused)
-  const productionAlerts = managementAlerts.filter(a => a.type !== "unbilled");
-  const unbilledAlert = managementAlerts.find(a => a.type === "unbilled");
-  
+  const productionAlerts = managementAlerts.filter((a) => a.type !== "unbilled");
+  const unbilledAlert = managementAlerts.find((a) => a.type === "unbilled");
+
   // Unbilled productions for export
   const unbilledProductions = useMemo(() => {
-    return filteredProductions.filter(p => p.status === "PRODUZIDO");
+    return filteredProductions.filter((p) => p.status === "PRODUZIDO");
   }, [filteredProductions]);
 
   // Export data aggregated from all existing calculations
-  const exportData: ProductionReportExportData = useMemo(() => ({
-    // Metadata
-    startDate,
-    endDate,
-    selectedUnit,
-    selectedConvenio,
-    selectedType,
-    selectedSpecialty,
-    
-    // Core data
-    totalQuantity,
-    previousTotalQuantity,
-    variationPercent: variationData.percent,
-    variationAbsolute: variationData.absolute,
-    isSmallSample,
-    
-    // Rankings
-    unitRanking,
-    specialtyRanking: specialtyRanking.map(s => ({ name: s.name, quantity: s.quantity, percentage: s.percentage })),
-    typeBreakdown,
-    convenioRanking: convenioRanking.map(c => ({ name: c.name, quantity: c.quantity, percentage: c.percentage, riskLevel: c.riskLevel })),
-    topProcedures: topProcedures.map(p => ({ name: p.name, code: p.code, quantity: p.quantity, percentage: p.percentage })),
-    
-    // Time series
-    evolutionData: evolutionData.map(e => ({ date: e.date, dateLabel: e.dateLabel, total: e.total })),
-    
-    // Consolidated table
-    consolidatedTable: consolidatedTable.map(c => ({
-      productionType: c.reportType,
-      unit: c.unit,
-      specialty: c.specialty,
-      convenio: c.convenio,
-      quantity: c.quantity,
-      percentage: c.percentage,
-    })),
-    
-    // Unbilled
-    unbilledProductions,
-    
-    // Highlights
-    topUnit: strategicKPIs.topUnit,
-    topConvenio: strategicKPIs.topConvenio,
-    topProcedure: topProcedure ? { name: topProcedure.name, quantity: topProcedure.quantity, percentage: topProcedure.percentage } : null,
-    
-    // Raw productions for Base_Producao (line-by-line)
-    rawProductions: filteredProductions.map(p => ({
-      productionDate: p.productionDate,
-      competencia: p.competencia,
-      unit: p.unit,
-      payer: p.payerType || (p.convenio ? "CONVENIO" : "PARTICULAR"),
-      convenio: p.convenio,
-      paymentMethod: p.paymentMethod || null, // HOTFIX: Modo de pagamento para PARTICULAR
-      productionType: p.productionType,
-      procedureName: p.description,
-      patientName: p.patientName || null,
-      quantity: p.quantity,
-      unitValue: p.unitValue,
-      totalValue: p.estimatedValue || (p.quantity * p.unitValue),
-      specialty: p.specialty,
-      status: p.status,
-      importSource: p.importBatchId ? "import" : "manual",
-      importBatchId: p.importBatchId || null,
-    })),
-  }), [
-    startDate, endDate, selectedUnit, selectedConvenio, selectedType, selectedSpecialty,
-    totalQuantity, previousTotalQuantity, variationData, isSmallSample,
-    unitRanking, specialtyRanking, typeBreakdown, convenioRanking, topProcedures,
-    evolutionData, consolidatedTable, unbilledProductions, strategicKPIs, topProcedure,
-    filteredProductions
-  ]);
+  const exportData: ProductionReportExportData = useMemo(
+    () => ({
+      // Metadata
+      startDate,
+      endDate,
+      selectedUnit,
+      selectedConvenio,
+      selectedType,
+      selectedSpecialty,
+
+      // Core data
+      totalQuantity,
+      previousTotalQuantity,
+      variationPercent: variationData.percent,
+      variationAbsolute: variationData.absolute,
+      isSmallSample,
+
+      // Rankings
+      unitRanking,
+      specialtyRanking: specialtyRanking.map((s) => ({ name: s.name, quantity: s.quantity, percentage: s.percentage })),
+      typeBreakdown,
+      convenioRanking: convenioRanking.map((c) => ({
+        name: c.name,
+        quantity: c.quantity,
+        percentage: c.percentage,
+        riskLevel: c.riskLevel,
+      })),
+      topProcedures: topProcedures.map((p) => ({
+        name: p.name,
+        code: p.code,
+        quantity: p.quantity,
+        percentage: p.percentage,
+      })),
+
+      // Time series
+      evolutionData: evolutionData.map((e) => ({ date: e.date, dateLabel: e.dateLabel, total: e.total })),
+
+      // Consolidated table
+      consolidatedTable: consolidatedTable.map((c) => ({
+        productionType: c.reportType,
+        unit: c.unit,
+        specialty: c.specialty,
+        convenio: c.convenio,
+        quantity: c.quantity,
+        percentage: c.percentage,
+      })),
+
+      // Unbilled
+      unbilledProductions,
+
+      // Highlights
+      topUnit: strategicKPIs.topUnit,
+      topConvenio: strategicKPIs.topConvenio,
+      topProcedure: topProcedure
+        ? { name: topProcedure.name, quantity: topProcedure.quantity, percentage: topProcedure.percentage }
+        : null,
+
+      // Raw productions for Base_Producao (line-by-line)
+      rawProductions: filteredProductions.map((p) => ({
+        productionDate: p.productionDate,
+        competencia: p.competencia,
+        unit: p.unit,
+        payer: p.payerType || (p.convenio ? "CONVENIO" : "PARTICULAR"),
+        convenio: p.convenio,
+        paymentMethod: p.paymentMethod || null, // HOTFIX: Modo de pagamento para PARTICULAR
+        productionType: p.productionType,
+        procedureName: p.description,
+        patientName: p.patientName || null,
+        quantity: p.quantity,
+        unitValue: p.unitValue,
+        totalValue: p.estimatedValue || p.quantity * p.unitValue,
+        specialty: p.specialty,
+        status: p.status,
+        importSource: p.importBatchId ? "import" : "manual",
+        importBatchId: p.importBatchId || null,
+      })),
+    }),
+    [
+      startDate,
+      endDate,
+      selectedUnit,
+      selectedConvenio,
+      selectedType,
+      selectedSpecialty,
+      totalQuantity,
+      previousTotalQuantity,
+      variationData,
+      isSmallSample,
+      unitRanking,
+      specialtyRanking,
+      typeBreakdown,
+      convenioRanking,
+      topProcedures,
+      evolutionData,
+      consolidatedTable,
+      unbilledProductions,
+      strategicKPIs,
+      topProcedure,
+      filteredProductions,
+    ],
+  );
 
   return (
     <DashboardLayout>
       <div className="space-y-8 animate-fade-in max-w-7xl mx-auto">
-        
         {/* ══════════════════════════════════════════════════════════════════
             1️⃣ HEADER PREMIUM
         ══════════════════════════════════════════════════════════════════ */}
@@ -1117,9 +1163,7 @@ export default function ProductionReport() {
                 <BarChart3 className="h-7 w-7 text-primary" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-foreground tracking-tight">
-                  Relatório Gerencial de Produção
-                </h1>
+                <h1 className="text-2xl font-bold text-foreground tracking-tight">Relatório Gerencial de Produção</h1>
                 <p className="text-sm text-muted-foreground mt-0.5">
                   Análise estratégica e operacional da produção assistencial
                 </p>
@@ -1127,7 +1171,10 @@ export default function ProductionReport() {
             </div>
             <div className="flex items-center gap-3">
               <ProductionReportExport data={exportData} />
-              <Badge variant="secondary" className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider bg-primary/10 text-primary border-primary/20">
+              <Badge
+                variant="secondary"
+                className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider bg-primary/10 text-primary border-primary/20"
+              >
                 <BookOpen className="mr-1.5 h-3.5 w-3.5" />
                 Visão Gerencial
               </Badge>
@@ -1208,9 +1255,7 @@ export default function ProductionReport() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-muted-foreground">
-                  Especialidade
-                </Label>
+                <Label className="text-xs font-medium text-muted-foreground">Especialidade</Label>
                 <Select value={selectedSpecialty} onValueChange={setSelectedSpecialty}>
                   <SelectTrigger className="h-9 text-sm bg-background">
                     <SelectValue placeholder="Todas" />
@@ -1233,7 +1278,9 @@ export default function ProductionReport() {
                 <span className="mx-2">•</span>
                 <span>{periodDays} dias</span>
               </div>
-              <span className="opacity-70">Atualizado em: {format(new Date(), "dd/MM/yyyy HH:mm", { locale: ptBR })}</span>
+              <span className="opacity-70">
+                Atualizado em: {format(new Date(), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+              </span>
             </div>
           </div>
         </section>
@@ -1245,7 +1292,9 @@ export default function ProductionReport() {
           <div className="flex items-center gap-2 mb-4">
             <Layers className="h-5 w-5 text-primary" />
             <h2 className="text-lg font-semibold text-foreground">Consolidado por Componentes</h2>
-            <Badge variant="outline" className="text-[10px] px-1.5">Avulso + Pacotes</Badge>
+            <Badge variant="outline" className="text-[10px] px-1.5">
+              Avulso + Pacotes
+            </Badge>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             {/* Consultas - usando reportItems (já normalizados para legados) */}
@@ -1253,24 +1302,25 @@ export default function ProductionReport() {
               <CardContent className="pt-5 pb-5">
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Consultas
-                    </p>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Consultas</p>
                     <p className="text-2xl font-bold text-foreground mt-2 tabular-nums">
                       {(() => {
                         const stats = reportItems
-                          .filter(item => item.reportType === "CONSULTA")
-                          .reduce((acc, item) => ({
-                            value: acc.value + item.amount,
-                            quantity: acc.quantity + item.quantity,
-                          }), { value: 0, quantity: 0 });
+                          .filter((item) => item.reportType === "CONSULTA")
+                          .reduce(
+                            (acc, item) => ({
+                              value: acc.value + item.amount,
+                              quantity: acc.quantity + item.quantity,
+                            }),
+                            { value: 0, quantity: 0 },
+                          );
                         return stats.quantity.toLocaleString("pt-BR");
                       })()}
                     </p>
                     <p className="text-sm text-muted-foreground mt-1">
                       {(() => {
                         const value = reportItems
-                          .filter(item => item.reportType === "CONSULTA")
+                          .filter((item) => item.reportType === "CONSULTA")
                           .reduce((sum, item) => sum + item.amount, 0);
                         return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
                       })()}
@@ -1291,13 +1341,11 @@ export default function ProductionReport() {
               <CardContent className="pt-5 pb-5">
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Box / Taxas
-                    </p>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Box / Taxas</p>
                     <p className="text-2xl font-bold text-foreground mt-2 tabular-nums">
                       {(() => {
                         const quantity = reportItems
-                          .filter(item => item.reportType === "BOX_TAXA")
+                          .filter((item) => item.reportType === "BOX_TAXA")
                           .reduce((sum, item) => sum + item.quantity, 0);
                         return quantity.toLocaleString("pt-BR");
                       })()}
@@ -1305,7 +1353,7 @@ export default function ProductionReport() {
                     <p className="text-sm text-muted-foreground mt-1">
                       {(() => {
                         const value = reportItems
-                          .filter(item => item.reportType === "BOX_TAXA")
+                          .filter((item) => item.reportType === "BOX_TAXA")
                           .reduce((sum, item) => sum + item.amount, 0);
                         return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
                       })()}
@@ -1315,9 +1363,7 @@ export default function ProductionReport() {
                     <Heart className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                   </div>
                 </div>
-                <p className="text-[10px] text-muted-foreground mt-2 italic">
-                  Avulso BOX_PS + Pacotes (fee_amount)
-                </p>
+                <p className="text-[10px] text-muted-foreground mt-2 italic">Avulso BOX_PS + Pacotes (fee_amount)</p>
               </CardContent>
             </Card>
 
@@ -1326,28 +1372,22 @@ export default function ProductionReport() {
               <CardContent className="pt-5 pb-5">
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Mat/Med
-                    </p>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Mat/Med</p>
                     <p className="text-2xl font-bold text-foreground mt-2 tabular-nums">
                       {(() => {
                         const value = reportItems
-                          .filter(item => item.reportType === "MAT_MED")
+                          .filter((item) => item.reportType === "MAT_MED")
                           .reduce((sum, item) => sum + item.amount, 0);
                         return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
                       })()}
                     </p>
-                    <p className="text-[10px] text-muted-foreground mt-1">
-                      Somente valor (sem quantidade)
-                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-1">Somente valor (sem quantidade)</p>
                   </div>
                   <div className="p-2.5 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl">
                     <Syringe className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                   </div>
                 </div>
-                <p className="text-[10px] text-muted-foreground mt-2 italic">
-                  Pacotes (matmed_amount)
-                </p>
+                <p className="text-[10px] text-muted-foreground mt-2 italic">Pacotes (matmed_amount)</p>
               </CardContent>
             </Card>
           </div>
@@ -1367,7 +1407,8 @@ export default function ProductionReport() {
                   <>
                     <span>. Variação vs período anterior: </span>
                     <span className={`font-semibold ${variationData.percent >= 0 ? "text-green-600" : "text-red-600"}`}>
-                      {variationData.percent >= 0 ? "+" : ""}{variationData.percent.toFixed(0)}%
+                      {variationData.percent >= 0 ? "+" : ""}
+                      {variationData.percent.toFixed(0)}%
                     </span>
                     {isSmallSample && (
                       <Badge variant="outline" className="ml-1.5 text-[10px] px-1.5 py-0 h-4 align-middle">
@@ -1411,9 +1452,7 @@ export default function ProductionReport() {
               <CardContent className="pt-5 pb-5">
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Produção Total
-                    </p>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Produção Total</p>
                     <p className="text-3xl font-bold text-foreground mt-2 tabular-nums">
                       {totalQuantity.toLocaleString("pt-BR")}
                     </p>
@@ -1439,10 +1478,13 @@ export default function ProductionReport() {
                     {variationData.hasData ? (
                       <>
                         <div className="flex items-center gap-2 mt-2">
-                          <p className={`text-3xl font-bold tabular-nums ${
-                            variationData.percent >= 0 ? "text-green-600" : "text-red-600"
-                          }`}>
-                            {variationData.percent >= 0 ? "+" : ""}{variationData.percent.toFixed(0)}%
+                          <p
+                            className={`text-3xl font-bold tabular-nums ${
+                              variationData.percent >= 0 ? "text-green-600" : "text-red-600"
+                            }`}
+                          >
+                            {variationData.percent >= 0 ? "+" : ""}
+                            {variationData.percent.toFixed(0)}%
                           </p>
                           {isSmallSample && (
                             <Badge variant="outline" className="text-[10px] gap-0.5 h-5">
@@ -1457,7 +1499,8 @@ export default function ProductionReport() {
                           ) : (
                             <TrendingDown className="h-3 w-3 text-red-600" />
                           )}
-                          {variationData.absolute >= 0 ? "+" : ""}{variationData.absolute.toLocaleString("pt-BR")} itens
+                          {variationData.absolute >= 0 ? "+" : ""}
+                          {variationData.absolute.toLocaleString("pt-BR")} itens
                         </p>
                       </>
                     ) : (
@@ -1466,19 +1509,19 @@ export default function ProductionReport() {
                           <Minus className="h-5 w-5 text-muted-foreground" />
                           <span className="text-sm text-muted-foreground">Sem dados</span>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Período anterior sem produção
-                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">Período anterior sem produção</p>
                       </>
                     )}
                   </div>
-                  <div className={`p-2.5 rounded-xl ${
-                    variationData.hasData && variationData.percent >= 0 
-                      ? "bg-green-100 dark:bg-green-900/30" 
-                      : variationData.hasData 
-                        ? "bg-red-100 dark:bg-red-900/30"
-                        : "bg-muted"
-                  }`}>
+                  <div
+                    className={`p-2.5 rounded-xl ${
+                      variationData.hasData && variationData.percent >= 0
+                        ? "bg-green-100 dark:bg-green-900/30"
+                        : variationData.hasData
+                          ? "bg-red-100 dark:bg-red-900/30"
+                          : "bg-muted"
+                    }`}
+                  >
                     {variationData.hasData && variationData.percent >= 0 ? (
                       <TrendingUp className="h-5 w-5 text-green-600" />
                     ) : variationData.hasData ? (
@@ -1501,11 +1544,10 @@ export default function ProductionReport() {
                     </p>
                     {strategicKPIs.topUnit ? (
                       <>
-                        <p className="text-xl font-bold text-foreground mt-2 truncate">
-                          {strategicKPIs.topUnit.name}
-                        </p>
+                        <p className="text-xl font-bold text-foreground mt-2 truncate">{strategicKPIs.topUnit.name}</p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {strategicKPIs.topUnit.percentage.toFixed(0)}% ({strategicKPIs.topUnit.quantity.toLocaleString("pt-BR")} itens)
+                          {strategicKPIs.topUnit.percentage.toFixed(0)}% (
+                          {strategicKPIs.topUnit.quantity.toLocaleString("pt-BR")} itens)
                         </p>
                       </>
                     ) : (
@@ -1533,7 +1575,8 @@ export default function ProductionReport() {
                           {strategicKPIs.topConvenio.name}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {strategicKPIs.topConvenio.percentage.toFixed(0)}% ({strategicKPIs.topConvenio.quantity.toLocaleString("pt-BR")} itens)
+                          {strategicKPIs.topConvenio.percentage.toFixed(0)}% (
+                          {strategicKPIs.topConvenio.quantity.toLocaleString("pt-BR")} itens)
                         </p>
                       </>
                     ) : (
@@ -1560,18 +1603,20 @@ export default function ProductionReport() {
             </div>
             <div className="grid gap-3 md:grid-cols-2">
               {productionAlerts.map((alert, idx) => (
-                <Alert 
-                  key={idx} 
+                <Alert
+                  key={idx}
                   className={`${
-                    alert.severity === "error" 
-                      ? "border-red-500/40 bg-red-50/50 dark:bg-red-950/20" 
-                      : alert.severity === "warning" 
-                        ? "border-amber-500/40 bg-amber-50/50 dark:bg-amber-950/20" 
+                    alert.severity === "error"
+                      ? "border-red-500/40 bg-red-50/50 dark:bg-red-950/20"
+                      : alert.severity === "warning"
+                        ? "border-amber-500/40 bg-amber-50/50 dark:bg-amber-950/20"
                         : "border-blue-500/40 bg-blue-50/50 dark:bg-blue-950/20"
                   }`}
                 >
                   <div className="flex items-start gap-3">
-                    {alert.type === "concentration" && <PieChart className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />}
+                    {alert.type === "concentration" && (
+                      <PieChart className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                    )}
                     {alert.type === "specialty" && <Award className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />}
                     {alert.type === "drop" && <TrendDown className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />}
                     {alert.type === "trend" && <TrendingUp className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />}
@@ -1603,24 +1648,22 @@ export default function ProductionReport() {
                       <FileText className="h-4 w-4 text-amber-600" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-foreground">
-                        Produção pendente de fechamento
-                      </p>
+                      <p className="text-sm font-medium text-foreground">Produção pendente de fechamento</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {unbilledQty.toLocaleString("pt-BR")} itens aguardando envio para faturamento
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 sm:flex-shrink-0">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
+                    <Button
+                      variant="outline"
+                      size="sm"
                       className="text-xs h-8"
                       onClick={() => {
                         // AUDIT_FIX: Passar getEffectiveRule para normalizar pacotes legados
                         const unbilledItems = toReportItems(
-                          filteredProductions.filter(p => p.status === "PRODUZIDO"),
-                          (planId, packageType, referenceDate) => getEffectiveRule(planId, packageType, referenceDate)
+                          filteredProductions.filter((p) => p.status === "PRODUZIDO"),
+                          (planId, packageType, referenceDate) => getEffectiveRule(planId, packageType, referenceDate),
                         );
                         handleOpenDrilldown("Itens pendentes de faturamento", unbilledItems);
                       }}
@@ -1628,11 +1671,11 @@ export default function ProductionReport() {
                       <Eye className="h-3 w-3 mr-1.5" />
                       Ver Detalhes
                     </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       className="text-xs h-8 text-muted-foreground"
-                      onClick={() => window.location.href = "/suggested-billing"}
+                      onClick={() => (window.location.href = "/suggested-billing")}
                     >
                       Faturamento Sugerido
                       <ChevronRight className="h-3 w-3 ml-1" />
@@ -1671,16 +1714,30 @@ export default function ProductionReport() {
                     )}
                   </CardTitle>
                   <CardDescription className="text-xs">
-                    Histórico de produção {totalQuantity < 50 ? "(semanal - amostra pequena)" : periodDays > 60 ? "(semanal)" : evolutionGranularity === "weekly" ? "(semanal)" : "(diário)"}
+                    Histórico de produção{" "}
+                    {totalQuantity < 50
+                      ? "(semanal - amostra pequena)"
+                      : periodDays > 60
+                        ? "(semanal)"
+                        : evolutionGranularity === "weekly"
+                          ? "(semanal)"
+                          : "(diário)"}
                     {variationData.hasData && previousTotalQuantity < 10 && previousTotalQuantity > 0 && (
                       <span className="text-amber-600 ml-2">• Período anterior com poucos dados</span>
                     )}
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Tabs value={totalQuantity < 50 ? "weekly" : evolutionGranularity} onValueChange={(v) => setEvolutionGranularity(v as "daily" | "weekly")}>
+                  <Tabs
+                    value={totalQuantity < 50 ? "weekly" : evolutionGranularity}
+                    onValueChange={(v) => setEvolutionGranularity(v as "daily" | "weekly")}
+                  >
                     <TabsList className="h-8">
-                      <TabsTrigger value="daily" className="text-xs px-3" disabled={periodDays > 60 || totalQuantity < 50}>
+                      <TabsTrigger
+                        value="daily"
+                        className="text-xs px-3"
+                        disabled={periodDays > 60 || totalQuantity < 50}
+                      >
                         Diário
                       </TabsTrigger>
                       <TabsTrigger value="weekly" className="text-xs px-3">
@@ -1688,7 +1745,10 @@ export default function ProductionReport() {
                       </TabsTrigger>
                     </TabsList>
                   </Tabs>
-                  <Select value={evolutionBreakdown} onValueChange={(v) => setEvolutionBreakdown(v as typeof evolutionBreakdown)}>
+                  <Select
+                    value={evolutionBreakdown}
+                    onValueChange={(v) => setEvolutionBreakdown(v as typeof evolutionBreakdown)}
+                  >
                     <SelectTrigger className="h-8 w-[140px] text-xs">
                       <SelectValue />
                     </SelectTrigger>
@@ -1713,33 +1773,18 @@ export default function ProductionReport() {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={evolutionData}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis 
-                        dataKey="dateLabel" 
-                        tick={{ fontSize: 10 }}
-                        className="text-muted-foreground"
-                      />
-                      <YAxis 
-                        tick={{ fontSize: 10 }}
-                        className="text-muted-foreground"
-                      />
-                      <Tooltip 
-                        contentStyle={{ 
+                      <XAxis dataKey="dateLabel" tick={{ fontSize: 10 }} className="text-muted-foreground" />
+                      <YAxis tick={{ fontSize: 10 }} className="text-muted-foreground" />
+                      <Tooltip
+                        contentStyle={{
                           backgroundColor: "hsl(var(--card))",
                           border: "1px solid hsl(var(--border))",
                           borderRadius: "8px",
-                          fontSize: "12px"
+                          fontSize: "12px",
                         }}
-                        formatter={(value: number) => [
-                          `${value.toLocaleString("pt-BR")}`,
-                          "Quantidade"
-                        ]}
+                        formatter={(value: number) => [`${value.toLocaleString("pt-BR")}`, "Quantidade"]}
                       />
-                      <Bar 
-                        dataKey="total" 
-                        fill="hsl(var(--primary))" 
-                        radius={[4, 4, 0, 0]}
-                        name="Total"
-                      />
+                      <Bar dataKey="total" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Total" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -1748,32 +1793,25 @@ export default function ProductionReport() {
                   <ResponsiveContainer width="100%" height="100%">
                     <RechartsLine data={evolutionData}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis 
-                        dataKey="dateLabel" 
-                        tick={{ fontSize: 10 }}
-                        className="text-muted-foreground"
-                      />
-                      <YAxis 
-                        tick={{ fontSize: 10 }}
-                        className="text-muted-foreground"
-                      />
-                      <Tooltip 
-                        contentStyle={{ 
+                      <XAxis dataKey="dateLabel" tick={{ fontSize: 10 }} className="text-muted-foreground" />
+                      <YAxis tick={{ fontSize: 10 }} className="text-muted-foreground" />
+                      <Tooltip
+                        contentStyle={{
                           backgroundColor: "hsl(var(--card))",
                           border: "1px solid hsl(var(--border))",
                           borderRadius: "8px",
-                          fontSize: "12px"
+                          fontSize: "12px",
                         }}
                         formatter={(value: number, name: string) => [
                           `${value.toLocaleString("pt-BR")} (${totalQuantity > 0 ? ((value / totalQuantity) * 100).toFixed(1) : 0}%)`,
-                          name
+                          name,
                         ]}
                       />
                       {evolutionBreakdown === "geral" ? (
-                        <Line 
-                          type="monotone" 
-                          dataKey="total" 
-                          stroke="hsl(var(--primary))" 
+                        <Line
+                          type="monotone"
+                          dataKey="total"
+                          stroke="hsl(var(--primary))"
                           strokeWidth={2}
                           dot={{ r: 3 }}
                           activeDot={{ r: 5 }}
@@ -1781,10 +1819,10 @@ export default function ProductionReport() {
                         />
                       ) : evolutionBreakdown === "unidade" ? (
                         uniqueUnits.map((unit, idx) => (
-                          <Line 
+                          <Line
                             key={unit}
-                            type="monotone" 
-                            dataKey={formatUnitName(unit)} 
+                            type="monotone"
+                            dataKey={formatUnitName(unit)}
                             stroke={chartColors[idx % chartColors.length]}
                             strokeWidth={2}
                             dot={{ r: 2 }}
@@ -1792,32 +1830,37 @@ export default function ProductionReport() {
                           />
                         ))
                       ) : evolutionBreakdown === "convenio" ? (
-                        uniqueConvenios.slice(0, 5).map((conv, idx) => (
-                          <Line 
-                            key={conv}
-                            type="monotone" 
-                            dataKey={conv} 
-                            stroke={chartColors[idx % chartColors.length]}
-                            strokeWidth={2}
-                            dot={{ r: 2 }}
-                            name={conv}
-                          />
-                        ))
-                      ) : (
-                        uniqueSpecialties.filter(s => s !== "__SEM_ESPECIALIDADE__").slice(0, 5).map((spec, idx) => {
-                          const displayName = formatSpecialtyDisplayName(spec);
-                          return (
-                            <Line 
-                              key={spec}
-                              type="monotone" 
-                              dataKey={displayName} 
+                        uniqueConvenios
+                          .slice(0, 5)
+                          .map((conv, idx) => (
+                            <Line
+                              key={conv}
+                              type="monotone"
+                              dataKey={conv}
                               stroke={chartColors[idx % chartColors.length]}
                               strokeWidth={2}
                               dot={{ r: 2 }}
-                              name={displayName}
+                              name={conv}
                             />
-                          );
-                        })
+                          ))
+                      ) : (
+                        uniqueSpecialties
+                          .filter((s) => s !== "__SEM_ESPECIALIDADE__")
+                          .slice(0, 5)
+                          .map((spec, idx) => {
+                            const displayName = formatSpecialtyDisplayName(spec);
+                            return (
+                              <Line
+                                key={spec}
+                                type="monotone"
+                                dataKey={displayName}
+                                stroke={chartColors[idx % chartColors.length]}
+                                strokeWidth={2}
+                                dot={{ r: 2 }}
+                                name={displayName}
+                              />
+                            );
+                          })
                       )}
                       {evolutionBreakdown !== "geral" && <Legend />}
                     </RechartsLine>
@@ -1845,9 +1888,7 @@ export default function ProductionReport() {
                   <Building2 className="h-4 w-4 text-green-600" />
                   Produção por Unidade
                 </CardTitle>
-                <CardDescription className="text-xs">
-                  Ranking e participação percentual
-                </CardDescription>
+                <CardDescription className="text-xs">Ranking e participação percentual</CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
                 {unitRanking.length === 0 ? (
@@ -1867,8 +1908,12 @@ export default function ProductionReport() {
                           {unit.percentage.toFixed(0)}%
                         </span>
                         {unit.variation !== null && (
-                          <Badge variant={unit.variation >= 0 ? "default" : "destructive"} className="text-xs w-14 justify-center">
-                            {unit.variation >= 0 ? "↑" : "↓"}{Math.abs(unit.variation).toFixed(0)}%
+                          <Badge
+                            variant={unit.variation >= 0 ? "default" : "destructive"}
+                            className="text-xs w-14 justify-center"
+                          >
+                            {unit.variation >= 0 ? "↑" : "↓"}
+                            {Math.abs(unit.variation).toFixed(0)}%
                           </Badge>
                         )}
                       </div>
@@ -1886,15 +1931,13 @@ export default function ProductionReport() {
                     <Award className="h-4 w-4 text-purple-600" />
                     Produção por Especialidade
                   </CardTitle>
-                  <CardDescription className="text-xs">
-                    Centro Clínico • Clique para filtrar
-                  </CardDescription>
+                  <CardDescription className="text-xs">Centro Clínico • Clique para filtrar</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {specialtyRanking.map((spec, idx) => {
                     return (
-                      <div 
-                        key={spec.key} 
+                      <div
+                        key={spec.key}
                         className={`flex items-center justify-between py-1.5 px-2 rounded-md cursor-pointer transition-colors ${
                           selectedSpecialty === spec.key
                             ? "bg-primary/10 border border-primary/20"
@@ -1913,11 +1956,21 @@ export default function ProductionReport() {
                           <span className="text-xs text-muted-foreground w-10 text-right">
                             {spec.percentage.toFixed(0)}%
                           </span>
-                          <Badge 
-                            variant={spec.concentrationLevel === "alta" ? "destructive" : spec.concentrationLevel === "baixa" ? "outline" : "default"}
+                          <Badge
+                            variant={
+                              spec.concentrationLevel === "alta"
+                                ? "destructive"
+                                : spec.concentrationLevel === "baixa"
+                                  ? "outline"
+                                  : "default"
+                            }
                             className="text-xs w-12 justify-center"
                           >
-                            {spec.concentrationLevel === "alta" ? "Alta" : spec.concentrationLevel === "baixa" ? "Baixa" : "OK"}
+                            {spec.concentrationLevel === "alta"
+                              ? "Alta"
+                              : spec.concentrationLevel === "baixa"
+                                ? "Baixa"
+                                : "OK"}
                           </Badge>
                         </div>
                       </div>
@@ -1974,21 +2027,15 @@ export default function ProductionReport() {
 
                       <div className="flex items-center gap-2">
                         <Badge variant="secondary" className="text-xs tabular-nums">
-                          {doctorMetric === "value"
-                            ? formatCurrency(doc.value)
-                            : doc.quantity.toLocaleString("pt-BR")}
+                          {doctorMetric === "value" ? formatCurrency(doc.value) : doc.quantity.toLocaleString("pt-BR")}
                         </Badge>
-                        <span className="text-xs text-muted-foreground tabular-nums">
-                          {doc.percentage.toFixed(0)}%
-                        </span>
+                        <span className="text-xs text-muted-foreground tabular-nums">{doc.percentage.toFixed(0)}%</span>
                       </div>
                     </div>
                   ))
                 )}
               </CardContent>
             </Card>
-
-            )}
 
             {/* Mix Assistencial */}
             <Card>
@@ -1997,9 +2044,7 @@ export default function ProductionReport() {
                   <Activity className="h-4 w-4 text-primary" />
                   Mix Assistencial
                 </CardTitle>
-                <CardDescription className="text-xs">
-                  Composição por tipo de produção
-                </CardDescription>
+                <CardDescription className="text-xs">Composição por tipo de produção</CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
                 {typeBreakdown.length === 0 ? (
@@ -2035,9 +2080,7 @@ export default function ProductionReport() {
                   <Users className="h-4 w-4 text-amber-600" />
                   Concentração por Convênio
                 </CardTitle>
-                <CardDescription className="text-xs">
-                  Análise de risco e dependência
-                </CardDescription>
+                <CardDescription className="text-xs">Análise de risco e dependência</CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
                 {convenioRanking.length === 0 ? (
@@ -2051,11 +2094,15 @@ export default function ProductionReport() {
                           <span className="text-sm font-medium truncate max-w-[120px]">{conv.name}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">
-                            {conv.percentage.toFixed(0)}%
-                          </span>
-                          <Badge 
-                            variant={conv.riskLevel === "alto" ? "destructive" : conv.riskLevel === "medio" ? "secondary" : "outline"}
+                          <span className="text-xs text-muted-foreground">{conv.percentage.toFixed(0)}%</span>
+                          <Badge
+                            variant={
+                              conv.riskLevel === "alto"
+                                ? "destructive"
+                                : conv.riskLevel === "medio"
+                                  ? "secondary"
+                                  : "outline"
+                            }
                             className="text-xs"
                           >
                             {conv.riskLevel === "alto" ? "Alto" : conv.riskLevel === "medio" ? "Médio" : "OK"}
@@ -2076,11 +2123,7 @@ export default function ProductionReport() {
         ══════════════════════════════════════════════════════════════════ */}
         <section>
           {filteredProductions.length > 0 ? (
-            <ProceduresDetailPanel
-              productions={filteredProductions}
-              startDate={startDate}
-              endDate={endDate}
-            />
+            <ProceduresDetailPanel productions={filteredProductions} startDate={startDate} endDate={endDate} />
           ) : null}
         </section>
 
@@ -2096,9 +2139,7 @@ export default function ProductionReport() {
                   <Sparkles className="h-4 w-4 text-blue-600" />
                   Top 10 Procedimentos/Exames
                 </CardTitle>
-                <CardDescription className="text-xs">
-                  Procedimentos mais realizados no período
-                </CardDescription>
+                <CardDescription className="text-xs">Procedimentos mais realizados no período</CardDescription>
               </CardHeader>
               <CardContent>
                 {topProcedures.length === 0 ? (
@@ -2108,10 +2149,16 @@ export default function ProductionReport() {
                     {topProcedures.map((proc, idx) => (
                       <div key={proc.name} className="flex items-center justify-between py-1">
                         <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <span className="text-xs font-medium text-muted-foreground w-5 flex-shrink-0">{idx + 1}.</span>
-                          <span className="text-xs truncate" title={proc.name}>{proc.name}</span>
+                          <span className="text-xs font-medium text-muted-foreground w-5 flex-shrink-0">
+                            {idx + 1}.
+                          </span>
+                          <span className="text-xs truncate" title={proc.name}>
+                            {proc.name}
+                          </span>
                           {proc.code && (
-                            <Badge variant="outline" className="text-[10px] flex-shrink-0">{proc.code}</Badge>
+                            <Badge variant="outline" className="text-[10px] flex-shrink-0">
+                              {proc.code}
+                            </Badge>
                           )}
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
@@ -2134,9 +2181,7 @@ export default function ProductionReport() {
                   <PieChart className="h-4 w-4 text-orange-600" />
                   Mapa de Concentração (Pareto)
                 </CardTitle>
-                <CardDescription className="text-xs">
-                  Análise 80/20 de convênios e procedimentos
-                </CardDescription>
+                <CardDescription className="text-xs">Análise 80/20 de convênios e procedimentos</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="p-3 bg-muted/50 rounded-lg">
@@ -2147,10 +2192,13 @@ export default function ProductionReport() {
                     </Badge>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    <span className="font-medium">{paretoAnalysis.conveniosFor80} convênio(s)</span> representam 80% da produção
+                    <span className="font-medium">{paretoAnalysis.conveniosFor80} convênio(s)</span> representam 80% da
+                    produção
                   </p>
                   <div className="mt-2 flex items-start gap-2">
-                    <AlertCircle className={`h-3.5 w-3.5 mt-0.5 flex-shrink-0 ${paretoAnalysis.conveniosFor80 <= 2 ? "text-amber-500" : "text-green-500"}`} />
+                    <AlertCircle
+                      className={`h-3.5 w-3.5 mt-0.5 flex-shrink-0 ${paretoAnalysis.conveniosFor80 <= 2 ? "text-amber-500" : "text-green-500"}`}
+                    />
                     <p className="text-xs text-muted-foreground">{paretoAnalysis.riskText}</p>
                   </div>
                 </div>
@@ -2163,10 +2211,13 @@ export default function ProductionReport() {
                     </Badge>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    <span className="font-medium">{paretoAnalysis.proceduresFor80} procedimento(s)</span> representam 80% da produção
+                    <span className="font-medium">{paretoAnalysis.proceduresFor80} procedimento(s)</span> representam
+                    80% da produção
                   </p>
                   <div className="mt-2 flex items-start gap-2">
-                    <AlertCircle className={`h-3.5 w-3.5 mt-0.5 flex-shrink-0 ${paretoAnalysis.proceduresFor80 <= 3 ? "text-amber-500" : "text-green-500"}`} />
+                    <AlertCircle
+                      className={`h-3.5 w-3.5 mt-0.5 flex-shrink-0 ${paretoAnalysis.proceduresFor80 <= 3 ? "text-amber-500" : "text-green-500"}`}
+                    />
                     <p className="text-xs text-muted-foreground">{paretoAnalysis.opportunityText}</p>
                   </div>
                 </div>
@@ -2195,12 +2246,7 @@ export default function ProductionReport() {
                   <Badge variant="outline" className="text-xs">
                     {consolidatedTable.length} registros
                   </Badge>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="h-8 text-xs"
-                    onClick={handleExportCSV}
-                  >
+                  <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleExportCSV}>
                     <Download className="h-3.5 w-3.5 mr-1" />
                     CSV
                   </Button>
@@ -2241,9 +2287,14 @@ export default function ProductionReport() {
                               </div>
                             </TableCell>
                             <TableCell className="text-xs">{formatUnitName(row.unit)}</TableCell>
-                            <TableCell className="text-xs">{row.specialty ? formatSpecialtyDisplayName(row.specialty) : "—"}</TableCell>
+                            <TableCell className="text-xs">
+                              {row.specialty ? formatSpecialtyDisplayName(row.specialty) : "—"}
+                            </TableCell>
                             <TableCell>
-                              <Badge variant={row.convenio === "PARTICULAR" ? "secondary" : "outline"} className="text-xs">
+                              <Badge
+                                variant={row.convenio === "PARTICULAR" ? "secondary" : "outline"}
+                                className="text-xs"
+                              >
                                 {formatConvenioDisplayName(row.convenio)}
                               </Badge>
                             </TableCell>
@@ -2251,7 +2302,9 @@ export default function ProductionReport() {
                               {row.reportType === "MAT_MED" ? "—" : row.quantity.toLocaleString("pt-BR")}
                             </TableCell>
                             <TableCell className="text-right text-xs tabular-nums">
-                              {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(row.amount)}
+                              {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                                row.amount,
+                              )}
                             </TableCell>
                             <TableCell className="text-right text-xs">
                               <span className="text-muted-foreground">{row.percentage.toFixed(1)}%</span>
@@ -2261,10 +2314,12 @@ export default function ProductionReport() {
                                 variant="ghost"
                                 size="sm"
                                 className="h-7 w-7 p-0"
-                                onClick={() => handleOpenDrilldown(
-                                  `${getProductionTypeLabel(row.reportType)} - ${formatUnitName(row.unit)} - ${row.convenio}`,
-                                  row.items
-                                )}
+                                onClick={() =>
+                                  handleOpenDrilldown(
+                                    `${getProductionTypeLabel(row.reportType)} - ${formatUnitName(row.unit)} - ${row.convenio}`,
+                                    row.items,
+                                  )
+                                }
                               >
                                 <Eye className="h-3.5 w-3.5" />
                               </Button>
@@ -2277,7 +2332,10 @@ export default function ProductionReport() {
                       <TableRow className="bg-muted/70 font-semibold">
                         <TableCell colSpan={4}>Total Geral</TableCell>
                         <TableCell className="text-right">
-                          {reportItems.filter(i => i.reportType !== "MAT_MED").reduce((s, i) => s + i.quantity, 0).toLocaleString("pt-BR")}
+                          {reportItems
+                            .filter((i) => i.reportType !== "MAT_MED")
+                            .reduce((s, i) => s + i.quantity, 0)
+                            .toLocaleString("pt-BR")}
                         </TableCell>
                         <TableCell className="text-right text-lg font-semibold tabular-nums">
                           {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(totalAmount)}
@@ -2322,43 +2380,57 @@ export default function ProductionReport() {
                     const topConv = convenioRanking[0];
                     const topSpec = specialtyRanking[0];
                     const unbilledQty = filteredProductions
-                      .filter(p => p.status === "PRODUZIDO")
+                      .filter((p) => p.status === "PRODUZIDO")
                       .reduce((sum, p) => sum + p.quantity, 0);
-                    
+
                     const parts: string[] = [];
-                    
+
                     // Volume total e período
-                    parts.push(`No período analisado, foram registradas ${totalQuantity.toLocaleString("pt-BR")} produções assistenciais.`);
-                    
+                    parts.push(
+                      `No período analisado, foram registradas ${totalQuantity.toLocaleString("pt-BR")} produções assistenciais.`,
+                    );
+
                     // Variação vs período anterior
                     if (variationData.hasData && variationData.message === null) {
                       if (variationData.percent > 5) {
-                        parts.push(`Observa-se crescimento de ${variationData.percent.toFixed(0)}% em relação ao período anterior.`);
+                        parts.push(
+                          `Observa-se crescimento de ${variationData.percent.toFixed(0)}% em relação ao período anterior.`,
+                        );
                       } else if (variationData.percent < -5) {
-                        parts.push(`Houve redução de ${Math.abs(variationData.percent).toFixed(0)}% em relação ao período anterior, o que demanda atenção.`);
+                        parts.push(
+                          `Houve redução de ${Math.abs(variationData.percent).toFixed(0)}% em relação ao período anterior, o que demanda atenção.`,
+                        );
                       } else {
                         parts.push(`A produção manteve-se estável em comparação ao período anterior.`);
                       }
                     }
-                    
+
                     // Concentração por convênio
                     if (topConv && topConv.percentage > 50) {
-                      parts.push(`Há concentração significativa no convênio ${topConv.name}, responsável por ${topConv.percentage.toFixed(0)}% do volume total.`);
+                      parts.push(
+                        `Há concentração significativa no convênio ${topConv.name}, responsável por ${topConv.percentage.toFixed(0)}% do volume total.`,
+                      );
                     } else if (topConv) {
-                      parts.push(`A distribuição entre convênios está equilibrada, com ${topConv.name} liderando com ${topConv.percentage.toFixed(0)}%.`);
+                      parts.push(
+                        `A distribuição entre convênios está equilibrada, com ${topConv.name} liderando com ${topConv.percentage.toFixed(0)}%.`,
+                      );
                     }
-                    
+
                     // Dependência por especialidade/unidade
                     if (topSpec && topSpec.percentage > 60) {
-                      parts.push(`A ${topSpec.name} concentra ${topSpec.percentage.toFixed(0)}% da produção, indicando dependência operacional.`);
+                      parts.push(
+                        `A ${topSpec.name} concentra ${topSpec.percentage.toFixed(0)}% da produção, indicando dependência operacional.`,
+                      );
                     }
-                    
+
                     // Produção não faturada
                     if (unbilledQty > 0) {
                       const unbilledPercent = totalQuantity > 0 ? (unbilledQty / totalQuantity) * 100 : 0;
-                      parts.push(`Existem ${unbilledQty.toLocaleString("pt-BR")} itens (${unbilledPercent.toFixed(0)}%) aguardando faturamento.`);
+                      parts.push(
+                        `Existem ${unbilledQty.toLocaleString("pt-BR")} itens (${unbilledPercent.toFixed(0)}%) aguardando faturamento.`,
+                      );
                     }
-                    
+
                     return parts.join(" ");
                   })()}
                 </p>
@@ -2372,73 +2444,74 @@ export default function ProductionReport() {
                 </div>
                 <ul className="space-y-2">
                   {(() => {
-                    const actions: { icon: React.ReactNode; text: string; priority: "alta" | "media" | "normal" }[] = [];
+                    const actions: { icon: React.ReactNode; text: string; priority: "alta" | "media" | "normal" }[] =
+                      [];
                     const topConv = convenioRanking[0];
                     const topSpec = specialtyRanking[0];
                     const unbilledQty = filteredProductions
-                      .filter(p => p.status === "PRODUZIDO")
+                      .filter((p) => p.status === "PRODUZIDO")
                       .reduce((sum, p) => sum + p.quantity, 0);
-                    
+
                     // Ação: Faturamento pendente
                     if (unbilledQty > 0) {
                       actions.push({
                         icon: <FileWarning className="h-3.5 w-3.5 text-amber-600" />,
                         text: `Priorizar faturamento dos ${unbilledQty.toLocaleString("pt-BR")} itens pendentes para evitar perda de receita`,
-                        priority: "alta"
+                        priority: "alta",
                       });
                     }
-                    
+
                     // Ação: Concentração convênio
                     if (topConv && topConv.percentage > 50) {
                       actions.push({
                         icon: <PieChart className="h-3.5 w-3.5 text-blue-600" />,
                         text: `Avaliar estratégia de diversificação de convênios para reduzir dependência de ${topConv.name}`,
-                        priority: topConv.percentage > 70 ? "alta" : "media"
+                        priority: topConv.percentage > 70 ? "alta" : "media",
                       });
                     }
-                    
+
                     // Ação: Queda de produção
                     if (variationData.hasData && variationData.percent < -10) {
                       actions.push({
                         icon: <TrendDown className="h-3.5 w-3.5 text-red-600" />,
                         text: "Investigar causas da queda na produção: agenda, capacidade operacional ou demanda",
-                        priority: "alta"
+                        priority: "alta",
                       });
                     }
-                    
+
                     // Ação: Concentração especialidade
                     if (topSpec && topSpec.percentage > 60) {
                       actions.push({
                         icon: <Award className="h-3.5 w-3.5 text-purple-600" />,
                         text: `Monitorar risco operacional pela concentração em ${topSpec.name}`,
-                        priority: "media"
+                        priority: "media",
                       });
                     }
-                    
+
                     // Ações padrão se não houver alertas críticos
                     if (actions.length < 3) {
-                      if (!actions.some(a => a.text.includes("Pareto"))) {
+                      if (!actions.some((a) => a.text.includes("Pareto"))) {
                         actions.push({
                           icon: <BarChart3 className="h-3.5 w-3.5 text-primary" />,
                           text: "Analisar distribuição Pareto para identificar oportunidades de otimização do mix",
-                          priority: "normal"
+                          priority: "normal",
                         });
                       }
-                      if (!actions.some(a => a.text.includes("tendência"))) {
+                      if (!actions.some((a) => a.text.includes("tendência"))) {
                         actions.push({
                           icon: <LineChart className="h-3.5 w-3.5 text-emerald-600" />,
                           text: "Acompanhar evolução temporal para antecipar tendências e sazonalidades",
-                          priority: "normal"
+                          priority: "normal",
                         });
                       }
                     }
-                    
+
                     return actions.slice(0, 3).map((action, idx) => (
-                      <li 
-                        key={idx} 
+                      <li
+                        key={idx}
                         className={`flex items-start gap-3 p-3 rounded-lg border ${
-                          action.priority === "alta" 
-                            ? "bg-red-50/50 border-red-200/50 dark:bg-red-950/20 dark:border-red-800/30" 
+                          action.priority === "alta"
+                            ? "bg-red-50/50 border-red-200/50 dark:bg-red-950/20 dark:border-red-800/30"
                             : action.priority === "media"
                               ? "bg-amber-50/50 border-amber-200/50 dark:bg-amber-950/20 dark:border-amber-800/30"
                               : "bg-muted/30 border-border/50"
@@ -2447,7 +2520,9 @@ export default function ProductionReport() {
                         <div className="mt-0.5">{action.icon}</div>
                         <span className="text-sm text-foreground/90">{action.text}</span>
                         {action.priority === "alta" && (
-                          <Badge variant="destructive" className="ml-auto text-[10px] h-5">Prioritário</Badge>
+                          <Badge variant="destructive" className="ml-auto text-[10px] h-5">
+                            Prioritário
+                          </Badge>
                         )}
                       </li>
                     ));
@@ -2482,12 +2557,12 @@ export default function ProductionReport() {
               <p className="text-xs text-muted-foreground">
                 Período analisado: <span className="font-medium">{formattedPeriod}</span>
                 {" • "}
-                Atualizado em: <span className="font-medium">{format(new Date(), "dd/MM/yyyy HH:mm", { locale: ptBR })}</span>
+                Atualizado em:{" "}
+                <span className="font-medium">{format(new Date(), "dd/MM/yyyy HH:mm", { locale: ptBR })}</span>
               </p>
             </div>
           </div>
         </footer>
-
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════
@@ -2538,9 +2613,13 @@ export default function ProductionReport() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 mt-2">
-                    <Badge variant="outline" className="text-[10px]">{item.status}</Badge>
+                    <Badge variant="outline" className="text-[10px]">
+                      {item.status}
+                    </Badge>
                     {item.convenio && (
-                      <Badge variant="outline" className="text-[10px]">{formatConvenioDisplayName(item.convenio)}</Badge>
+                      <Badge variant="outline" className="text-[10px]">
+                        {formatConvenioDisplayName(item.convenio)}
+                      </Badge>
                     )}
                   </div>
                 </div>
@@ -2549,7 +2628,6 @@ export default function ProductionReport() {
           </ScrollArea>
         </SheetContent>
       </Sheet>
-
     </DashboardLayout>
   );
 }
