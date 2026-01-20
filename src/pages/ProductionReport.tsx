@@ -1113,6 +1113,8 @@ export default function ProductionReport() {
         unit: p.unit,
         payer: p.payerType || (p.convenio ? "CONVENIO" : "PARTICULAR"),
         convenio: p.convenio,
+        doctorId: (p as any).doctorId || null,
+        doctorName: doctorNameById[String((p as any).doctorId || "")] || null,
         paymentMethod: p.paymentMethod || null, // HOTFIX: Modo de pagamento para PARTICULAR
         productionType: p.productionType,
         procedureName: p.description,
