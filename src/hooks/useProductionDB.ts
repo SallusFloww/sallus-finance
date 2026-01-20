@@ -45,7 +45,7 @@ interface DBProduction {
   created_by: string | null;
   created_at: string;
   updated_at: string;
-  history: ProductionHistoryEntry[];
+  history: any;
   edit_logs: Array<{
     field: string;
     previousValue: string;
