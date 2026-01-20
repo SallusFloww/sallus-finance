@@ -83,6 +83,7 @@ import {
   formatSpecialtyDisplayName,
   formatConvenioDisplayName,
   displayLabel,
+  formatCurrency,
 } from "@/utils/formatters";
 
 // Labels para tipos de produção OFICIAIS (incluindo visão por componentes)
