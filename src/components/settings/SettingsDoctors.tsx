@@ -1,69 +1,60 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { toast } from "sonner";
-import { Pencil, Plus, Save, X, Search } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+
+import { toast } from "sonner";
+import { Pencil, Plus, Save, X, Search, UserRound } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { cn } from "@/lib/utils";
 
 type DoctorRow = {
   id: string;
   company_id: string;
-  full_name: string;
-  display_name: string | null;
-  crm: string | null;
-  specialty: string | null;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
+  name: string;
+  specialty_id?: string | null;
+  active: boolean;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export function SettingsDoctors() {
   const { profile } = useAuth();
-  const companyId = (profile as any)?.company_id;
+  const companyId = (profile as any)?.company_id as string | undefined;
 
   const [loading, setLoading] = useState(false);
   const [doctors, setDoctors] = useState<DoctorRow[]>([]);
   const [search, setSearch] = useState("");
 
   // Novo cadastro
-  const [newFullName, setNewFullName] = useState("");
-  const [newDisplayName, setNewDisplayName] = useState("");
-  const [newCRM, setNewCRM] = useState("");
-  const [newSpecialty, setNewSpecialty] = useState("");
+  const [newName, setNewName] = useState("");
 
   // Edição
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editFullName, setEditFullName] = useState("");
-  const [editDisplayName, setEditDisplayName] = useState("");
-  const [editCRM, setEditCRM] = useState("");
-  const [editSpecialty, setEditSpecialty] = useState("");
-
-  const filtered = useMemo(() => {
-    const s = search.trim().toLowerCase();
-    if (!s) return doctors;
-    return doctors.filter((d) => {
-      const a = (d.full_name || "").toLowerCase();
-      const b = (d.display_name || "").toLowerCase();
-      const c = (d.crm || "").toLowerCase();
-      const e = (d.specialty || "").toLowerCase();
-      return a.includes(s) || b.includes(s) || c.includes(s) || e.includes(s);
-    });
-  }, [doctors, search]);
+  const [editName, setEditName] = useState("");
 
   const fetchDoctors = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase.from("doctors").select("*").order("full_name", { ascending: true });
+
+      // ⚠️ Aqui respeita seu schema real
+      const { data, error } = await supabase
+        .from("doctors")
+        .select("id, company_id, name, specialty_id, active, created_at, updated_at")
+        .order("active", { ascending: false })
+        .order("name", { ascending: true });
 
       if (error) throw error;
-      setDoctors((data as DoctorRow[]) || []);
+
+      setDoctors((data as DoctorRow[]) ?? []);
     } catch (err: any) {
-      toast.error("Erro ao carregar médicos(as).");
       console.error(err);
+      toast.error("Erro ao carregar médicos(as).");
     } finally {
       setLoading(false);
     }
@@ -74,41 +65,42 @@ export function SettingsDoctors() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const totals = useMemo(() => {
+    const total = doctors.length;
+    const ativos = doctors.filter((d) => d.active).length;
+    const inativos = total - ativos;
+    return { total, ativos, inativos };
+  }, [doctors]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return doctors;
+    return doctors.filter((d) => (d.name || "").toLowerCase().includes(q));
+  }, [doctors, search]);
+
   const startEdit = (d: DoctorRow) => {
     setEditingId(d.id);
-    setEditFullName(d.full_name || "");
-    setEditDisplayName(d.display_name || "");
-    setEditCRM(d.crm || "");
-    setEditSpecialty(d.specialty || "");
+    setEditName(d.name ?? "");
   };
 
   const cancelEdit = () => {
     setEditingId(null);
-    setEditFullName("");
-    setEditDisplayName("");
-    setEditCRM("");
-    setEditSpecialty("");
+    setEditName("");
   };
 
   const saveEdit = async () => {
     if (!editingId) return;
-    if (!editFullName.trim()) {
-      toast.error("Nome completo é obrigatório.");
+
+    const clean = editName.trim();
+    if (!clean) {
+      toast.error("O nome do médico(a) é obrigatório.");
       return;
     }
 
     try {
       setLoading(true);
 
-      const { error } = await supabase
-        .from("doctors")
-        .update({
-          full_name: editFullName.trim(),
-          display_name: editDisplayName.trim() || null,
-          crm: editCRM.trim() || null,
-          specialty: editSpecialty.trim() || null,
-        })
-        .eq("id", editingId);
+      const { error } = await supabase.from("doctors").update({ name: clean }).eq("id", editingId);
 
       if (error) throw error;
 
@@ -116,8 +108,8 @@ export function SettingsDoctors() {
       cancelEdit();
       fetchDoctors();
     } catch (err: any) {
-      toast.error("Erro ao salvar edição.");
       console.error(err);
+      toast.error("Erro ao salvar edição.");
     } finally {
       setLoading(false);
     }
@@ -125,12 +117,13 @@ export function SettingsDoctors() {
 
   const addDoctor = async () => {
     if (!companyId) {
-      toast.error("Company ID não encontrado no perfil.");
+      toast.error("Company ID não encontrado. Confirme login/empresa atual.");
       return;
     }
 
-    if (!newFullName.trim()) {
-      toast.error("Nome completo é obrigatório.");
+    const clean = newName.trim();
+    if (!clean) {
+      toast.error("Digite o nome do médico(a).");
       return;
     }
 
@@ -139,24 +132,18 @@ export function SettingsDoctors() {
 
       const { error } = await supabase.from("doctors").insert({
         company_id: companyId,
-        full_name: newFullName.trim(),
-        display_name: newDisplayName.trim() || null,
-        crm: newCRM.trim() || null,
-        specialty: newSpecialty.trim() || null,
-        is_active: true,
+        name: clean,
+        active: true,
       });
 
       if (error) throw error;
 
       toast.success("Médico(a) cadastrado.");
-      setNewFullName("");
-      setNewDisplayName("");
-      setNewCRM("");
-      setNewSpecialty("");
+      setNewName("");
       fetchDoctors();
     } catch (err: any) {
-      toast.error("Erro ao cadastrar médico(a).");
       console.error(err);
+      toast.error("Erro ao cadastrar médico(a).");
     } finally {
       setLoading(false);
     }
@@ -164,24 +151,36 @@ export function SettingsDoctors() {
 
   const toggleActive = async (id: string, next: boolean) => {
     try {
-      const { error } = await supabase.from("doctors").update({ is_active: next }).eq("id", id);
-
+      const { error } = await supabase.from("doctors").update({ active: next }).eq("id", id);
       if (error) throw error;
-      setDoctors((prev) => prev.map((d) => (d.id === id ? { ...d, is_active: next } : d)));
+
+      setDoctors((prev) => prev.map((d) => (d.id === id ? { ...d, active: next } : d)));
     } catch (err: any) {
-      toast.error("Erro ao alterar status.");
       console.error(err);
+      toast.error("Erro ao alterar status.");
     }
   };
 
   return (
     <div className="space-y-4">
       <Card className="rounded-xl">
-        <CardHeader>
-          <CardTitle>Médicos(as)</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Cadastro opcional para vincular Produções por profissional (e futuramente filtrar no BI).
-          </p>
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <UserRound className="h-5 w-5 text-muted-foreground" />
+                Médicos(as)
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Cadastro dinâmico (opcional) usado no formulário de Produção.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary">{totals.ativos} ativos</Badge>
+              <Badge variant="outline">{totals.inativos} inativos</Badge>
+            </div>
+          </div>
         </CardHeader>
 
         <CardContent className="space-y-5">
@@ -189,7 +188,7 @@ export function SettingsDoctors() {
           <div className="flex items-center gap-2">
             <Search className="h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Buscar por nome, CRM, especialidade..."
+              placeholder="Buscar médico(a)..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="max-w-xl"
@@ -203,127 +202,104 @@ export function SettingsDoctors() {
               <h4 className="font-medium">Adicionar novo</h4>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-3 md:grid-cols-[1fr_auto]">
               <div className="space-y-1">
-                <Label>Nome completo *</Label>
+                <Label>Nome do médico(a) *</Label>
                 <Input
-                  placeholder="Ex.: Dra. Isabela Souza"
-                  value={newFullName}
-                  onChange={(e) => setNewFullName(e.target.value)}
+                  placeholder="Ex.: Dra. Isabela / Dr. Bruno"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
                 />
               </div>
 
-              <div className="space-y-1">
-                <Label>Nome curto (opcional)</Label>
-                <Input
-                  placeholder="Ex.: Dra. Isabela"
-                  value={newDisplayName}
-                  onChange={(e) => setNewDisplayName(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <Label>CRM (opcional)</Label>
-                <Input placeholder="Ex.: CRM-GO 12345" value={newCRM} onChange={(e) => setNewCRM(e.target.value)} />
-              </div>
-
-              <div className="space-y-1">
-                <Label>Especialidade (opcional)</Label>
-                <Input
-                  placeholder="Ex.: Oncologia"
-                  value={newSpecialty}
-                  onChange={(e) => setNewSpecialty(e.target.value)}
-                />
+              <div className="flex items-end">
+                <Button onClick={addDoctor} disabled={loading} className="gap-2 w-full md:w-auto">
+                  <Plus className="h-4 w-4" />
+                  Adicionar
+                </Button>
               </div>
             </div>
 
-            <div className="mt-4">
-              <Button onClick={addDoctor} disabled={loading} className="gap-2">
-                <Plus className="h-4 w-4" />
-                Adicionar
-              </Button>
-            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Dica: não deletamos médicos. Se sair do time, só desative ✅
+            </p>
           </div>
 
           {/* Lista */}
           <div className="space-y-2">
-            {filtered.map((d) => {
-              const isEditing = editingId === d.id;
-
-              return (
-                <div
-                  key={d.id}
-                  className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 md:flex-row md:items-center md:justify-between"
-                >
-                  <div className="flex-1">
-                    {isEditing ? (
-                      <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
-                        <Input value={editFullName} onChange={(e) => setEditFullName(e.target.value)} />
-                        <Input
-                          value={editDisplayName}
-                          onChange={(e) => setEditDisplayName(e.target.value)}
-                          placeholder="Nome curto"
-                        />
-                        <Input value={editCRM} onChange={(e) => setEditCRM(e.target.value)} placeholder="CRM" />
-                        <Input
-                          value={editSpecialty}
-                          onChange={(e) => setEditSpecialty(e.target.value)}
-                          placeholder="Especialidade"
-                        />
-                      </div>
-                    ) : (
-                      <div>
-                        <div className="font-medium text-foreground">
-                          {d.display_name?.trim() ? d.display_name : d.full_name}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {d.crm ? `CRM: ${d.crm}` : "CRM: —"} •{" "}
-                          {d.specialty ? `Especialidade: ${d.specialty}` : "Especialidade: —"}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    {!isEditing ? (
-                      <>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">{d.is_active ? "Ativo" : "Inativo"}</span>
-                          <Switch checked={d.is_active} onCheckedChange={(v) => toggleActive(d.id, v)} />
-                        </div>
-
-                        <Button variant="outline" size="sm" onClick={() => startEdit(d)} className="gap-2">
-                          <Pencil className="h-4 w-4" />
-                          Editar
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <Button size="sm" onClick={saveEdit} className="gap-2">
-                          <Save className="h-4 w-4" />
-                          Salvar
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={cancelEdit} className="gap-2">
-                          <X className="h-4 w-4" />
-                          Cancelar
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-
-            {!loading && filtered.length === 0 && (
+            {loading ? (
+              <div className="text-sm text-muted-foreground">Carregando...</div>
+            ) : filtered.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
                 Nenhum médico(a) encontrado.
               </div>
+            ) : (
+              filtered.map((d) => {
+                const isEditing = editingId === d.id;
+
+                return (
+                  <div
+                    key={d.id}
+                    className={cn(
+                      "flex flex-col gap-3 rounded-xl border border-border bg-card p-4 md:flex-row md:items-center md:justify-between",
+                      !d.active && "opacity-80",
+                    )}
+                  >
+                    <div className="flex-1 min-w-0">
+                      {isEditing ? (
+                        <div className="space-y-2">
+                          <Label>Nome</Label>
+                          <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="font-medium text-foreground truncate">{d.name}</div>
+                          <div className="text-xs text-muted-foreground">Status: {d.active ? "Ativo" : "Inativo"}</div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      {!isEditing ? (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">{d.active ? "Ativo" : "Inativo"}</span>
+                            <Switch checked={d.active} onCheckedChange={(v) => toggleActive(d.id, v)} />
+                          </div>
+
+                          <Button variant="outline" size="sm" onClick={() => startEdit(d)} className="gap-2">
+                            <Pencil className="h-4 w-4" />
+                            Editar
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button size="sm" onClick={saveEdit} disabled={loading} className="gap-2">
+                            <Save className="h-4 w-4" />
+                            Salvar
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={cancelEdit} className="gap-2">
+                            <X className="h-4 w-4" />
+                            Cancelar
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
             )}
 
             <div className="text-xs text-muted-foreground">
-              Total: {doctors.length} ({doctors.filter((d) => d.is_active).length} ativos)
+              Total: {totals.total} ({totals.ativos} ativos)
             </div>
           </div>
+
+          {!companyId && (
+            <div className="text-xs text-muted-foreground">
+              ⚠️ Company ID não encontrado no perfil — confirme se você está logado e na empresa correta.
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
