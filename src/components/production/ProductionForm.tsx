@@ -1,11 +1,10 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useDoctors } from "@/hooks/useDoctors";
 import {
   Dialog,
   DialogContent,
@@ -18,11 +17,12 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ProductionType, UnitConfig, BASE_PRODUCTION_TYPES } from "@/types";
 import { toast } from "sonner";
-import { Activity, Check, ChevronsUpDown, Plus, Calculator, Package, AlertCircle, Info, UserRound } from "lucide-react";
+import { Activity, Check, ChevronsUpDown, Plus, Calculator, Package, AlertCircle, Info } from "lucide-react";
 import { SPECIALTIES } from "@/utils/constants";
 import { cn } from "@/lib/utils";
 import { useCompanySettings } from "@/hooks/useCompanySettings";
 import { usePackagePricing } from "@/hooks/usePackagePricing";
+import { useDoctors } from "@/hooks/useDoctors";
 import { PackageFields } from "./PackageFields";
 import { PRODUCTION_TYPE_LABELS } from "@/utils/constants";
 
@@ -73,12 +73,11 @@ export interface ProductionFormData {
   competencia: string;
   unit: string;
   specialty?: string;
+  doctorId?: string;
   payerType: "CONVENIO" | "PARTICULAR";
   convenio?: string;
-
   // AUDIT_FIX: Campo forma de pagamento para PARTICULAR
   paymentMethod?: string;
-
   productionType: ProductionType;
   description: string;
   procedureCode?: string;
@@ -86,11 +85,9 @@ export interface ProductionFormData {
   unitValue: number;
   notes?: string;
   createdBy: string;
-
   // Campos dinâmicos
   examType?: string;
   therapySessionType?: string;
-
   // Campos de pacote convênio
   isPackage?: boolean;
   packageType?: string;
@@ -101,12 +98,7 @@ export interface ProductionFormData {
   consultQty?: number;
   feeQty?: number;
   matmedQty?: number;
-
-  // ✅ NOVO: Médico(a) opcional (vai ser mapeado para doctor_id no insert)
-  doctorId?: string;
 }
-
-type DoctorOption = { id: string; name: string; active?: boolean };
 
 export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }: ProductionFormProps) {
   const currentMonth = format(new Date(), "MM/yyyy");
@@ -125,6 +117,16 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
 
   // Pricing hook para pacotes
   const { validateTotal } = usePackagePricing();
+  // Médicos(as) - opcional (para análises por profissional)
+  const { doctors = [], isLoading: doctorsLoading } = useDoctors();
+
+  const doctorOptions = (doctors || [])
+    .filter((d: any) => (d?.active ?? d?.is_active ?? true) === true)
+    .map((d: any) => ({
+      id: String(d?.id ?? ""),
+      name: String(d?.name ?? d?.full_name ?? d?.display_name ?? "").trim(),
+    }))
+    .filter((d: any) => Boolean(d.id) && Boolean(d.name));
 
   // Combinar sugestões padrão com salvas do banco
   const savedExamTypes = getSavedExamTypes();
@@ -137,7 +139,12 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
   // Regra: se existir cadastro oficial em Configurações → Exames,
   // a Produção DEVE refletir exatamente o banco (incluindo ativo/inativo).
   // DEFAULT_EXAM_TYPES vira apenas fallback para empresas sem cadastro.
-  const masterExamTypesRaw = (extendedSettings as any)?.examTypes ?? [];
+  const masterExamTypesRaw =
+    (extendedSettings as any)?.examTypes ??
+    (settings as any)?.examTypes ??
+    (settings as any)?.exam_types ??
+    (settings as any)?.production?.examTypes ??
+    [];
   const masterExamNames = (
     Array.isArray(masterExamTypesRaw)
       ? masterExamTypesRaw
@@ -156,7 +163,6 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
   ].sort();
 
   const therapyTypes = [...new Set([...DEFAULT_THERAPY_TYPES, ...savedTherapyTypes])].sort();
-
   // Incluir pacotes convênio na lista de tipos
   const productionTypes = [
     ...new Set([...BASE_PRODUCTION_TYPES, ...PACKAGE_PRODUCTION_TYPES, ...savedProductionTypes]),
@@ -167,6 +173,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
     competencia: currentMonth,
     unit: "",
     specialty: "",
+    doctorId: "",
     payerType: "CONVENIO" as "CONVENIO" | "PARTICULAR",
     convenio: "",
     paymentMethod: "", // Campo forma de pagamento para PARTICULAR
@@ -176,11 +183,9 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
     quantity: "1",
     totalValue: "", // MODELO DEFINITIVO: Valor Total Estimado é o campo principal
     notes: "",
-
     // Campos dinâmicos
     examType: "",
     therapySessionType: "",
-
     // Campos pacote convênio
     consultAmount: 0,
     feeAmount: 0,
@@ -189,9 +194,6 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
     feeQty: 1,
     matmedQty: 0,
     isManualOverride: false,
-
-    // ✅ NOVO
-    doctorId: "",
   });
 
   // Popovers state
@@ -203,10 +205,10 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
   const [newProductionType, setNewProductionType] = useState("");
 
   // CORREÇÃO #1: Garantir unidades ativas - usar settings.units se units prop estiver vazia
-  const effectiveUnits = units && units.length > 0 ? units : (settings as any)?.units || [];
-  const activeUnits = effectiveUnits.filter((u: any) => u.active);
+  const effectiveUnits = units && units.length > 0 ? units : settings?.units || [];
+  const activeUnits = effectiveUnits.filter((u) => u.active);
 
-  const selectedUnit = effectiveUnits.find((u: any) => u.id === formData.unit);
+  const selectedUnit = effectiveUnits.find((u) => u.id === formData.unit);
 
   // CORREÇÃO FORENSE: Normalização robusta para detectar Centro Clínico
   const norm = (s?: string) =>
@@ -219,57 +221,26 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
   const isCentroClinico = unitKey.includes("centroclinico");
 
   // CORREÇÃO FORENSE: Especialidades com fallback para constantes padrão
-  const masterSpecialties = (extendedSettings as any)?.specialties?.filter((s: any) => s.active) ?? [];
+  const masterSpecialties = extendedSettings?.specialties?.filter((s) => s.active) ?? [];
   const specialtyOptions =
     masterSpecialties.length > 0
       ? masterSpecialties
       : SPECIALTIES.map((s) => ({ id: s.id, name: s.name, active: true }));
   const hasCustomSpecialties = masterSpecialties.length > 0;
 
-  // ✅ COMPANY ID (robusto)
-  const companyId = useMemo(() => {
-    const s: any = settings ?? {};
-    const e: any = extendedSettings ?? {};
-    return (
-      e.companyId ??
-      s.companyId ??
-      e.company_id ??
-      s.company_id ??
-      e.company?.id ??
-      s.company?.id ??
-      e.currentCompanyId ??
-      s.currentCompanyId ??
-      null
-    );
-  }, [settings, extendedSettings]);
-
-  // ✅ Doctors (opcional)
-  const { data: doctorsRaw = [] } = useDoctors(companyId || undefined);
-  const activeDoctors: DoctorOption[] = useMemo(() => {
-    const list = Array.isArray(doctorsRaw) ? (doctorsRaw as any[]) : [];
-    return list
-      .map((d) => ({ id: String(d.id), name: String(d.name ?? ""), active: d.active }))
-      .filter((d) => Boolean(d.id) && Boolean(d.name))
-      .filter((d) => d.active !== false)
-      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
-  }, [doctorsRaw]);
-
   // Reset campos dinâmicos quando muda o tipo de produção
   useEffect(() => {
     const newType = formData.productionType;
     const isPackage = PACKAGE_PRODUCTION_TYPES.includes(newType);
-
     setFormData((prev) => ({
       ...prev,
       examType: "",
       therapySessionType: "",
       procedureCode: "",
       description: getDefaultDescription(newType),
-
       // Se for pacote, forçar payerType para CONVENIO
       payerType: isPackage ? "CONVENIO" : prev.payerType,
       paymentMethod: isPackage ? "" : prev.paymentMethod,
-
       // Reset componentes do pacote
       consultAmount: 0,
       feeAmount: 0,
@@ -327,6 +298,12 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
 
   // Salvar nova sugestão (persisted to database)
   const saveNewExamType = async () => {
+    if (hasMasterExamTypes) {
+      toast.info("Este campo está sincronizado com Configurações → Exames. Cadastre/edite por lá.");
+      setNewExamType("");
+      setExamTypeOpen(false);
+      return;
+    }
     if (newExamType.trim() && !examTypes.includes(newExamType.trim())) {
       await addExamType(newExamType.trim());
       setFormData((prev) => ({ ...prev, examType: newExamType.trim(), description: newExamType.trim() }));
@@ -355,7 +332,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
       await addProductionType(newProductionType.trim());
       setFormData((prev) => ({
         ...prev,
-        productionType: newProductionType.trim() as any,
+        productionType: newProductionType.trim(),
         description: newProductionType.trim(),
       }));
       toast.success(`"${newProductionType.trim()}" adicionado aos tipos de produção`);
@@ -448,7 +425,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
 
     // FALLBACK: Se ainda não tem descrição, usar o próprio tipo de produção
     if (!description) {
-      description = getProductionTypeLabel(formData.productionType) || String(formData.productionType);
+      description = getProductionTypeLabel(formData.productionType) || formData.productionType;
     }
 
     // MODELO DEFINITIVO: Valor unitário calculado automaticamente como referência
@@ -459,6 +436,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
       competencia: formData.competencia,
       unit: formData.unit,
       specialty: formData.specialty || undefined,
+      doctorId: formData.doctorId || undefined,
       payerType: formData.payerType,
       convenio: formData.payerType === "CONVENIO" ? formData.convenio : undefined,
       // AUDIT_FIX: Persistir paymentMethod para produções PARTICULAR
@@ -472,7 +450,6 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
       createdBy: userName,
       examType: formData.examType || undefined,
       therapySessionType: formData.therapySessionType || undefined,
-
       // Dados de pacote convênio
       isPackage: isPackageType,
       packageType: isPackageType ? formData.productionType : undefined,
@@ -483,9 +460,6 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
       consultQty: isPackageType ? formData.consultQty : undefined,
       feeQty: isPackageType ? formData.feeQty : undefined,
       matmedQty: isPackageType ? formData.matmedQty : undefined,
-
-      // ✅ NOVO
-      doctorId: formData.doctorId ? formData.doctorId : undefined,
     });
 
     // Reset form
@@ -494,10 +468,11 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
       competencia: currentMonth,
       unit: "",
       specialty: "",
+      doctorId: "",
       payerType: "CONVENIO",
       convenio: "",
       paymentMethod: "",
-      productionType: "CONSULTA" as ProductionType,
+      productionType: "CONSULTA",
       description: "",
       procedureCode: "",
       quantity: "1",
@@ -512,9 +487,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
       feeQty: 1,
       matmedQty: 0,
       isManualOverride: false,
-      doctorId: "",
     });
-
     onOpenChange(false);
   };
 
@@ -815,7 +788,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
                           key={type}
                           value={type}
                           onSelect={() => {
-                            setFormData((prev) => ({ ...prev, productionType: type as any }));
+                            setFormData((prev) => ({ ...prev, productionType: type }));
                             setProductionTypeOpen(false);
                             setNewProductionType("");
                           }}
@@ -856,7 +829,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
                     <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
                   <SelectContent>
-                    {activeUnits.map((u: any) => (
+                    {activeUnits.map((u) => (
                       <SelectItem key={u.id} value={u.id}>
                         {u.name}
                       </SelectItem>
@@ -889,7 +862,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
                   <SelectValue placeholder="Selecione a especialidade" />
                 </SelectTrigger>
                 <SelectContent>
-                  {specialtyOptions.map((s: any) => (
+                  {specialtyOptions.map((s) => (
                     <SelectItem key={s.id} value={s.id}>
                       {s.name}
                     </SelectItem>
@@ -905,40 +878,27 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
             </div>
           )}
 
-          {/* ✅ MÉDICO(A) - Opcional */}
+          {/* Médico(a) - opcional */}
           <div className="space-y-2">
-            <Label className="flex items-center gap-2">
-              <UserRound className="h-4 w-4 text-muted-foreground" />
-              Médico(a) (opcional)
-            </Label>
-
-            <Select value={formData.doctorId} onValueChange={(v) => setFormData((prev) => ({ ...prev, doctorId: v }))}>
+            <Label>Médico(a) (opcional)</Label>
+            <Select
+              value={formData.doctorId ? formData.doctorId : "none"}
+              onValueChange={(v) => setFormData((prev) => ({ ...prev, doctorId: v === "none" ? "" : v }))}
+            >
               <SelectTrigger>
-                <SelectValue placeholder={activeDoctors.length ? "Selecione..." : "Sem médicos cadastrados"} />
+                <SelectValue placeholder={doctorsLoading ? "Carregando..." : "Selecione"} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Sem médico</SelectItem>
-                {activeDoctors.map((d) => (
+                <SelectItem value="none">Nenhum</SelectItem>
+                {doctorOptions.map((d) => (
                   <SelectItem key={d.id} value={d.id}>
                     {d.name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-
-            {!companyId ? (
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <Info className="h-3 w-3" />
-                CompanyId não identificado — a lista pode ficar vazia. (Se quiser, eu ajusto onde pegar esse companyId.)
-              </p>
-            ) : activeDoctors.length === 0 ? (
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <Info className="h-3 w-3" />
-                Nenhum médico ativo cadastrado ainda. Selecione “Sem médico” por enquanto.
-              </p>
-            ) : null}
+            <p className="text-xs text-muted-foreground">Ajuda em relatórios por profissional (sem ser obrigatório).</p>
           </div>
-
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Pagador *</Label>
