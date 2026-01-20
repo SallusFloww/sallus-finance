@@ -1,20 +1,69 @@
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/utils/formatters";
 import { ProductionStats as ProductionStatsType } from "@/types";
-import { 
-  Activity, 
-  FileText, 
-  CheckCircle, 
-  Clock, 
-  ArrowRight,
-  Hash
-} from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { Activity, FileText, CheckCircle, Clock, ArrowRight, Hash, UserRound } from "lucide-react";
 
 interface ProductionStatsProps {
   stats: ProductionStatsType;
 }
 
 export function ProductionStats({ stats }: ProductionStatsProps) {
+  // =========================
+  // Médicos(as) (nome por ID)
+  // =========================
+  const { currentCompany, profile } = useAuth();
+  const companyId = (currentCompany as any)?.id || (profile as any)?.company_id;
+
+  const [doctorNameById, setDoctorNameById] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const fetchDoctorNames = async () => {
+      if (!companyId) {
+        setDoctorNameById({});
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("doctors")
+        .select("id, name, company_id")
+        .eq("company_id", companyId)
+        .order("name", { ascending: true });
+
+      if (error) {
+        console.error(error);
+        setDoctorNameById({});
+        return;
+      }
+
+      const map: Record<string, string> = {};
+      (data ?? []).forEach((d: any) => {
+        if (d?.id && d?.name) map[String(d.id)] = String(d.name).trim();
+      });
+
+      setDoctorNameById(map);
+    };
+
+    fetchDoctorNames();
+  }, [companyId]);
+
+  const topDoctors = useMemo(() => {
+    const byDoctor = stats.byDoctor || {};
+    return Object.entries(byDoctor)
+      .map(([doctorId, data]) => ({
+        doctorId,
+        name: doctorNameById[doctorId] || "Médico não encontrado",
+        count: data.count,
+        quantity: data.quantity,
+        value: data.value,
+      }))
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, 7);
+  }, [stats.byDoctor, doctorNameById]);
+
   return (
     <div className="space-y-4">
       {/* Cards principais - FOCO QUANTITATIVO */}
@@ -40,9 +89,7 @@ export function ProductionStats({ stats }: ProductionStatsProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold text-blue-600">
-              {stats.billingRate.toFixed(0)}%
-            </p>
+            <p className="text-3xl font-bold text-blue-600">{stats.billingRate.toFixed(0)}%</p>
             <p className="text-xs text-muted-foreground mt-1">
               {stats.totalQuantityBilled} de {stats.totalQuantityProduced} produzidos
             </p>
@@ -57,12 +104,8 @@ export function ProductionStats({ stats }: ProductionStatsProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold text-emerald-600">
-              {stats.conversionRate.toFixed(0)}%
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              {stats.totalQuantityReceived} convertidos em caixa
-            </p>
+            <p className="text-3xl font-bold text-emerald-600">{stats.conversionRate.toFixed(0)}%</p>
+            <p className="text-xs text-muted-foreground mt-1">{stats.totalQuantityReceived} convertidos em caixa</p>
           </CardContent>
         </Card>
 
@@ -130,8 +173,8 @@ export function ProductionStats({ stats }: ProductionStatsProps) {
         </CardContent>
       </Card>
 
-      {/* Distribuição por tipo - QUANTIDADE */}
-      <div className="grid gap-4 sm:grid-cols-2">
+      {/* Distribuição - QUANTIDADE */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium">Por Tipo de Produção (Qtde)</CardTitle>
@@ -150,10 +193,8 @@ export function ProductionStats({ stats }: ProductionStatsProps) {
                     </div>
                   </div>
                 ))}
-              {Object.values(stats.byProductionType).every(d => d.quantity === 0) && (
-                <p className="text-sm text-muted-foreground text-center py-2">
-                  Nenhuma produção no período
-                </p>
+              {Object.values(stats.byProductionType).every((d) => d.quantity === 0) && (
+                <p className="text-sm text-muted-foreground text-center py-2">Nenhuma produção no período</p>
               )}
             </div>
           </CardContent>
@@ -170,30 +211,62 @@ export function ProductionStats({ stats }: ProductionStatsProps) {
                 <span className="font-bold text-violet-600">{stats.byPayerTypeQuantity.convenio}</span>
               </div>
               <div className="h-2 bg-muted rounded-full overflow-hidden">
-                <div 
+                <div
                   className="h-full bg-blue-500 rounded-full transition-all"
-                  style={{ 
-                    width: stats.totalQuantityProduced > 0 
-                      ? `${(stats.byPayerTypeQuantity.convenio / stats.totalQuantityProduced) * 100}%` 
-                      : '0%' 
+                  style={{
+                    width:
+                      stats.totalQuantityProduced > 0
+                        ? `${(stats.byPayerTypeQuantity.convenio / stats.totalQuantityProduced) * 100}%`
+                        : "0%",
                   }}
                 />
               </div>
-              
+
               <div className="flex items-center justify-between mt-4">
                 <span className="text-sm text-muted-foreground">Particular</span>
                 <span className="font-bold text-violet-600">{stats.byPayerTypeQuantity.particular}</span>
               </div>
               <div className="h-2 bg-muted rounded-full overflow-hidden">
-                <div 
+                <div
                   className="h-full bg-emerald-500 rounded-full transition-all"
-                  style={{ 
-                    width: stats.totalQuantityProduced > 0 
-                      ? `${(stats.byPayerTypeQuantity.particular / stats.totalQuantityProduced) * 100}%` 
-                      : '0%' 
+                  style={{
+                    width:
+                      stats.totalQuantityProduced > 0
+                        ? `${(stats.byPayerTypeQuantity.particular / stats.totalQuantityProduced) * 100}%`
+                        : "0%",
                   }}
                 />
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <UserRound className="h-4 w-4 text-muted-foreground" />
+              Por Médico(a) (Qtde)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {topDoctors.length > 0 ? (
+                topDoctors.map((d) => (
+                  <div key={d.doctorId} className="flex items-center justify-between text-sm gap-2">
+                    <span className="text-muted-foreground truncate">{d.name}</span>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-[10px] h-5">
+                        {d.quantity}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">({d.count} reg.)</span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-2">
+                  Nenhuma produção vinculada a médico no período
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -202,9 +275,7 @@ export function ProductionStats({ stats }: ProductionStatsProps) {
       {/* Valores financeiros de referência (secundário) */}
       <Card className="bg-muted/30">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Valores Financeiros (Referência)
-          </CardTitle>
+          <CardTitle className="text-sm font-medium text-muted-foreground">Valores Financeiros (Referência)</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
@@ -236,11 +307,13 @@ function getProductionTypeLabel(type: string): string {
     CONSULTA: "Consultas",
     EXAME: "Exames",
     BOX: "Box",
+    BOX_PS: "Box",
     ATENDIMENTO_URGENCIA: "Atend. Urgência",
     INTERNACAO: "Internações",
     CIRURGIA: "Cirurgias",
     SESSAO_TERAPEUTICA: "Sessões Terapêuticas",
     OUTRO: "Outros",
+    MAT_MED: "Mat/Med",
   };
   return labels[type] || type;
 }
