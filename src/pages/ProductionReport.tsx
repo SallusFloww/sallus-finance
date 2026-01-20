@@ -338,6 +338,12 @@ export default function ProductionReport() {
 
   // Médicos(as) - nomes por ID (para ranking no relatório)
   const [doctorNameById, setDoctorNameById] = useState<Record<string, string>>({});
+  const doctorsList = useMemo(() => {
+    return Object.entries(doctorNameById)
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [doctorNameById]);
+
   const [doctorMetric, setDoctorMetric] = useState<"quantity" | "value">("quantity");
 
   useEffect(() => {
@@ -377,6 +383,7 @@ export default function ProductionReport() {
   const [selectedConvenio, setSelectedConvenio] = useState<string>("all");
   const [selectedType, setSelectedType] = useState<string>("all");
   const [selectedSpecialty, setSelectedSpecialty] = useState<string>("all");
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string>("all");
 
   // Estados para novos componentes
   const [evolutionGranularity, setEvolutionGranularity] = useState<"daily" | "weekly">("daily");
@@ -1113,8 +1120,6 @@ export default function ProductionReport() {
         unit: p.unit,
         payer: p.payerType || (p.convenio ? "CONVENIO" : "PARTICULAR"),
         convenio: p.convenio,
-        doctorId: (p as any).doctorId || null,
-        doctorName: doctorNameById[String((p as any).doctorId || "")] || null,
         paymentMethod: p.paymentMethod || null, // HOTFIX: Modo de pagamento para PARTICULAR
         productionType: p.productionType,
         procedureName: p.description,
@@ -1190,7 +1195,7 @@ export default function ProductionReport() {
         ══════════════════════════════════════════════════════════════════ */}
         <section className="bg-muted/30 rounded-2xl p-5 border border-border/50">
           <div className="flex flex-col gap-4">
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-7">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium text-muted-foreground">Início</Label>
                 <Input
@@ -1268,6 +1273,23 @@ export default function ProductionReport() {
                     {uniqueSpecialties.map((spec) => (
                       <SelectItem key={spec} value={spec}>
                         {spec === "__SEM_ESPECIALIDADE__" ? "Sem especialidade" : formatSpecialtyDisplayName(spec)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-muted-foreground">Médico</Label>
+                <Select value={selectedDoctorId} onValueChange={setSelectedDoctorId}>
+                  <SelectTrigger className="h-9 text-sm bg-background">
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="__none__">Sem médico</SelectItem>
+                    {doctorsList.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
