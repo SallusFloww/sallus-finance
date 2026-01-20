@@ -21,34 +21,34 @@ export interface TransactionEditLog {
 
 // ============= ORIGEM DA TRANSAÇÃO (RASTREABILIDADE) =============
 // Identifica como a transação foi criada no sistema
-export type TransactionOrigin = 
-  | "MANUAL"                    // Criada pelo usuário via formulário
-  | "FATURAMENTO_RECEBIDO"      // Gerada automaticamente ao receber faturamento
+export type TransactionOrigin =
+  | "MANUAL" // Criada pelo usuário via formulário
+  | "FATURAMENTO_RECEBIDO" // Gerada automaticamente ao receber faturamento
   | "FATURAMENTO_GLOSA_PARCIAL" // Gerada automaticamente ao registrar glosa parcial
-  | "RECURSO_GLOSA"             // Gerada automaticamente ao deferir recurso de glosa
-  | "IMPORTACAO"                // Importada via arquivo
-  | "MIGRACAO";                 // Migrada de sistema anterior
+  | "RECURSO_GLOSA" // Gerada automaticamente ao deferir recurso de glosa
+  | "IMPORTACAO" // Importada via arquivo
+  | "MIGRACAO"; // Migrada de sistema anterior
 
 // ============= CLASSIFICAÇÃO FINANCEIRA =============
 // 3 macro classificações obrigatórias para todas as transações
-export type FinancialCategory = 
-  | "OPERACIONAL"       // Receitas/despesas operacionais diretas da unidade
-  | "COMPARTILHADO"     // Custos operacionais compartilhados (corporativo)
-  | "NAO_OPERACIONAL";  // Financeiras não assistenciais (aportes, distribuições, etc.)
+export type FinancialCategory =
+  | "OPERACIONAL" // Receitas/despesas operacionais diretas da unidade
+  | "COMPARTILHADO" // Custos operacionais compartilhados (corporativo)
+  | "NAO_OPERACIONAL"; // Financeiras não assistenciais (aportes, distribuições, etc.)
 
 // Critérios de rateio para custos compartilhados
-export type ApportionmentCriteria = 
-  | "IGUAL"             // Divide igualmente entre unidades
-  | "MANUAL"            // Rateio definido manualmente
-  | "FATURAMENTO"       // Proporcional ao faturamento
-  | "PRODUCAO";         // Proporcional à produção
+export type ApportionmentCriteria =
+  | "IGUAL" // Divide igualmente entre unidades
+  | "MANUAL" // Rateio definido manualmente
+  | "FATURAMENTO" // Proporcional ao faturamento
+  | "PRODUCAO"; // Proporcional à produção
 
 // ============= RATEIO POR UNIDADE =============
 // Estrutura para armazenar o rateio detalhado por unidade
 export interface UnitApportionment {
   unitId: string;
   unitName: string;
-  criterionValue: number;  // Valor do critério (%, m², etc.)
+  criterionValue: number; // Valor do critério (%, m², etc.)
   apportionedAmount: number; // Valor rateado em R$
 }
 
@@ -69,12 +69,7 @@ export type NonOperationalSubtype =
   | "DESPESA_JURIDICA_NAO_RECORRENTE";
 
 // Nível 4 - Formas de pagamento para Particular
-export type PaymentMethodParticular = 
-  | "DINHEIRO" 
-  | "CARTAO_DEBITO" 
-  | "CREDITO_VISTA" 
-  | "CREDITO_PARCELADO" 
-  | "PIX";
+export type PaymentMethodParticular = "DINHEIRO" | "CARTAO_DEBITO" | "CREDITO_VISTA" | "CREDITO_PARCELADO" | "PIX";
 
 // Nível 4 - Operadoras para Convênios
 export type Operadora = "IPASGO" | "UNIMED" | "BRADESCO" | "GEAP";
@@ -103,7 +98,7 @@ export interface Transaction {
   date: string;
   type: TransactionType;
   amount: number;
-  
+
   // ============= CLASSIFICAÇÃO FINANCEIRA (OBRIGATÓRIO) =============
   financialCategory: FinancialCategory;
   // Subtipo para Não Operacional
@@ -118,7 +113,7 @@ export interface Transaction {
   apportionmentCriteria?: ApportionmentCriteria;
   // Rateio detalhado por unidade
   unitApportionments?: UnitApportionment[];
-  
+
   // Nível 1 - Unidade de Negócio (opcional para Não Operacional)
   unit: string;
   // Nível 2 - Especialidade (apenas para Centro Clínico)
@@ -236,23 +231,23 @@ export interface DashboardStats {
   // Base
   initialBalance: number;
   initialBalanceLastUpdate?: string;
-  
+
   // Totais REALIZADOS (único tipo de movimentação)
   totalIncome: number;
   totalExpense: number;
-  
+
   // SALDO ATUAL = initialBalance + totalIncome - totalExpense
   currentBalance: number;
-  
+
   // Contadores
   transactionCount: number;
-  
+
   // ============= CONTROLE DE STATUS DE ENTRADAS =============
   // Total de entradas por status
   incomeByStatus: {
-    previsto: number;    // PENDENTE - não entrou no caixa
-    recebido: number;    // REALIZADO - já entrou no caixa
-    cancelado: number;   // CANCELADO - não será recebido
+    previsto: number; // PENDENTE - não entrou no caixa
+    recebido: number; // REALIZADO - já entrou no caixa
+    cancelado: number; // CANCELADO - não será recebido
   };
   // Contagem de entradas por status
   incomeCountByStatus: {
@@ -260,13 +255,13 @@ export interface DashboardStats {
     recebido: number;
     cancelado: number;
   };
-  
+
   // Detalhamento por tipo de recebimento (para análise, não projeção)
   incomeByReceiptType: {
     particular: number;
     convenio: number;
   };
-  
+
   // Detalhamento por forma de pagamento
   incomeByPaymentMethod: {
     dinheiro: number;
@@ -275,7 +270,7 @@ export interface DashboardStats {
     creditoVista: number;
     creditoParcelado: number;
   };
-  
+
   // Detalhamento por operadora
   incomeByOperadora: {
     ipasgo: number;
@@ -283,7 +278,7 @@ export interface DashboardStats {
     bradesco: number;
     geap: number;
   };
-  
+
   // Detalhamento de saídas por categoria
   expenseByCategory: Record<string, number>;
 }
@@ -305,11 +300,11 @@ export type ReceivableStatus = "FATURADO" | "RECEBIDO" | "RECEBIDO_COM_GLOSA" | 
 export type GlossType = "PARCIAL" | "TOTAL";
 
 // ============= SUBSTATUS DE RECURSO DE GLOSA =============
-export type AppealStatus = 
-  | "NAO_INICIADO"     // Recurso não iniciado
-  | "EM_RECURSO"       // Em recurso
-  | "DEFERIDO"         // Recurso deferido (valor recuperado)
-  | "INDEFERIDO";      // Recurso indeferido (perda definitiva)
+export type AppealStatus =
+  | "NAO_INICIADO" // Recurso não iniciado
+  | "EM_RECURSO" // Em recurso
+  | "DEFERIDO" // Recurso deferido (valor recuperado)
+  | "INDEFERIDO"; // Recurso indeferido (perda definitiva)
 
 export interface ReceivableEditLog {
   field: string;
@@ -322,7 +317,7 @@ export interface ReceivableEditLog {
 // ============= HISTÓRICO DE EVENTOS DO RECEBÍVEL =============
 export interface ReceivableHistoryEntry {
   id: string;
-  action: 
+  action:
     | "CRIADO"
     | "RECEBIDO"
     | "GLOSA_REGISTRADA"
@@ -351,7 +346,7 @@ export interface Receivable {
   source: string;
   // Descrição do serviço/procedimento
   description: string;
-  
+
   // ============= TRÊS VALORES OBRIGATÓRIOS =============
   // Valor original faturado (NUNCA muda após criação)
   billedAmount: number;
@@ -360,10 +355,10 @@ export interface Receivable {
   // Valor total glosado (acumulado de glosas)
   glossedAmount: number;
   // REGRA: billedAmount = receivedAmount + glossedAmount (quando finalizado)
-  
+
   // Status principal
   status: ReceivableStatus;
-  
+
   // ============= CONTROLE DE GLOSA E RECURSO =============
   // Tipo de glosa (quando houver)
   glossType?: GlossType;
@@ -381,16 +376,16 @@ export interface Receivable {
   appealRecoveredAmount?: number;
   // ID da transação gerada pelo recurso deferido
   appealTransactionId?: string;
-  
+
   // ============= DATAS E PRAZOS =============
   // Prazo estimado de recebimento (dias)
   expectedReceiptDays?: number;
   // Data efetiva do recebimento (primeiro recebimento)
   actualReceiptDate?: string;
-  
+
   // ============= OBSERVAÇÕES =============
   notes?: string;
-  
+
   // ============= AUDITORIA COMPLETA =============
   createdBy: string;
   createdAt: string;
@@ -401,7 +396,7 @@ export interface Receivable {
   editLogs?: ReceivableEditLog[];
   // Histórico completo de eventos
   history?: ReceivableHistoryEntry[];
-  
+
   // ============= CAMPOS LEGADOS (manter compatibilidade) =============
   expectedReceiptDate?: string;
   glossAmount?: number; // Deprecated: usar glossedAmount
@@ -412,9 +407,9 @@ export interface ReceivablesStats {
   totalReceived: number;
   totalOpen: number;
   totalGlossed: number;
-  totalInAppeal: number;        // Valor em recurso
-  totalRecovered: number;       // Valor recuperado via recurso
-  totalDefinitiveLoss: number;  // Perda definitiva (glosa indeferida)
+  totalInAppeal: number; // Valor em recurso
+  totalRecovered: number; // Valor recuperado via recurso
+  totalDefinitiveLoss: number; // Perda definitiva (glosa indeferida)
   count: number;
   averageReceiptDays: number;
 }
@@ -443,7 +438,7 @@ export const BASE_PRODUCTION_TYPES = [
 // Subtipos para Exame
 export type ExamType = string;
 
-// Subtipos para Box  
+// Subtipos para Box
 export type BoxType = string;
 
 // Subtipos para Sessão Terapêutica
@@ -459,12 +454,7 @@ export interface ProductionEditLog {
 
 export interface ProductionHistoryEntry {
   id: string;
-  action: 
-    | "CRIADO"
-    | "VINCULADO_FATURAMENTO"
-    | "GLOSADO"
-    | "RECEBIDO"
-    | "EDITADO";
+  action: "CRIADO" | "VINCULADO_FATURAMENTO" | "GLOSADO" | "RECEBIDO" | "EDITADO";
   description: string;
   timestamp: string;
   userName: string;
@@ -484,6 +474,8 @@ export interface Production {
   unit: string;
   // Especialidade (se aplicável)
   specialty?: string;
+  // Médico (opcional) - FK doctors.id
+  doctorId?: string | null;
   // Convênio ou Particular
   payerType: "CONVENIO" | "PARTICULAR";
   // Convênio específico (se payerType = CONVENIO)
@@ -504,7 +496,7 @@ export interface Production {
   estimatedValue: number;
   // Status da produção
   status: ProductionStatus;
-  
+
   // ============= CAMPOS DINÂMICOS POR TIPO =============
   // Tipo de exame (se productionType = EXAME)
   examType?: ExamType;
@@ -512,7 +504,7 @@ export interface Production {
   boxType?: BoxType;
   // Tipo de sessão terapêutica (se productionType = SESSAO_TERAPEUTICA)
   therapySessionType?: TherapySessionType;
-  
+
   // ============= VÍNCULO COM FATURAMENTO =============
   // IDs dos faturamentos vinculados
   linkedReceivableIds?: string[];
@@ -522,7 +514,7 @@ export interface Production {
   receivedValue?: number;
   // Valor glosado (quando glosado)
   glossedValue?: number;
-  
+
   // ============= CAMPOS DE PACOTE CONVÊNIO =============
   // Indica se é um pacote (PACOTE_BOX ou PACOTE_GTA)
   isPackage?: boolean;
@@ -536,7 +528,7 @@ export interface Production {
   matmedAmount?: number;
   // Quantidade do pacote (geralmente 1)
   packageQty?: number;
-  
+
   // ============= CAMPOS DE IMPORTAÇÃO =============
   // Nome do paciente (importação CSV)
   patientName?: string;
@@ -546,7 +538,7 @@ export interface Production {
   importRowNumber?: number;
   // Origem do registro (manual/import)
   importSource?: string;
-  
+
   // ============= AUDITORIA =============
   notes?: string;
   createdBy: string;
@@ -568,32 +560,32 @@ export interface ProductionStats {
   totalQuantityOpen: number;
   // Quantidade glosada
   totalQuantityGlossed: number;
-  
+
   // ============= VALORES FINANCEIROS (REFERÊNCIA) =============
-  totalProduced: number;        // Valor total produzido
-  totalBilled: number;          // Valor faturado
-  totalReceived: number;        // Valor recebido
-  totalOpen: number;            // Produção não faturada
-  totalGlossed: number;         // Valor glosado
-  
+  totalProduced: number; // Valor total produzido
+  totalBilled: number; // Valor faturado
+  totalReceived: number; // Valor recebido
+  totalOpen: number; // Produção não faturada
+  totalGlossed: number; // Valor glosado
+
   // Contadores de registros
   countProduced: number;
   countBilled: number;
   countReceived: number;
   countOpen: number;
-  
+
   // ============= TAXAS DE CONVERSÃO (BASEADAS EM QUANTIDADE) =============
-  billingRate: number;          // % Produzido → Faturado (qtde)
-  receiptRate: number;          // % Faturado → Recebido (qtde)
-  conversionRate: number;       // % Produzido → Caixa (end-to-end, qtde)
-  glossRate: number;            // % de glosa (qtde)
-  
+  billingRate: number; // % Produzido → Faturado (qtde)
+  receiptRate: number; // % Faturado → Recebido (qtde)
+  conversionRate: number; // % Produzido → Caixa (end-to-end, qtde)
+  glossRate: number; // % de glosa (qtde)
+
   // Por tipo de produção (dinâmico)
   byProductionType: Record<string, { count: number; quantity: number; value: number }>;
   // Por pagador (por quantidade)
   byPayerType: { convenio: number; particular: number };
   byPayerTypeQuantity: { convenio: number; particular: number };
-  
+
   // ============= CONSOLIDAÇÃO AVULSOS + PACOTES =============
   // Consultas: avulsos CONSULTA + pacotes.consult_amount
   consolidatedConsultas: { value: number; quantity: number };
@@ -601,7 +593,7 @@ export interface ProductionStats {
   consolidatedBoxTaxas: { value: number; quantity: number };
   // Mat/Med: matmed_amount dos pacotes (avulsos não têm mat/med separado)
   consolidatedMatMed: { value: number };
-  
+
   // ============= AGRUPAMENTO POR ESPECIALIDADE =============
   bySpecialty: Record<string, number>;
 }
@@ -614,8 +606,8 @@ export interface ProductionTypeConfig {
   name: string;
   description?: string;
   active: boolean;
-  allowBatchEntry: boolean;  // Permite lançamento em lote?
-  requiresDetail: boolean;   // Exige detalhamento (exame/procedimento)?
+  allowBatchEntry: boolean; // Permite lançamento em lote?
+  requiresDetail: boolean; // Exige detalhamento (exame/procedimento)?
   valueModel: "TOTAL" | "QUANTITY_AVERAGE"; // Modelo de valor
   createdAt?: string;
   updatedAt?: string;
