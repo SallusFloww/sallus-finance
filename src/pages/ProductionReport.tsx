@@ -1925,6 +1925,7 @@ export default function ProductionReport() {
                   })}
                 </CardContent>
               </Card>
+            )}
 
             {/* Produção por Médico */}
             <Card>
