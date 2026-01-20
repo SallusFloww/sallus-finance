@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { 
-  Activity, 
-  MoreHorizontal, 
-  FileText, 
-  Trash2, 
+import {
+  Activity,
+  MoreHorizontal,
+  FileText,
+  Trash2,
   History,
   CheckCircle,
   XCircle,
@@ -17,14 +17,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,52 +25,46 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Production, ProductionStatus, ProductionType, UnitConfig } from "@/types";
 import { formatCurrency } from "@/utils/formatters";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
-const STATUS_CONFIG: Record<ProductionStatus, { 
-  label: string; 
-  color: string; 
-  icon: any;
-  description: string;
-}> = {
-  PRODUZIDO: { 
-    label: "Produzido", 
-    color: "bg-violet-500/10 text-violet-600 border-violet-500/20", 
+const STATUS_CONFIG: Record<
+  ProductionStatus,
+  {
+    label: string;
+    color: string;
+    icon: any;
+    description: string;
+  }
+> = {
+  PRODUZIDO: {
+    label: "Produzido",
+    color: "bg-violet-500/10 text-violet-600 border-violet-500/20",
     icon: Activity,
-    description: "Aguardando faturamento. Não impacta o caixa."
+    description: "Aguardando faturamento. Não impacta o caixa.",
   },
-  FATURADO: { 
-    label: "Faturado", 
-    color: "bg-blue-500/10 text-blue-600 border-blue-500/20", 
+  FATURADO: {
+    label: "Faturado",
+    color: "bg-blue-500/10 text-blue-600 border-blue-500/20",
     icon: FileText,
-    description: "Vinculado a faturamento. Aguardando recebimento."
+    description: "Vinculado a faturamento. Aguardando recebimento.",
   },
-  GLOSADO: { 
-    label: "Glosado", 
-    color: "bg-rose-500/10 text-rose-600 border-rose-500/20", 
+  GLOSADO: {
+    label: "Glosado",
+    color: "bg-rose-500/10 text-rose-600 border-rose-500/20",
     icon: XCircle,
-    description: "Glosa aplicada pelo convênio."
+    description: "Glosa aplicada pelo convênio.",
   },
-  RECEBIDO: { 
-    label: "Recebido", 
-    color: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20", 
+  RECEBIDO: {
+    label: "Recebido",
+    color: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
     icon: CheckCircle,
-    description: "Recebimento confirmado. Valor no caixa."
+    description: "Recebimento confirmado. Valor no caixa.",
   },
 };
 
@@ -103,13 +90,51 @@ interface ProductionListProps {
   onViewHistory?: (production: Production) => void;
 }
 
-export function ProductionList({ 
-  productions, 
-  units,
-  onDelete,
-  onViewHistory,
-}: ProductionListProps) {
+export function ProductionList({ productions, units, onDelete, onViewHistory }: ProductionListProps) {
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+
+  // Médicos(as) - exibição na lista (nome a partir de doctorId)
+  const { currentCompany, profile } = useAuth();
+  const companyId = (currentCompany as any)?.id || (profile as any)?.company_id;
+
+  const [doctorNameById, setDoctorNameById] = useState<Record<string, string>>({});
+
+  // Carrega nomes de médicos da empresa (inclui inativos para histórico)
+  useEffect(() => {
+    const fetchDoctorNames = async () => {
+      if (!companyId) {
+        setDoctorNameById({});
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("doctors")
+        .select("id, name, active, company_id")
+        .eq("company_id", companyId)
+        .order("name", { ascending: true });
+
+      if (error) {
+        console.error(error);
+        setDoctorNameById({});
+        return;
+      }
+
+      const map: Record<string, string> = {};
+      (data ?? []).forEach((d: any) => {
+        if (d?.id && d?.name) map[String(d.id)] = String(d.name);
+      });
+
+      setDoctorNameById(map);
+    };
+
+    fetchDoctorNames();
+  }, [companyId]);
+
+  const getDoctorName = (doctorId?: string | null) => {
+    if (!doctorId) return null;
+    return doctorNameById[doctorId] || "Médico não encontrado";
+  };
+
   const [selectedProduction, setSelectedProduction] = useState<Production | null>(null);
 
   const getUnitName = (unitId: string) => {
@@ -127,9 +152,7 @@ export function ProductionList({
       <div className="text-center py-12 border border-dashed rounded-lg">
         <Activity className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
         <p className="text-muted-foreground">Nenhuma produção encontrada</p>
-        <p className="text-xs text-muted-foreground mt-1">
-          Registre a primeira produção assistencial
-        </p>
+        <p className="text-xs text-muted-foreground mt-1">Registre a primeira produção assistencial</p>
       </div>
     );
   }
@@ -147,7 +170,7 @@ export function ProductionList({
         records: acc.records + 1,
       };
     },
-    { quantity: 0, estimatedValue: 0, records: 0 }
+    { quantity: 0, estimatedValue: 0, records: 0 },
   );
 
   return (
@@ -157,7 +180,8 @@ export function ProductionList({
         <div className="flex items-start gap-3 p-3 mb-4 rounded-lg border border-violet-500/20 bg-violet-500/5">
           <Info className="h-4 w-4 text-violet-600 shrink-0 mt-0.5" />
           <p className="text-xs text-muted-foreground">
-            <strong className="text-violet-600">Produção não gera caixa.</strong> O valor só impacta o caixa quando o faturamento for marcado como "Recebido".
+            <strong className="text-violet-600">Produção não gera caixa.</strong> O valor só impacta o caixa quando o
+            faturamento for marcado como "Recebido".
           </p>
         </div>
 
@@ -169,6 +193,7 @@ export function ProductionList({
                 <TableHead>Procedimento/Exame</TableHead>
                 <TableHead>Unidade</TableHead>
                 <TableHead>Pagador</TableHead>
+                <TableHead>Médico</TableHead>
                 <TableHead className="text-center w-[80px]">Qtde</TableHead>
                 <TableHead className="text-center">Status</TableHead>
                 <TableHead className="w-[140px]">Vínculo</TableHead>
@@ -211,19 +236,35 @@ export function ProductionList({
                     </TableCell>
                     <TableCell>
                       <div>
-                        <p className="text-sm">{production.payerType === "CONVENIO" ? production.convenio : "Particular"}</p>
+                        <p className="text-sm">
+                          {production.payerType === "CONVENIO" ? production.convenio : "Particular"}
+                        </p>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {(() => {
+                        const name = getDoctorName((production as any).doctorId);
+                        if (!name) {
+                          return <span className="text-xs text-muted-foreground">—</span>;
+                        }
+                        return (
+                          <Badge variant="outline" className="text-[10px] h-5">
+                            {name}
+                          </Badge>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell className="text-center">
                       {/* AUDIT_FIX: Exibir effectiveQty para pacotes */}
                       {(() => {
-                        const isPackage = production.isPackage || production.productionType === "PACOTE_BOX" || production.productionType === "PACOTE_GTA";
-                        const displayQty = isPackage ? (production.packageQty ?? production.quantity ?? 1) : production.quantity;
-                        return (
-                          <span className="text-lg font-bold text-violet-600">
-                            {displayQty}
-                          </span>
-                        );
+                        const isPackage =
+                          production.isPackage ||
+                          production.productionType === "PACOTE_BOX" ||
+                          production.productionType === "PACOTE_GTA";
+                        const displayQty = isPackage
+                          ? (production.packageQty ?? production.quantity ?? 1)
+                          : production.quantity;
+                        return <span className="text-lg font-bold text-violet-600">{displayQty}</span>;
                       })()}
                     </TableCell>
                     <TableCell className="text-center">
@@ -246,13 +287,13 @@ export function ProductionList({
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <span>
-                              <Badge 
-                                variant="outline" 
+                              <Badge
+                                variant="outline"
                                 className={cn(
                                   "text-[10px] cursor-help",
-                                  production.status === "RECEBIDO" 
+                                  production.status === "RECEBIDO"
                                     ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
-                                    : "bg-blue-500/10 text-blue-600 border-blue-500/20"
+                                    : "bg-blue-500/10 text-blue-600 border-blue-500/20",
                                 )}
                               >
                                 {production.status === "RECEBIDO" ? (
@@ -303,9 +344,9 @@ export function ProductionList({
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
                           >
                             <MoreHorizontal className="h-4 w-4" />
@@ -319,7 +360,7 @@ export function ProductionList({
                           {production.status === "PRODUZIDO" && onDelete && (
                             <>
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem 
+                              <DropdownMenuItem
                                 onClick={() => onDelete(production.id)}
                                 className="text-destructive focus:text-destructive"
                               >
@@ -337,7 +378,7 @@ export function ProductionList({
 
               {/* Totals row - quantity focused */}
               <TableRow className="bg-muted/30 font-medium">
-                <TableCell colSpan={4} className="text-right">
+                <TableCell colSpan={5} className="text-right">
                   Totais ({totals.records} registros)
                 </TableCell>
                 <TableCell className="text-center">
@@ -346,84 +387,79 @@ export function ProductionList({
                 <TableCell colSpan={3}></TableCell>
               </TableRow>
             </TableBody>
-        </Table>
-      </div>
+          </Table>
+        </div>
 
-      {/* History Dialog */}
-      <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <History className="h-5 w-5" />
-              Histórico da Produção
-            </DialogTitle>
-            <DialogDescription>
-              {selectedProduction?.description}
-              {selectedProduction?.procedureCode && (
-                <span className="ml-2 text-xs">({selectedProduction.procedureCode})</span>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          
-          {/* Production Summary */}
-          {selectedProduction && (
-            <div className="p-3 rounded-lg bg-muted/50 border space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Quantidade:</span>
-                <span className="font-bold text-violet-600">{selectedProduction.quantity}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Valor Estimado:</span>
-                <span>{formatCurrency(selectedProduction.estimatedValue)}</span>
-              </div>
-              {selectedProduction.billedValue && (
+        {/* History Dialog */}
+        <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <History className="h-5 w-5" />
+                Histórico da Produção
+              </DialogTitle>
+              <DialogDescription>
+                {selectedProduction?.description}
+                {selectedProduction?.procedureCode && (
+                  <span className="ml-2 text-xs">({selectedProduction.procedureCode})</span>
+                )}
+              </DialogDescription>
+            </DialogHeader>
+
+            {/* Production Summary */}
+            {selectedProduction && (
+              <div className="p-3 rounded-lg bg-muted/50 border space-y-1 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Valor Faturado:</span>
-                  <span>{formatCurrency(selectedProduction.billedValue)}</span>
+                  <span className="text-muted-foreground">Quantidade:</span>
+                  <span className="font-bold text-violet-600">{selectedProduction.quantity}</span>
                 </div>
-              )}
-              {selectedProduction.receivedValue && (
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Valor Recebido:</span>
-                  <span className="text-emerald-600">{formatCurrency(selectedProduction.receivedValue)}</span>
+                  <span className="text-muted-foreground">Valor Estimado:</span>
+                  <span>{formatCurrency(selectedProduction.estimatedValue)}</span>
                 </div>
-              )}
-            </div>
-          )}
-          
-          {selectedProduction?.history && selectedProduction.history.length > 0 ? (
-            <div className="space-y-3 max-h-[300px] overflow-y-auto">
-              {selectedProduction.history
-                .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-                .map((entry) => (
-                  <div
-                    key={entry.id}
-                    className="flex items-start gap-3 p-3 rounded-lg border bg-card"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{entry.description}</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {format(parseISO(entry.timestamp), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                        {" · "}
-                        {entry.userName}
-                      </p>
-                      {entry.amount !== undefined && entry.amount > 0 && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Valor: {formatCurrency(entry.amount)}
-                        </p>
-                      )}
-                    </div>
+                {selectedProduction.billedValue && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Valor Faturado:</span>
+                    <span>{formatCurrency(selectedProduction.billedValue)}</span>
                   </div>
-                ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              <History className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p>Nenhum histórico registrado</p>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+                )}
+                {selectedProduction.receivedValue && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Valor Recebido:</span>
+                    <span className="text-emerald-600">{formatCurrency(selectedProduction.receivedValue)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {selectedProduction?.history && selectedProduction.history.length > 0 ? (
+              <div className="space-y-3 max-h-[300px] overflow-y-auto">
+                {selectedProduction.history
+                  .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                  .map((entry) => (
+                    <div key={entry.id} className="flex items-start gap-3 p-3 rounded-lg border bg-card">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">{entry.description}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {format(parseISO(entry.timestamp), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                          {" · "}
+                          {entry.userName}
+                        </p>
+                        {entry.amount !== undefined && entry.amount > 0 && (
+                          <p className="text-xs text-muted-foreground mt-1">Valor: {formatCurrency(entry.amount)}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <History className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p>Nenhum histórico registrado</p>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </>
     </TooltipProvider>
   );
