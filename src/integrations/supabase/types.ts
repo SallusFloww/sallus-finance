@@ -310,6 +310,36 @@ export type Database = {
           },
         ]
       }
+      doctors: {
+        Row: {
+          active: boolean
+          company_id: string
+          created_at: string
+          id: string
+          name: string
+          specialty_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          company_id: string
+          created_at?: string
+          id?: string
+          name: string
+          specialty_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          company_id?: string
+          created_at?: string
+          id?: string
+          name?: string
+          specialty_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       financial_entries: {
         Row: {
           cancel_reason: string | null
@@ -542,6 +572,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           description: string
+          doctor_id: string | null
           edit_logs: Json | null
           fee_amount: number | null
           glossed_value: number | null
@@ -579,6 +610,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description: string
+          doctor_id?: string | null
           edit_logs?: Json | null
           fee_amount?: number | null
           glossed_value?: number | null
@@ -616,6 +648,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string
+          doctor_id?: string | null
           edit_logs?: Json | null
           fee_amount?: number | null
           glossed_value?: number | null
@@ -645,6 +678,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_productions_doctor"
+            columns: ["doctor_id"]
+            isOneToOne: false
+            referencedRelation: "doctors"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "productions_company_id_fkey"
             columns: ["company_id"]
