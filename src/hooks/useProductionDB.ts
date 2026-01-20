@@ -2,7 +2,13 @@ import { useState, useCallback, useMemo, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { isWithinInterval, parseISO, startOfDay, endOfDay } from "date-fns";
-import { Production, ProductionStatus, ProductionType, ProductionStats, ProductionHistoryEntry } from "@/types";
+import {
+  Production,
+  ProductionStatus,
+  ProductionType,
+  ProductionStats,
+  ProductionHistoryEntry,
+} from "@/types";
 import { toast } from "sonner";
 import { useGlobalRealtime } from "@/contexts/GlobalRealtimeProvider";
 
@@ -26,6 +32,10 @@ interface DBProduction {
   competencia: string;
   unit: string;
   specialty: string | null;
+
+  // ✅ NOVO: Médico opcional (FK -> doctors.id)
+  doctor_id: string | null;
+
   payer_type: string;
   convenio: string | null;
   payment_method: string | null; // HOTFIX: Coluna payment_method para PARTICULAR
@@ -116,6 +126,10 @@ function toProduction(db: DBProduction): Production {
     competencia: db.competencia,
     unit: db.unit,
     specialty: typeof db.specialty === "string" && db.specialty.trim().length > 0 ? db.specialty : "SEM_ESPECIALIDADE",
+
+    // ✅ NOVO: médico opcional (camelCase no domínio)
+    doctorId: db.doctor_id || undefined,
+
     payerType: db.payer_type as "CONVENIO" | "PARTICULAR",
     convenio: db.convenio || undefined,
     // HOTFIX: Mapear payment_method do banco
@@ -239,6 +253,10 @@ export function useProductionDB() {
         competencia: data.competencia,
         unit: data.unit,
         specialty: data.specialty,
+
+        // ✅ NOVO
+        doctorId: data.doctorId,
+
         payerType: data.payerType,
         convenio: data.convenio,
         paymentMethod: data.paymentMethod, // AUDIT_FIX
@@ -278,6 +296,9 @@ export function useProductionDB() {
       const safeSpecialty =
         typeof data.specialty === "string" && data.specialty.trim().length > 0 ? data.specialty.trim() : null;
 
+      // ✅ NOVO: Sanitização robusta do médico (uuid ou null)
+      const safeDoctorId = typeof data.doctorId === "string" && data.doctorId.trim().length > 0 ? data.doctorId : null;
+
       // Payload com colunas de pacote incluídas
       const insertPayload = {
         company_id: currentCompany.id,
@@ -285,6 +306,10 @@ export function useProductionDB() {
         competencia: data.competencia,
         unit: data.unit,
         specialty: safeSpecialty ?? "SEM_ESPECIALIDADE",
+
+        // ✅ NOVO: Persistir doctor_id (opcional)
+        doctor_id: safeDoctorId,
+
         payer_type: data.payerType,
         convenio: data.convenio || null,
         // HOTFIX: Persistir payment_method para PARTICULAR
@@ -338,6 +363,10 @@ export function useProductionDB() {
             specialty: safeSpecialty,
             payer_type: data.payerType,
             convenio: data.convenio || null,
+
+            // ✅ NOVO: incluir doctor_id no mínimo também (se existir no schema, salva)
+            doctor_id: safeDoctorId,
+
             production_type: data.productionType,
             description: data.description,
             procedure_code: data.procedureCode || null,
@@ -425,7 +454,7 @@ export function useProductionDB() {
   const updateProduction = useCallback(
     async (id: string, data: Partial<Production>, userName: string) => {
       const production = productions.find((p) => p.id === id);
-      if (!production || production.status !== "PRODUZIDO") {
+      if (!production || productiont production.status !== "PRODUZIDO") {
         toast.error("Apenas produções com status PRODUZIDO podem ser editadas");
         return;
       }
@@ -450,6 +479,14 @@ export function useProductionDB() {
       if (data.description !== undefined) updateData.description = data.description;
       if (data.quantity !== undefined) updateData.quantity = data.quantity;
       if (data.unitValue !== undefined) updateData.unit_value = data.unitValue;
+
+      // ✅ NOVO: atualizar médico opcional
+      if (data.doctorId !== undefined) {
+        const safeDoctorId =
+          typeof data.doctorId === "string" && data.doctorId.trim().length > 0 ? data.doctorId : null;
+        updateData.doctor_id = safeDoctorId;
+      }
+
       if (data.quantity !== undefined || data.unitValue !== undefined) {
         const qty = data.quantity ?? production.quantity;
         const val = data.unitValue ?? production.unitValue;
