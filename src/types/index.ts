@@ -594,6 +594,10 @@ export interface ProductionStats {
   // Mat/Med: matmed_amount dos pacotes (avulsos não têm mat/med separado)
   consolidatedMatMed: { value: number };
 
+  // ============= AGRUPAMENTO POR MÉDICO(A) (opcional) =============
+  // chave = doctorId (uuid). Valores acumulados por produção
+  byDoctor?: Record<string, { count: number; quantity: number; value: number }>;
+
   // ============= AGRUPAMENTO POR ESPECIALIDADE =============
   bySpecialty: Record<string, number>;
 }
