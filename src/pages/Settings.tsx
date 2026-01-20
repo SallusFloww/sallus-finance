@@ -23,6 +23,7 @@ import {
   Settings2,
   Boxes,
   FlaskConical,
+  UserRound, // ✅ NOVO (aba Médicos)
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -54,6 +55,9 @@ import {
 import { DemoSettings } from "@/components/settings/DemoSettings";
 import { useReceivablesDB } from "@/hooks/useReceivablesDB";
 import { useProductionDB } from "@/hooks/useProductionDB";
+
+// ✅ IMPORTA O CADASTRO DE MÉDICOS
+import { SettingsDoctors } from "@/components/settings/SettingsDoctors";
 
 export default function Settings() {
   const { transactions } = useApp();
@@ -629,7 +633,8 @@ export default function Settings() {
         </div>
 
         <Tabs defaultValue="units" className="space-y-6">
-          <TabsList className="grid h-auto w-full grid-cols-4 gap-1 lg:grid-cols-8">
+          {/* ✅ Ajuste de colunas pra caber Médicos */}
+          <TabsList className="grid h-auto w-full grid-cols-4 gap-1 lg:grid-cols-9">
             <TabsTrigger value="units" className="gap-1 text-xs lg:text-sm">
               <Building2 className="h-4 w-4" />
               <span className="hidden sm:inline">Unidades</span>
@@ -653,6 +658,12 @@ export default function Settings() {
             <TabsTrigger value="specialties" className="gap-1 text-xs lg:text-sm">
               <Stethoscope className="h-4 w-4" />
               <span className="hidden sm:inline">Especialidades</span>
+            </TabsTrigger>
+
+            {/* ✅ NOVA ABA: MÉDICOS */}
+            <TabsTrigger value="doctors" className="gap-1 text-xs lg:text-sm">
+              <UserRound className="h-4 w-4" />
+              <span className="hidden sm:inline">Médicos</span>
             </TabsTrigger>
 
             <TabsTrigger value="payers" className="gap-1 text-xs lg:text-sm">
@@ -680,6 +691,7 @@ export default function Settings() {
 
           {/* ============= UNITS TAB ============= */}
           <TabsContent value="units" className="space-y-4">
+            {/* (Mantido igual ao seu arquivo original) */}
             <div className="rounded-xl border border-border bg-card p-6">
               <h3 className="mb-4 font-semibold text-foreground">Unidades de Negócio</h3>
               <p className="mb-6 text-sm text-muted-foreground">Gerencie as unidades e seus setores/subunidades</p>
@@ -701,6 +713,7 @@ export default function Settings() {
                 </Button>
               </div>
 
+              {/* ... resto do conteúdo de unidades permanece igual ... */}
               <div className="space-y-3">
                 {settings.units.map((unit) => {
                   const transactionCount = getUnitTransactionCount(unit.id);
@@ -710,7 +723,6 @@ export default function Settings() {
                   return (
                     <Collapsible key={unit.id} open={isExpanded} onOpenChange={() => toggleUnitExpansion(unit.id)}>
                       <div className="rounded-lg border border-border overflow-hidden">
-                        {/* Unit header */}
                         <div className="flex items-center justify-between p-4 bg-card">
                           <div className="flex items-center gap-3 flex-1">
                             <CollapsibleTrigger asChild>
@@ -801,15 +813,14 @@ export default function Settings() {
                           </div>
                         </div>
 
-                        {/* Subunits section */}
                         <CollapsibleContent>
+                          {/* Mantido igual */}
                           <div className="border-t border-border bg-muted/30 p-4">
                             <div className="flex items-center gap-2 mb-3">
                               <Layers className="h-4 w-4 text-muted-foreground" />
                               <span className="text-sm font-medium text-foreground">Setores / Subunidades</span>
                             </div>
 
-                            {/* Add subunit form */}
                             <div className="flex gap-2 mb-3">
                               <Input
                                 placeholder="Novo setor..."
@@ -829,7 +840,6 @@ export default function Settings() {
                               </Button>
                             </div>
 
-                            {/* Subunits list */}
                             {unit.subunits && unit.subunits.length > 0 ? (
                               <div className="space-y-2">
                                 {unit.subunits.map((subunit) => (
@@ -911,7 +921,6 @@ export default function Settings() {
                               💡 Subunidades ficam disponíveis para filtros analíticos (Score, Projeção, Cenários).
                             </p>
 
-                            {/* Specialties info note */}
                             {isCentroClinico(unit) && (
                               <div className="mt-6 pt-4 border-t border-border">
                                 <div className="flex items-center gap-2 text-muted-foreground">
@@ -938,11 +947,11 @@ export default function Settings() {
 
           {/* ============= CATEGORIES TAB ============= */}
           <TabsContent value="categories" className="space-y-4">
+            {/* Mantido igual */}
             <div className="rounded-xl border border-border bg-card p-6">
               <h3 className="mb-4 font-semibold text-foreground">Categorias</h3>
               <p className="mb-6 text-sm text-muted-foreground">Gerencie as categorias de entradas e saídas</p>
 
-              {/* Add new category */}
               <div className="mb-6 flex flex-wrap gap-3">
                 <Input
                   placeholder="Nova categoria..."
@@ -976,7 +985,6 @@ export default function Settings() {
                 </Button>
               </div>
 
-              {/* Legend */}
               <div className="mb-4 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <Star className="h-3 w-3 text-warning" />
@@ -992,7 +1000,6 @@ export default function Settings() {
                 </span>
               </div>
 
-              {/* Expense Categories */}
               <div className="mb-6">
                 <div className="flex items-center gap-2 mb-3">
                   <TrendingDown className="h-5 w-5 text-destructive" />
@@ -1004,7 +1011,6 @@ export default function Settings() {
                 </div>
               </div>
 
-              {/* Income Categories */}
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <TrendingUp className="h-5 w-5 text-success" />
@@ -1055,6 +1061,11 @@ export default function Settings() {
               }
               onAddLog={addAuditLog}
             />
+          </TabsContent>
+
+          {/* ✅ NOVA TAB: DOCTORS */}
+          <TabsContent value="doctors" className="space-y-4">
+            <SettingsDoctors />
           </TabsContent>
 
           {/* ============= PAYERS TAB ============= */}
