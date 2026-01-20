@@ -18,6 +18,15 @@ export interface ProductionFilters {
   search?: string;
 }
 
+// ============================================================================
+// Médicos(as) (opcional)
+// ============================================================================
+// O type Production pode ou não ter doctorId. Aqui a gente mantém compatibilidade
+// sem quebrar compilação, e ainda salva no banco via doctor_id.
+type ProductionDoctorPatch = {
+  doctorId?: string | null;
+};
+
 interface DBProduction {
   id: string;
   company_id: string;
@@ -45,14 +54,9 @@ interface DBProduction {
   created_by: string | null;
   created_at: string;
   updated_at: string;
-  history: ProductionHistoryEntry[];
-  edit_logs: Array<{
-    field: string;
-    previousValue: string;
-    newValue: string;
-    editedAt: string;
-    editedBy: string;
-  }>;
+  // OBS: no Supabase, JSON chega tipado como "Json" (unknown). A gente normaliza.
+  history: unknown;
+  edit_logs: unknown;
 
   is_package: boolean | null;
   package_type: string | null;
@@ -98,14 +102,16 @@ function toProduction(db: DBProduction): Production {
 
   const normalizedDescription = normalizeProcedureName(db.description, db.production_type, db.paciente_nome);
 
-  return {
+  const history = Array.isArray(db.history) ? (db.history as ProductionHistoryEntry[]) : [];
+  const editLogs = Array.isArray(db.edit_logs) ? (db.edit_logs as any[]) : [];
+
+  // Monta base sem depender do type aceitar doctorId
+  const base: any = {
     id: db.id,
     productionDate: db.production_date,
     competencia: db.competencia,
     unit: db.unit,
     specialty: typeof db.specialty === "string" && db.specialty.trim().length > 0 ? db.specialty : "SEM_ESPECIALIDADE",
-
-    doctorId: db.doctor_id || undefined,
 
     payerType: db.payer_type as "CONVENIO" | "PARTICULAR",
     convenio: db.convenio || undefined,
@@ -124,8 +130,8 @@ function toProduction(db: DBProduction): Production {
     createdBy: db.created_by || "system",
     createdAt: db.created_at,
     updatedAt: db.updated_at,
-    history: db.history || [],
-    editLogs: db.edit_logs || [],
+    history,
+    editLogs,
 
     isPackage,
     packageType: (db.package_type ?? undefined) as "PACOTE_BOX" | "PACOTE_GTA" | undefined,
@@ -139,6 +145,13 @@ function toProduction(db: DBProduction): Production {
     importRowNumber: db.import_row_number ?? undefined,
     importSource: db.import_source || "manual",
   };
+
+  // doctorId opcional (FK -> doctors.id)
+  if (db.doctor_id) {
+    base.doctorId = db.doctor_id;
+  }
+
+  return base as Production;
 }
 
 function createHistoryEntry(
@@ -196,7 +209,9 @@ export function useProductionDB() {
   }, [fetchProductions, globalVersion]);
 
   const addProduction = useCallback(
-    async (data: Omit<Production, "id" | "createdAt" | "status" | "history">): Promise<Production | null> => {
+    async (
+      data: Omit<Production, "id" | "createdAt" | "status" | "history"> & ProductionDoctorPatch,
+    ): Promise<Production | null> => {
       if (!currentCompany?.id || !profile?.id) {
         toast.error("Usuário não autenticado");
         return null;
@@ -225,7 +240,6 @@ export function useProductionDB() {
         competencia: data.competencia,
         unit: data.unit,
         specialty: data.specialty,
-        doctorId: data.doctorId,
         payerType: data.payerType,
         convenio: data.convenio,
         paymentMethod: data.paymentMethod,
@@ -249,6 +263,11 @@ export function useProductionDB() {
         matmedAmount: isPackage ? data.matmedAmount || 0 : 0,
         packageQty: isPackage ? data.packageQty || data.quantity : 1,
       };
+
+      // doctorId opcional (não quebra types se Production não tiver esse campo)
+      if (typeof data.doctorId === "string" && data.doctorId.trim().length > 0) {
+        (optimisticProduction as any).doctorId = data.doctorId;
+      }
 
       setProductions((prev) => [optimisticProduction, ...prev]);
 
@@ -379,7 +398,7 @@ export function useProductionDB() {
   );
 
   const updateProduction = useCallback(
-    async (id: string, data: Partial<Production>, userName: string) => {
+    async (id: string, data: Partial<Production> & ProductionDoctorPatch, userName: string) => {
       const production = productions.find((p) => p.id === id);
 
       if (!production || production.status !== "PRODUZIDO") {
