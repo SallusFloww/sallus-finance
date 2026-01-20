@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -52,11 +52,14 @@ import {
   Download,
   Eye,
   Award,
+  UserRound,
   AlertCircle,
   ChevronRight,
   Sparkles,
   TrendingDown as TrendDown,
 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { useProductionDB } from "@/hooks/useProductionDB";
 import { usePackagePricing, PackagePricingRule } from "@/hooks/usePackagePricing";
 import { 
@@ -278,6 +281,16 @@ interface SpecialtyRanking {
   concentrationLevel: "alta" | "ok" | "baixa";
 }
 
+
+interface DoctorRanking {
+  id: string;
+  name: string;
+  quantity: number;
+  value: number;
+  count: number;
+  percentage: number;
+}
+
 interface TypeBreakdown {
   type: string;
   label: string;
@@ -312,6 +325,44 @@ interface TimeSeriesData {
 export default function ProductionReport() {
   const { productions, filterProductions, uniqueConvenios } = useProductionDB();
   const { getEffectiveRule } = usePackagePricing();
+
+  const { currentCompany, profile } = useAuth();
+  const companyId = (currentCompany as any)?.id || (profile as any)?.company_id;
+
+  // Médicos(as) - nomes por ID (para ranking no relatório)
+  const [doctorNameById, setDoctorNameById] = useState<Record<string, string>>({});
+  const [doctorMetric, setDoctorMetric] = useState<"quantity" | "value">("quantity");
+
+  useEffect(() => {
+    const fetchDoctors = async () => {
+      if (!companyId) {
+        setDoctorNameById({});
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("doctors")
+        .select("id, name, company_id")
+        .eq("company_id", companyId)
+        .order("name", { ascending: true });
+
+      if (error) {
+        console.error(error);
+        setDoctorNameById({});
+        return;
+      }
+
+      const map: Record<string, string> = {};
+      (data ?? []).forEach((d: any) => {
+        if (d?.id && d?.name) map[String(d.id)] = String(d.name).trim();
+      });
+
+      setDoctorNameById(map);
+    };
+
+    fetchDoctors();
+  }, [companyId]);
+
 
   // Filtros
   const [startDate, setStartDate] = useState<string>(
@@ -554,6 +605,36 @@ export default function ProductionReport() {
         };
       });
   }, [filteredProductions]);
+
+  const doctorRanking: DoctorRanking[] = useMemo(() => {
+    const map: Record<string, { quantity: number; value: number; count: number }> = {};
+    const totalQty = filteredProductions.reduce((sum, p) => sum + (p.quantity ?? 0), 0);
+
+    filteredProductions.forEach((p: any) => {
+      const doctorId = String((p as any)?.doctorId ?? (p as any)?.doctor_id ?? "").trim();
+      if (!doctorId) return;
+
+      if (!map[doctorId]) map[doctorId] = { quantity: 0, value: 0, count: 0 };
+      map[doctorId].count += 1;
+      map[doctorId].quantity += Number(p.quantity ?? 0);
+      map[doctorId].value += Number((p as any)?.estimatedValue ?? (p as any)?.billedValue ?? 0);
+    });
+
+    const rows: DoctorRanking[] = Object.entries(map).map(([id, data]) => ({
+      id,
+      name: doctorNameById[id] || "Médico não encontrado",
+      count: data.count,
+      quantity: data.quantity,
+      value: data.value,
+      percentage: totalQty > 0 ? (data.quantity / totalQty) * 100 : 0,
+    }));
+
+    return rows.sort((a, b) => {
+      const aMetric = doctorMetric === "value" ? a.value : a.quantity;
+      const bMetric = doctorMetric === "value" ? b.value : b.quantity;
+      return bMetric - aMetric;
+    });
+  }, [filteredProductions, doctorNameById, doctorMetric]);
 
   // AUDIT_FIX: Moved before managementAlerts to avoid forward reference
   // Check if specialty field exists (real specialties, not unit fallback)
@@ -1844,6 +1925,68 @@ export default function ProductionReport() {
                   })}
                 </CardContent>
               </Card>
+
+            {/* Produção por Médico */}
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <UserRound className="h-4 w-4 text-violet-600" />
+                    Produção por Médico
+                  </CardTitle>
+
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant={doctorMetric === "quantity" ? "default" : "outline"}
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setDoctorMetric("quantity")}
+                    >
+                      Qtde
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={doctorMetric === "value" ? "default" : "outline"}
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setDoctorMetric("value")}
+                    >
+                      R$
+                    </Button>
+                  </div>
+                </div>
+                <CardDescription className="text-xs">
+                  Ranking por volume (Qtde) ou impacto financeiro (R$)
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {doctorRanking.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Nenhuma produção vinculada a médico no período
+                  </p>
+                ) : (
+                  doctorRanking.slice(0, 7).map((doc, idx) => (
+                    <div key={doc.id} className="flex items-center justify-between py-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xs font-medium text-muted-foreground w-5">{idx + 1}.</span>
+                        <span className="text-sm font-medium truncate">{doc.name}</span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="text-xs tabular-nums">
+                          {doctorMetric === "value"
+                            ? formatCurrency(doc.value)
+                            : doc.quantity.toLocaleString("pt-BR")}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          {doc.percentage.toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+
             )}
 
             {/* Mix Assistencial */}
