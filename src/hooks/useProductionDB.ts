@@ -18,15 +18,6 @@ export interface ProductionFilters {
   search?: string;
 }
 
-// ============================================================================
-// Médicos(as) (opcional)
-// ============================================================================
-// O type Production pode ou não ter doctorId. Aqui a gente mantém compatibilidade
-// sem quebrar compilação, e ainda salva no banco via doctor_id.
-type ProductionDoctorPatch = {
-  doctorId?: string | null;
-};
-
 interface DBProduction {
   id: string;
   company_id: string;
@@ -54,9 +45,14 @@ interface DBProduction {
   created_by: string | null;
   created_at: string;
   updated_at: string;
-  // OBS: no Supabase, JSON chega tipado como "Json" (unknown). A gente normaliza.
-  history: unknown;
-  edit_logs: unknown;
+  history: ProductionHistoryEntry[];
+  edit_logs: Array<{
+    field: string;
+    previousValue: string;
+    newValue: string;
+    editedAt: string;
+    editedBy: string;
+  }>;
 
   is_package: boolean | null;
   package_type: string | null;
@@ -102,16 +98,14 @@ function toProduction(db: DBProduction): Production {
 
   const normalizedDescription = normalizeProcedureName(db.description, db.production_type, db.paciente_nome);
 
-  const history = Array.isArray(db.history) ? (db.history as ProductionHistoryEntry[]) : [];
-  const editLogs = Array.isArray(db.edit_logs) ? (db.edit_logs as any[]) : [];
-
-  // Monta base sem depender do type aceitar doctorId
-  const base: any = {
+  return {
     id: db.id,
     productionDate: db.production_date,
     competencia: db.competencia,
     unit: db.unit,
     specialty: typeof db.specialty === "string" && db.specialty.trim().length > 0 ? db.specialty : "SEM_ESPECIALIDADE",
+
+    doctorId: db.doctor_id || undefined,
 
     payerType: db.payer_type as "CONVENIO" | "PARTICULAR",
     convenio: db.convenio || undefined,
@@ -130,8 +124,8 @@ function toProduction(db: DBProduction): Production {
     createdBy: db.created_by || "system",
     createdAt: db.created_at,
     updatedAt: db.updated_at,
-    history,
-    editLogs,
+    history: db.history || [],
+    editLogs: db.edit_logs || [],
 
     isPackage,
     packageType: (db.package_type ?? undefined) as "PACOTE_BOX" | "PACOTE_GTA" | undefined,
@@ -145,13 +139,6 @@ function toProduction(db: DBProduction): Production {
     importRowNumber: db.import_row_number ?? undefined,
     importSource: db.import_source || "manual",
   };
-
-  // doctorId opcional (FK -> doctors.id)
-  if (db.doctor_id) {
-    base.doctorId = db.doctor_id;
-  }
-
-  return base as Production;
 }
 
 function createHistoryEntry(
@@ -209,9 +196,7 @@ export function useProductionDB() {
   }, [fetchProductions, globalVersion]);
 
   const addProduction = useCallback(
-    async (
-      data: Omit<Production, "id" | "createdAt" | "status" | "history"> & ProductionDoctorPatch,
-    ): Promise<Production | null> => {
+    async (data: Omit<Production, "id" | "createdAt" | "status" | "history">): Promise<Production | null> => {
       if (!currentCompany?.id || !profile?.id) {
         toast.error("Usuário não autenticado");
         return null;
@@ -240,6 +225,7 @@ export function useProductionDB() {
         competencia: data.competencia,
         unit: data.unit,
         specialty: data.specialty,
+        doctorId: data.doctorId,
         payerType: data.payerType,
         convenio: data.convenio,
         paymentMethod: data.paymentMethod,
@@ -263,11 +249,6 @@ export function useProductionDB() {
         matmedAmount: isPackage ? data.matmedAmount || 0 : 0,
         packageQty: isPackage ? data.packageQty || data.quantity : 1,
       };
-
-      // doctorId opcional (não quebra types se Production não tiver esse campo)
-      if (typeof data.doctorId === "string" && data.doctorId.trim().length > 0) {
-        (optimisticProduction as any).doctorId = data.doctorId;
-      }
 
       setProductions((prev) => [optimisticProduction, ...prev]);
 
@@ -398,7 +379,7 @@ export function useProductionDB() {
   );
 
   const updateProduction = useCallback(
-    async (id: string, data: Partial<Production> & ProductionDoctorPatch, userName: string) => {
+    async (id: string, data: Partial<Production>, userName: string) => {
       const production = productions.find((p) => p.id === id);
 
       if (!production || production.status !== "PRODUZIDO") {
@@ -634,12 +615,20 @@ export function useProductionDB() {
         consolidatedConsultas: { value: 0, quantity: 0 },
         consolidatedBoxTaxas: { value: 0, quantity: 0 },
         consolidatedMatMed: { value: 0 },
+        byDoctor: {} as Record<string, { count: number; quantity: number; value: number }>,
         bySpecialty: {} as Record<string, number>,
       };
 
       const ensureType = (type: string) => {
         if (!stats.byProductionType[type]) {
           stats.byProductionType[type] = { count: 0, quantity: 0, value: 0 };
+        }
+      };
+
+      const ensureDoctor = (doctorId: string) => {
+        if (!stats.byDoctor) stats.byDoctor = {};
+        if (!stats.byDoctor[doctorId]) {
+          stats.byDoctor[doctorId] = { count: 0, quantity: 0, value: 0 };
         }
       };
 
@@ -688,6 +677,15 @@ export function useProductionDB() {
         } else {
           stats.byPayerType.particular += p.estimatedValue;
           stats.byPayerTypeQuantity.particular += p.quantity;
+        }
+
+        // Agrupamento por médico(a) (opcional)
+        if ((p as any).doctorId) {
+          const did = String((p as any).doctorId);
+          ensureDoctor(did);
+          stats.byDoctor![did].count += 1;
+          stats.byDoctor![did].quantity += p.quantity ?? 0;
+          stats.byDoctor![did].value += p.estimatedValue ?? 0;
         }
 
         if (isPackage) {
