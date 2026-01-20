@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   DropdownMenu,
@@ -98,6 +100,7 @@ export function ProductionList({ productions, units, onDelete, onViewHistory }: 
   const companyId = (currentCompany as any)?.id || (profile as any)?.company_id;
 
   const [doctorNameById, setDoctorNameById] = useState<Record<string, string>>({});
+  const [doctorFilter, setDoctorFilter] = useState<string>("ALL");
 
   // Carrega nomes de médicos da empresa (inclui inativos para histórico)
   useEffect(() => {
@@ -134,6 +137,16 @@ export function ProductionList({ productions, units, onDelete, onViewHistory }: 
     if (!doctorId) return null;
     return doctorNameById[doctorId] || "Médico não encontrado";
   };
+  const filteredProductions = useMemo(() => {
+    if (!doctorFilter || doctorFilter === "ALL") return productions;
+
+    // Especial: somente sem médico
+    if (doctorFilter === "NONE") {
+      return productions.filter((p) => !(p as any).doctorId);
+    }
+
+    return productions.filter((p) => String((p as any).doctorId || "") === doctorFilter);
+  }, [productions, doctorFilter]);
 
   const [selectedProduction, setSelectedProduction] = useState<Production | null>(null);
 
@@ -160,7 +173,7 @@ export function ProductionList({ productions, units, onDelete, onViewHistory }: 
   // AUDIT_FIX: Calculate totals using effectiveQty for packages
   // Nota: ProductionStatus não tem "CANCELADO" - todos os status são válidos para contagem
   // effectiveQty = packageQty (se pacote) ?? quantity (padrão) para consistência com relatórios
-  const totals = productions.reduce(
+  const totals = filteredProductions.reduce(
     (acc, p) => {
       const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";
       const effectiveQty = isPackage ? (p.packageQty ?? p.quantity ?? 1) : p.quantity;
@@ -185,6 +198,32 @@ export function ProductionList({ productions, units, onDelete, onViewHistory }: 
           </p>
         </div>
 
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-muted-foreground">Filtrar por médico:</Label>
+            <Select value={doctorFilter} onValueChange={setDoctorFilter}>
+              <SelectTrigger className="h-8 w-[240px]">
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos</SelectItem>
+                <SelectItem value="NONE">Sem médico</SelectItem>
+                {Object.entries(doctorNameById)
+                  .sort((a, b) => a[1].localeCompare(b[1]))
+                  .map(([id, name]) => (
+                    <SelectItem key={id} value={id}>
+                      {name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Mostrando <strong className="text-foreground">{filteredProductions.length}</strong> de{" "}
+            <strong className="text-foreground">{productions.length}</strong>
+          </p>
+        </div>
         <div className="rounded-lg border overflow-hidden">
           <Table>
             <TableHeader>
@@ -201,7 +240,7 @@ export function ProductionList({ productions, units, onDelete, onViewHistory }: 
               </TableRow>
             </TableHeader>
             <TableBody>
-              {productions.map((production) => {
+              {filteredProductions.map((production) => {
                 const statusConfig = STATUS_CONFIG[production.status];
                 const StatusIcon = statusConfig.icon;
                 const hasLinkedReceivable = production.linkedReceivableIds && production.linkedReceivableIds.length > 0;
