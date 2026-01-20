@@ -118,9 +118,9 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
   // Pricing hook para pacotes
   const { validateTotal } = usePackagePricing();
   // Médicos(as) - opcional (para análises por profissional)
-  const { data: doctors = [], isLoading: doctorsLoading } = useDoctors();
+  const { data: doctorsRaw = [], isLoading: doctorsLoading } = useDoctors();
 
-  const doctorOptions = (doctors || [])
+  const doctorOptions = (doctorsRaw || [])
     .filter((d: any) => (d?.active ?? d?.is_active ?? true) === true)
     .map((d: any) => ({
       id: String(d?.id ?? ""),
