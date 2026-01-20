@@ -2,13 +2,7 @@ import { useState, useCallback, useMemo, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { isWithinInterval, parseISO, startOfDay, endOfDay } from "date-fns";
-import {
-  Production,
-  ProductionStatus,
-  ProductionType,
-  ProductionStats,
-  ProductionHistoryEntry,
-} from "@/types";
+import { Production, ProductionStatus, ProductionType, ProductionStats, ProductionHistoryEntry } from "@/types";
 import { toast } from "sonner";
 import { useGlobalRealtime } from "@/contexts/GlobalRealtimeProvider";
 
@@ -24,7 +18,6 @@ export interface ProductionFilters {
   search?: string;
 }
 
-// Tipo do banco de dados - ALINHADO com schema real (colunas de pacote adicionadas)
 interface DBProduction {
   id: string;
   company_id: string;
@@ -33,12 +26,11 @@ interface DBProduction {
   unit: string;
   specialty: string | null;
 
-  // ✅ NOVO: Médico opcional (FK -> doctors.id)
   doctor_id: string | null;
 
   payer_type: string;
   convenio: string | null;
-  payment_method: string | null; // HOTFIX: Coluna payment_method para PARTICULAR
+  payment_method: string | null;
   production_type: string;
   description: string;
   procedure_code: string | null;
@@ -61,34 +53,26 @@ interface DBProduction {
     editedAt: string;
     editedBy: string;
   }>;
-  // Campos de pacote (agora existem no banco)
+
   is_package: boolean | null;
   package_type: string | null;
   package_qty: number | null;
   consult_amount: number | null;
   fee_amount: number | null;
   matmed_amount: number | null;
-  // Campos de importação CSV
+
   paciente_nome: string | null;
   import_batch_id: string | null;
   import_row_number: number | null;
   import_source: string;
 }
 
-/**
- * Normaliza o "procedimento" exibido no app (usa campo description como procedure).
- * Blindagens:
- *  - Nunca permitir description/procedimento = nome do paciente
- *  - Padronizar "Consulta" -> "Consulta Médica"
- *  - Se description vier vazio, deriva do production_type
- */
 function normalizeProcedureName(
   description: string | null | undefined,
   productionType: string | null | undefined,
   patientName?: string | null,
 ): string {
   const patient = (patientName || "").trim();
-
   const typeRaw = (productionType || "").trim();
 
   const fromType =
@@ -102,22 +86,16 @@ function normalizeProcedureName(
         : "—";
 
   const raw = (description || "").trim() || fromType;
-
-  // Correção 2: nunca deixar procedure = patient
   const safe = raw && patient && raw.trim() === patient.trim() ? fromType : raw;
-
-  // Correção 3: padronizar "Consulta" -> "Consulta Médica"
   const normalized = safe.trim().toLowerCase() === "consulta" ? "Consulta Médica" : safe;
 
   return normalized || fromType || "—";
 }
 
-// Converter de DB para domínio - leitura das colunas de pacote
 function toProduction(db: DBProduction): Production {
   const isPackage =
     db.is_package === true || db.production_type === "PACOTE_BOX" || db.production_type === "PACOTE_GTA";
 
-  // ✅ Procedimento normalizado (armazenado em description no domínio)
   const normalizedDescription = normalizeProcedureName(db.description, db.production_type, db.paciente_nome);
 
   return {
@@ -127,15 +105,12 @@ function toProduction(db: DBProduction): Production {
     unit: db.unit,
     specialty: typeof db.specialty === "string" && db.specialty.trim().length > 0 ? db.specialty : "SEM_ESPECIALIDADE",
 
-    // ✅ NOVO: médico opcional (camelCase no domínio)
     doctorId: db.doctor_id || undefined,
 
     payerType: db.payer_type as "CONVENIO" | "PARTICULAR",
     convenio: db.convenio || undefined,
-    // HOTFIX: Mapear payment_method do banco
     paymentMethod: db.payment_method || undefined,
     productionType: db.production_type,
-    // ✅ Aqui é o ponto central da blindagem
     description: normalizedDescription,
     procedureCode: db.procedure_code || undefined,
     quantity: Number(db.quantity),
@@ -151,14 +126,14 @@ function toProduction(db: DBProduction): Production {
     updatedAt: db.updated_at,
     history: db.history || [],
     editLogs: db.edit_logs || [],
-    // Campos de pacote - agora lidos do banco
-    isPackage: isPackage,
+
+    isPackage,
     packageType: (db.package_type ?? undefined) as "PACOTE_BOX" | "PACOTE_GTA" | undefined,
     consultAmount: Number(db.consult_amount ?? 0),
     feeAmount: Number(db.fee_amount ?? 0),
     matmedAmount: Number(db.matmed_amount ?? 0),
     packageQty: Number(db.package_qty ?? db.quantity ?? 1),
-    // Campos de importação CSV
+
     patientName: db.paciente_nome || undefined,
     importBatchId: db.import_batch_id || undefined,
     importRowNumber: db.import_row_number ?? undefined,
@@ -166,7 +141,6 @@ function toProduction(db: DBProduction): Production {
   };
 }
 
-// Criar entrada no histórico
 function createHistoryEntry(
   action: ProductionHistoryEntry["action"],
   description: string,
@@ -191,15 +165,14 @@ export function useProductionDB() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Integração com GlobalRealtimeProvider - versão global
   const { version: globalVersion } = useGlobalRealtime();
 
-  // Fetch productions
   const fetchProductions = useCallback(async () => {
     if (!currentCompany?.id) return;
 
     try {
       setLoading(true);
+
       const { data, error: fetchError } = await supabase
         .from("productions")
         .select("*")
@@ -208,21 +181,20 @@ export function useProductionDB() {
 
       if (fetchError) throw fetchError;
 
-      setProductions((data || []).map((d) => toProduction(d as unknown as DBProduction)));
+      setProductions((data || []).map((d) => toProduction(d as DBProduction)));
       setError(null);
     } catch (err) {
+      console.error(err);
       setError("Erro ao carregar produções");
     } finally {
       setLoading(false);
     }
   }, [currentCompany?.id]);
 
-  // Fetch inicial e reativo à versão global
   useEffect(() => {
     fetchProductions();
   }, [fetchProductions, globalVersion]);
 
-  // Add production with optimistic update
   const addProduction = useCallback(
     async (data: Omit<Production, "id" | "createdAt" | "status" | "history">): Promise<Production | null> => {
       if (!currentCompany?.id || !profile?.id) {
@@ -231,6 +203,7 @@ export function useProductionDB() {
       }
 
       const totalValue = data.quantity * data.unitValue;
+
       const history = [
         createHistoryEntry(
           "CRIADO",
@@ -240,26 +213,22 @@ export function useProductionDB() {
         ),
       ];
 
-      // Determinar se é pacote
       const isPackage =
         data.isPackage === true || data.productionType === "PACOTE_BOX" || data.productionType === "PACOTE_GTA";
 
-      // Create optimistic production for immediate UI update
       const optimisticId = crypto.randomUUID();
       const now = new Date().toISOString();
+
       const optimisticProduction: Production = {
         id: optimisticId,
         productionDate: data.productionDate,
         competencia: data.competencia,
         unit: data.unit,
         specialty: data.specialty,
-
-        // ✅ NOVO
         doctorId: data.doctorId,
-
         payerType: data.payerType,
         convenio: data.convenio,
-        paymentMethod: data.paymentMethod, // AUDIT_FIX
+        paymentMethod: data.paymentMethod,
         productionType: data.productionType,
         description: data.description,
         procedureCode: data.procedureCode,
@@ -271,10 +240,9 @@ export function useProductionDB() {
         createdBy: profile.id,
         createdAt: now,
         updatedAt: now,
-        history: history,
+        history,
         editLogs: [],
-        // Campos de pacote
-        isPackage: isPackage,
+        isPackage,
         packageType: isPackage ? data.packageType || (data.productionType as "PACOTE_BOX" | "PACOTE_GTA") : undefined,
         consultAmount: isPackage ? data.consultAmount || 0 : 0,
         feeAmount: isPackage ? data.feeAmount || 0 : 0,
@@ -282,37 +250,27 @@ export function useProductionDB() {
         packageQty: isPackage ? data.packageQty || data.quantity : 1,
       };
 
-      // Optimistic update - add to state immediately
       setProductions((prev) => [optimisticProduction, ...prev]);
 
-      // Calcular valores de pacote (consult, fee, matmed)
       const packageQty = isPackage ? data.packageQty || data.quantity : 1;
       const consultAmount = isPackage ? data.consultAmount || 0 : 0;
       const feeAmount = isPackage ? data.feeAmount || 0 : 0;
-      // matmed = total - consult - fee (nunca negativo)
       const matmedAmount = isPackage ? Math.max(0, totalValue - consultAmount - feeAmount) : 0;
 
-      // HOTFIX: Sanitização robusta de specialty para evitar null indevido
       const safeSpecialty =
         typeof data.specialty === "string" && data.specialty.trim().length > 0 ? data.specialty.trim() : null;
 
-      // ✅ NOVO: Sanitização robusta do médico (uuid ou null)
       const safeDoctorId = typeof data.doctorId === "string" && data.doctorId.trim().length > 0 ? data.doctorId : null;
 
-      // Payload com colunas de pacote incluídas
       const insertPayload = {
         company_id: currentCompany.id,
         production_date: data.productionDate,
         competencia: data.competencia,
         unit: data.unit,
         specialty: safeSpecialty ?? "SEM_ESPECIALIDADE",
-
-        // ✅ NOVO: Persistir doctor_id (opcional)
         doctor_id: safeDoctorId,
-
         payer_type: data.payerType,
         convenio: data.convenio || null,
-        // HOTFIX: Persistir payment_method para PARTICULAR
         payment_method: data.payerType === "PARTICULAR" ? data.paymentMethod || null : null,
         production_type: data.productionType,
         description: data.description,
@@ -323,7 +281,6 @@ export function useProductionDB() {
         status: "PRODUZIDO",
         created_by: profile.id,
         history: JSON.parse(JSON.stringify(history)),
-        // Campos de pacote
         is_package: isPackage,
         package_type: isPackage ? data.packageType || data.productionType : null,
         package_qty: packageQty,
@@ -341,32 +298,24 @@ export function useProductionDB() {
       if (insertError) {
         console.error("createProduction insertError:", insertError);
 
-        // Verificar tipo de erro para mensagens específicas
         const errorMsg = insertError.message || "";
 
-        // Erro de RLS/permissão
         if (errorMsg.includes("row-level security") || errorMsg.includes("permission denied")) {
           setProductions((prev) => prev.filter((p) => p.id !== optimisticId));
           toast.error("Sem permissão para lançar produção nesta empresa. Verifique role Admin/Gestor.");
           return null;
         }
 
-        // Erro de coluna inexistente - tentar fallback com payload mínimo (sem campos de pacote)
         if (errorMsg.includes("column") && errorMsg.includes("does not exist")) {
-          console.warn("Tentando fallback com payload mínimo (sem campos de pacote)...");
-
           const minimalPayload = {
             company_id: currentCompany.id,
             production_date: data.productionDate,
             competencia: data.competencia,
             unit: data.unit,
             specialty: safeSpecialty,
+            doctor_id: safeDoctorId,
             payer_type: data.payerType,
             convenio: data.convenio || null,
-
-            // ✅ NOVO: incluir doctor_id no mínimo também (se existir no schema, salva)
-            doctor_id: safeDoctorId,
-
             production_type: data.productionType,
             description: data.description,
             procedure_code: data.procedureCode || null,
@@ -376,7 +325,6 @@ export function useProductionDB() {
             status: "PRODUZIDO",
             created_by: profile.id,
             history: JSON.parse(JSON.stringify(history)),
-            // NÃO incluir campos de pacote no fallback mínimo
           };
 
           const { data: fallbackInserted, error: fallbackError } = await supabase
@@ -386,14 +334,13 @@ export function useProductionDB() {
             .single();
 
           if (fallbackError) {
-            console.error("Fallback também falhou:", fallbackError);
             setProductions((prev) => prev.filter((p) => p.id !== optimisticId));
             toast.error(fallbackError.message || "Erro ao criar produção");
             return null;
           }
 
-          // Fallback funcionou
-          const fallbackProduction = toProduction(fallbackInserted as unknown as DBProduction);
+          const fallbackProduction = toProduction(fallbackInserted as DBProduction);
+
           setProductions((prev) => {
             const withoutOptimistic = prev.filter((p) => p.id !== optimisticId);
             const alreadyExists = withoutOptimistic.some((p) => p.id === fallbackProduction.id);
@@ -402,38 +349,20 @@ export function useProductionDB() {
             }
             return [fallbackProduction, ...withoutOptimistic];
           });
+
           await fetchProductions();
           toast.success("Produção registrada (modo compatível)");
           return fallbackProduction;
         }
 
-        // Rollback optimistic update on other errors
         setProductions((prev) => prev.filter((p) => p.id !== optimisticId));
         toast.error(errorMsg || "Erro ao criar produção");
         return null;
       }
 
-      // Replace optimistic entry with real data (avoid duplicates from realtime)
-      const realProduction = toProduction(inserted as unknown as DBProduction);
-
-      // HOTFIX: Verificar se specialty foi salva corretamente - se não, corrigir
-      if (safeSpecialty && !realProduction.specialty) {
-        console.warn("Specialty perdida no insert, tentando corrigir...");
-        const { error: patchError } = await supabase
-          .from("productions")
-          .update({ specialty: safeSpecialty })
-          .eq("id", realProduction.id);
-
-        if (patchError) {
-          console.error("Falha ao corrigir specialty:", patchError);
-          toast.error("Especialidade não foi salva. Edite a produção para corrigir.");
-        } else {
-          realProduction.specialty = safeSpecialty;
-        }
-      }
+      const realProduction = toProduction(inserted as DBProduction);
 
       setProductions((prev) => {
-        // Remove optimistic entry and add real one if not already present
         const withoutOptimistic = prev.filter((p) => p.id !== optimisticId);
         const alreadyExists = withoutOptimistic.some((p) => p.id === realProduction.id);
         if (alreadyExists) {
@@ -442,7 +371,6 @@ export function useProductionDB() {
         return [realProduction, ...withoutOptimistic];
       });
 
-      // Refetch para garantir sincronização (cinto + suspensório)
       await fetchProductions();
       toast.success("Produção registrada com sucesso");
       return realProduction;
@@ -450,11 +378,11 @@ export function useProductionDB() {
     [currentCompany?.id, profile, fetchProductions],
   );
 
-  // Update production
   const updateProduction = useCallback(
     async (id: string, data: Partial<Production>, userName: string) => {
       const production = productions.find((p) => p.id === id);
-      if (!production || productiont production.status !== "PRODUZIDO") {
+
+      if (!production || production.status !== "PRODUZIDO") {
         toast.error("Apenas produções com status PRODUZIDO podem ser editadas");
         return;
       }
@@ -473,17 +401,17 @@ export function useProductionDB() {
       const updateData: Record<string, unknown> = {
         updated_at: new Date().toISOString(),
         edit_logs: [...(production.editLogs || []), editLog],
-        history: history,
+        history,
       };
 
       if (data.description !== undefined) updateData.description = data.description;
       if (data.quantity !== undefined) updateData.quantity = data.quantity;
       if (data.unitValue !== undefined) updateData.unit_value = data.unitValue;
 
-      // ✅ NOVO: atualizar médico opcional
       if (data.doctorId !== undefined) {
         const safeDoctorId =
           typeof data.doctorId === "string" && data.doctorId.trim().length > 0 ? data.doctorId : null;
+
         updateData.doctor_id = safeDoctorId;
       }
 
@@ -493,13 +421,10 @@ export function useProductionDB() {
         updateData.total_value = qty * val;
       }
 
-      // Detectar se é pacote (existente ou via data)
       const isPackage =
-        data.isPackage ??
-        production.isPackage ??
-        (production.productionType === "PACOTE_BOX" || production.productionType === "PACOTE_GTA");
+        (data.isPackage ?? production.isPackage ?? production.productionType === "PACOTE_BOX") ||
+        production.productionType === "PACOTE_GTA";
 
-      // Atualizar campos de pacote se aplicável
       const hasPackageFields =
         data.consultAmount !== undefined ||
         data.feeAmount !== undefined ||
@@ -520,18 +445,17 @@ export function useProductionDB() {
       const { error: updateError } = await supabase.from("productions").update(updateData).eq("id", id);
 
       if (updateError) {
+        console.error(updateError);
         toast.error("Erro ao atualizar produção");
         return;
       }
 
-      // Refetch para garantir sincronização
       await fetchProductions();
       toast.success("Produção atualizada");
     },
     [productions, fetchProductions],
   );
 
-  // Delete production
   const deleteProduction = useCallback(
     async (id: string) => {
       const production = productions.find((p) => p.id === id);
@@ -540,13 +464,11 @@ export function useProductionDB() {
         return;
       }
 
-      // Soft delete - mark as cancelled (we don't actually delete due to RLS)
       toast.error("Exclusão não permitida. Use cancelamento em vez disso.");
     },
     [productions],
   );
 
-  // Link to receivable
   const linkToReceivable = useCallback(
     async (productionIds: string[], receivableId: string, billedValue: number, userName: string) => {
       for (const id of productionIds) {
@@ -555,7 +477,7 @@ export function useProductionDB() {
 
         const history = [...(production.history || [])];
         history.push(
-          createHistoryEntry("VINCULADO_FATURAMENTO", `Vinculado ao faturamento`, userName, billedValue, receivableId),
+          createHistoryEntry("VINCULADO_FATURAMENTO", "Vinculado ao faturamento", userName, billedValue, receivableId),
         );
 
         await supabase
@@ -570,14 +492,12 @@ export function useProductionDB() {
           .eq("id", id);
       }
 
-      // Refetch para garantir sincronização
       await fetchProductions();
       toast.success("Produções vinculadas ao faturamento");
     },
     [productions, fetchProductions],
   );
 
-  // Mark as received
   const markAsReceived = useCallback(
     async (productionIds: string[], receivedValue: number, userName: string) => {
       for (const id of productionIds) {
@@ -585,7 +505,7 @@ export function useProductionDB() {
         if (!production || production.status !== "FATURADO") continue;
 
         const history = [...(production.history || [])];
-        history.push(createHistoryEntry("RECEBIDO", `Produção recebida`, userName, receivedValue));
+        history.push(createHistoryEntry("RECEBIDO", "Produção recebida", userName, receivedValue));
 
         await supabase
           .from("productions")
@@ -598,14 +518,12 @@ export function useProductionDB() {
           .eq("id", id);
       }
 
-      // Refetch para garantir sincronização
       await fetchProductions();
       toast.success("Produções marcadas como recebidas");
     },
     [productions, fetchProductions],
   );
 
-  // Mark as glossed
   const markAsGlossed = useCallback(
     async (productionIds: string[], glossedValue: number, userName: string) => {
       for (const id of productionIds) {
@@ -613,7 +531,7 @@ export function useProductionDB() {
         if (!production || production.status !== "FATURADO") continue;
 
         const history = [...(production.history || [])];
-        history.push(createHistoryEntry("GLOSADO", `Produção glosada`, userName, glossedValue));
+        history.push(createHistoryEntry("GLOSADO", "Produção glosada", userName, glossedValue));
 
         await supabase
           .from("productions")
@@ -626,14 +544,12 @@ export function useProductionDB() {
           .eq("id", id);
       }
 
-      // Refetch para garantir sincronização
       await fetchProductions();
       toast.success("Produções marcadas como glosadas");
     },
     [productions, fetchProductions],
   );
 
-  // Filter productions
   const filterProductions = useCallback(
     (filters: ProductionFilters): Production[] => {
       return productions.filter((p) => {
@@ -670,7 +586,6 @@ export function useProductionDB() {
     [productions],
   );
 
-  // Get stats
   const getStats = useCallback(
     (startDate?: Date, endDate?: Date): ProductionStats => {
       const filtered = startDate && endDate ? filterProductions({ startDate, endDate }) : productions;
@@ -697,15 +612,12 @@ export function useProductionDB() {
         byProductionType: {} as Record<string, { count: number; quantity: number; value: number }>,
         byPayerType: { convenio: 0, particular: 0 },
         byPayerTypeQuantity: { convenio: 0, particular: 0 },
-        // Métricas consolidadas avulsos + pacotes
         consolidatedConsultas: { value: 0, quantity: 0 },
         consolidatedBoxTaxas: { value: 0, quantity: 0 },
         consolidatedMatMed: { value: 0 },
-        // Agrupamento por especialidade
         bySpecialty: {} as Record<string, number>,
       };
 
-      // Helper para inicializar tipo em byProductionType
       const ensureType = (type: string) => {
         if (!stats.byProductionType[type]) {
           stats.byProductionType[type] = { count: 0, quantity: 0, value: 0 };
@@ -717,7 +629,6 @@ export function useProductionDB() {
         stats.totalQuantityProduced += p.quantity;
         stats.countProduced++;
 
-        // Agrupamento por especialidade — APENAS Centro Clínico
         const unitNorm = (p.unit ?? "").toLowerCase().replace(/[\s\-_]+/g, "");
         const isCentroClinico = unitNorm === "centroclinico" || unitNorm.includes("centroclinico");
 
@@ -726,34 +637,25 @@ export function useProductionDB() {
           stats.bySpecialty[specialtyKey] = (stats.bySpecialty[specialtyKey] || 0) + p.estimatedValue;
         }
 
-        // ============= DETECÇÃO PACOTE =============
         const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";
-        // Quantidade base do pacote (respeita campo quantidade)
         const baseQty = isPackage ? (p.packageQty ?? p.quantity ?? 1) : 0;
 
-        // ============= byProductionType: EXPLODIR PACOTE EM COMPONENTES =============
         if (isPackage) {
-          // CONSULTA do pacote
           ensureType("CONSULTA");
           stats.byProductionType["CONSULTA"].count += 1;
           stats.byProductionType["CONSULTA"].quantity += baseQty;
           stats.byProductionType["CONSULTA"].value += p.consultAmount || 0;
 
-          // BOX_PS do pacote (unificado com avulso)
           ensureType("BOX_PS");
           stats.byProductionType["BOX_PS"].count += 1;
           stats.byProductionType["BOX_PS"].quantity += baseQty;
           stats.byProductionType["BOX_PS"].value += p.feeAmount || 0;
 
-          // MAT_MED do pacote (sem quantidade)
           ensureType("MAT_MED");
           stats.byProductionType["MAT_MED"].count += 1;
-          stats.byProductionType["MAT_MED"].quantity += 0; // Não contamos quantidade
+          stats.byProductionType["MAT_MED"].quantity += 0;
           stats.byProductionType["MAT_MED"].value += p.matmedAmount || 0;
-
-          // NÃO somar em PACOTE_BOX/PACOTE_GTA
         } else {
-          // Avulso: agregar normalmente (normalizando BOX_PS)
           const reportType = p.productionType === "BOX_PS" ? "BOX_PS" : p.productionType;
           ensureType(reportType);
           stats.byProductionType[reportType].count++;
@@ -769,9 +671,7 @@ export function useProductionDB() {
           stats.byPayerTypeQuantity.particular += p.quantity;
         }
 
-        // ============= CONSOLIDAÇÃO AVULSOS + PACOTES (cards) =============
         if (isPackage) {
-          // Pacote: somar componentes individuais respeitando quantidade
           stats.consolidatedConsultas.value += p.consultAmount || 0;
           stats.consolidatedConsultas.quantity += baseQty;
 
@@ -779,9 +679,7 @@ export function useProductionDB() {
           stats.consolidatedBoxTaxas.quantity += baseQty;
 
           stats.consolidatedMatMed.value += p.matmedAmount || 0;
-          // Não contamos quantidade de mat/med conforme solicitado
         } else {
-          // Avulso: classificar por tipo
           if (p.productionType === "CONSULTA") {
             stats.consolidatedConsultas.value += p.estimatedValue;
             stats.consolidatedConsultas.quantity += p.quantity;
@@ -789,7 +687,6 @@ export function useProductionDB() {
             stats.consolidatedBoxTaxas.value += p.estimatedValue;
             stats.consolidatedBoxTaxas.quantity += p.quantity;
           }
-          // Mat/Med avulso não existe como tipo separado, então não agregamos aqui
         }
 
         switch (p.status) {
@@ -835,9 +732,7 @@ export function useProductionDB() {
     [productions, filterProductions],
   );
 
-  // Derived state
   const openProductions = useMemo(() => productions.filter((p) => p.status === "PRODUZIDO"), [productions]);
-
   const billedProductions = useMemo(() => productions.filter((p) => p.status === "FATURADO"), [productions]);
 
   const uniqueConvenios = useMemo(() => {
@@ -848,13 +743,6 @@ export function useProductionDB() {
     return Array.from(convenios).sort();
   }, [productions]);
 
-  const getProductionsByReceivable = useCallback(
-    (receivableId: string): Production[] => {
-      return productions.filter((p) => p.linkedReceivableIds?.includes(receivableId));
-    },
-    [productions],
-  );
-
   const uniqueProcedureCodes = useMemo(() => {
     const codes = new Set<string>();
     productions.forEach((p) => {
@@ -862,6 +750,13 @@ export function useProductionDB() {
     });
     return Array.from(codes).sort();
   }, [productions]);
+
+  const getProductionsByReceivable = useCallback(
+    (receivableId: string): Production[] => {
+      return productions.filter((p) => p.linkedReceivableIds?.includes(receivableId));
+    },
+    [productions],
+  );
 
   return {
     productions,
