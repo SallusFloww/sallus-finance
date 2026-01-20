@@ -1,13 +1,13 @@
-import { useState, useEffect } from "react";
-import { 
-  Building2, 
-  Tag, 
-  Plus, 
-  Trash2, 
-  Pencil, 
-  Check, 
-  X, 
-  TrendingUp, 
+import { useState } from "react";
+import {
+  Building2,
+  Tag,
+  Plus,
+  Trash2,
+  Pencil,
+  Check,
+  X,
+  TrendingUp,
   TrendingDown,
   ChevronDown,
   ChevronRight,
@@ -21,8 +21,10 @@ import {
   FileText,
   Users,
   Settings2,
-  Info
+  Boxes,
+  FlaskConical,
 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -31,30 +33,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { toast } from "sonner";
-import { CategoryType, Subunit, SpecialtyConfig, ProductionTypeConfig, ExamTypeConfig, PayerConfig, SystemParameters, ExpandedSettings } from "@/types";
+
+import { CategoryType, Subunit, ExpandedSettings } from "@/types";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { DEFAULT_UNITS, SPECIALTIES, SPECIALTY_LABELS } from "@/utils/constants";
+import { DEFAULT_UNITS } from "@/utils/constants";
+
 import { useCompanySettings } from "@/hooks/useCompanySettings";
 import {
   SettingsProductionTypes,
@@ -67,37 +54,31 @@ import {
 import { DemoSettings } from "@/components/settings/DemoSettings";
 import { useReceivablesDB } from "@/hooks/useReceivablesDB";
 import { useProductionDB } from "@/hooks/useProductionDB";
-import { Boxes, FlaskConical } from "lucide-react";
 
 export default function Settings() {
-  const { transactions, auditLog } = useApp();
+  const { transactions } = useApp();
   const { transactions: allTransactions } = transactions;
+
   const { profile, isAdmin } = useAuth();
-  
+
   // Use database-backed settings instead of localStorage
-  const { 
-    settings, 
-    extendedSettings, 
-    updateSettings, 
-    updateExtendedSettings,
-    loading: settingsLoading 
-  } = useCompanySettings();
-  
-  // Wrapper to update extended settings
+  const { settings, extendedSettings, updateSettings, updateExtendedSettings } = useCompanySettings();
+
+  // Wrapper to update extended settings (supports updater fn or partial object)
   const setExtendedSettings = (updater: ((prev: ExpandedSettings) => ExpandedSettings) | Partial<ExpandedSettings>) => {
-    if (typeof updater === 'function') {
-      const safeExtended = extendedSettings ?? {} as ExpandedSettings;
+    if (typeof updater === "function") {
+      const safeExtended = (extendedSettings ?? {}) as ExpandedSettings;
       const newValue = updater(safeExtended);
       updateExtendedSettings(newValue);
     } else {
       updateExtendedSettings(updater);
     }
   };
-  
+
   // Compatibilidade com código legado
   const user = { name: profile?.full_name || "Sistema" };
   const addAuditLog = (_action: string, _details: string, _meta?: unknown) => {};
-  
+
   const { receivables } = useReceivablesDB();
   const { productions } = useProductionDB();
 
@@ -112,9 +93,6 @@ export default function Settings() {
   const [editingSubunitId, setEditingSubunitId] = useState<string | null>(null);
   const [editingSubunitName, setEditingSubunitName] = useState("");
 
-  // LEGACY: Specialty states removed - now managed via SettingsSpecialties component
-  // using extendedSettings.specialties as single source of truth
-
   // Category states
   const [newCategory, setNewCategory] = useState("");
   const [newCategoryType, setNewCategoryType] = useState<CategoryType>("EXPENSE");
@@ -127,14 +105,12 @@ export default function Settings() {
 
   // Check if unit has linked transactions
   const getUnitTransactionCount = (unitId: string) => {
-    return allTransactions.filter((t) => t.unit === unitId).length;
+    return (allTransactions ?? []).filter((t) => t.unit === unitId).length;
   };
 
   // Toggle unit expansion
   const toggleUnitExpansion = (unitId: string) => {
-    setExpandedUnits((prev) =>
-      prev.includes(unitId) ? prev.filter((id) => id !== unitId) : [...prev, unitId]
-    );
+    setExpandedUnits((prev) => (prev.includes(unitId) ? prev.filter((id) => id !== unitId) : [...prev, unitId]));
   };
 
   // ============= UNIT HANDLERS =============
@@ -151,16 +127,17 @@ export default function Settings() {
       if (existing) {
         byId.set(def.id, {
           ...existing,
-          name: def.name, // garante o nome correto
+          name: def.name,
           active: true,
         });
       } else {
-        byId.set(def.id, { ...def, active: true, subunits: def.subunits || [] });
+        byId.set(def.id, {
+          ...def,
+          active: true,
+          subunits: def.subunits || [],
+        });
       }
     });
-
-    // LEGACY: Specialty initialization removed - now handled by SettingsSpecialties
-    // using extendedSettings.specialties as single source of truth
 
     updateSettings({ units: Array.from(byId.values()) });
     toast.success("Unidades padrão restauradas!");
@@ -168,11 +145,12 @@ export default function Settings() {
 
   const handleToggleUnit = (unitId: string) => {
     const unit = settings.units.find((u) => u.id === unitId);
-    const updatedUnits = settings.units.map((u) =>
-      u.id === unitId ? { ...u, active: !u.active } : u
-    );
+    const updatedUnits = settings.units.map((u) => (u.id === unitId ? { ...u, active: !u.active } : u));
     updateSettings({ units: updatedUnits });
-    addAuditLog("UPDATE_SETTINGS", `Unidade "${unit?.name}" ${updatedUnits.find((u) => u.id === unitId)?.active ? "ativada" : "desativada"}`);
+    addAuditLog(
+      "UPDATE_SETTINGS",
+      `Unidade "${unit?.name}" ${updatedUnits.find((u) => u.id === unitId)?.active ? "ativada" : "desativada"}`,
+    );
     toast.success("Configuração salva!");
   };
 
@@ -180,24 +158,24 @@ export default function Settings() {
     const trimmed = newUnit.trim();
     if (!trimmed) return;
 
-    const exists = settings.units.some(
-      (u) => u.name.toLowerCase() === trimmed.toLowerCase()
-    );
+    const exists = settings.units.some((u) => u.name.toLowerCase() === trimmed.toLowerCase());
     if (exists) {
       toast.error("Unidade já existe!");
       return;
     }
 
     const newUnitObj = {
-      id: trimmed.toLowerCase().replace(/\s+/g, "_").normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+      id: trimmed
+        .toLowerCase()
+        .replace(/\s+/g, "_")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, ""),
       name: trimmed,
       active: true,
-      subunits: [],
+      subunits: [] as Subunit[],
     };
 
-    const updatedUnits = [...settings.units, newUnitObj].sort((a, b) =>
-      a.name.localeCompare(b.name, "pt-BR")
-    );
+    const updatedUnits = [...settings.units, newUnitObj].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
 
     updateSettings({ units: updatedUnits });
     addAuditLog("UPDATE_SETTINGS", `Unidade "${trimmed}" adicionada`);
@@ -231,9 +209,7 @@ export default function Settings() {
       return;
     }
 
-    const exists = settings.units.some(
-      (u) => u.id !== editingUnitId && u.name.toLowerCase() === trimmed.toLowerCase()
-    );
+    const exists = settings.units.some((u) => u.id !== editingUnitId && u.name.toLowerCase() === trimmed.toLowerCase());
     if (exists) {
       toast.error("Já existe uma unidade com esse nome!");
       return;
@@ -241,7 +217,7 @@ export default function Settings() {
 
     const oldUnit = settings.units.find((u) => u.id === editingUnitId);
     const updatedUnits = settings.units
-      .map((u) => u.id === editingUnitId ? { ...u, name: trimmed } : u)
+      .map((u) => (u.id === editingUnitId ? { ...u, name: trimmed } : u))
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
 
     updateSettings({ units: updatedUnits });
@@ -264,24 +240,29 @@ export default function Settings() {
     const unit = settings.units.find((u) => u.id === unitId);
     if (!unit) return;
 
-    const exists = unit.subunits?.some(
-      (s) => s.name.toLowerCase() === subunitName.toLowerCase()
-    );
+    const exists = unit.subunits?.some((s) => s.name.toLowerCase() === subunitName.toLowerCase());
     if (exists) {
       toast.error("Subunidade já existe!");
       return;
     }
 
     const newSubunitObj: Subunit = {
-      id: subunitName.toLowerCase().replace(/\s+/g, "_").normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+      id: subunitName
+        .toLowerCase()
+        .replace(/\s+/g, "_")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, ""),
       name: subunitName,
       active: true,
     };
 
     const updatedUnits = settings.units.map((u) =>
       u.id === unitId
-        ? { ...u, subunits: [...(u.subunits || []), newSubunitObj].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")) }
-        : u
+        ? {
+            ...u,
+            subunits: [...(u.subunits || []), newSubunitObj].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
+          }
+        : u,
     );
 
     updateSettings({ units: updatedUnits });
@@ -295,9 +276,7 @@ export default function Settings() {
     if (!unit) return;
 
     const updatedUnits = settings.units.map((u) =>
-      u.id === unitId
-        ? { ...u, subunits: u.subunits?.filter((s) => s.id !== subunitId) || [] }
-        : u
+      u.id === unitId ? { ...u, subunits: u.subunits?.filter((s) => s.id !== subunitId) || [] } : u,
     );
 
     updateSettings({ units: updatedUnits });
@@ -310,11 +289,9 @@ export default function Settings() {
       u.id === unitId
         ? {
             ...u,
-            subunits: u.subunits?.map((s) =>
-              s.id === subunitId ? { ...s, active: !s.active } : s
-            ) || [],
+            subunits: u.subunits?.map((s) => (s.id === subunitId ? { ...s, active: !s.active } : s)) || [],
           }
-        : u
+        : u,
     );
 
     updateSettings({ units: updatedUnits });
@@ -337,7 +314,7 @@ export default function Settings() {
     if (!unit) return;
 
     const exists = unit.subunits?.some(
-      (s) => s.id !== editingSubunitId && s.name.toLowerCase() === trimmed.toLowerCase()
+      (s) => s.id !== editingSubunitId && s.name.toLowerCase() === trimmed.toLowerCase(),
     );
     if (exists) {
       toast.error("Já existe uma subunidade com esse nome!");
@@ -348,11 +325,12 @@ export default function Settings() {
       u.id === unitId
         ? {
             ...u,
-            subunits: u.subunits?.map((s) =>
-              s.id === editingSubunitId ? { ...s, name: trimmed } : s
-            ).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")) || [],
+            subunits:
+              u.subunits
+                ?.map((s) => (s.id === editingSubunitId ? { ...s, name: trimmed } : s))
+                .sort((a, b) => a.name.localeCompare(b.name, "pt-BR")) || [],
           }
-        : u
+        : u,
     );
 
     updateSettings({ units: updatedUnits });
@@ -367,11 +345,11 @@ export default function Settings() {
     setEditingSubunitName("");
   };
 
-  // ============= SPECIALTY HANDLERS (Centro Clínico) =============
-  // Check for Centro Clínico unit by ID or name (case-insensitive), but persist specialties by ID
+  // ============= SPECIALTY HELPERS (Centro Clínico note only) =============
   const isCentroClinico = (unit: { id: string; name: string }) => {
     const normalizedId = unit.id.toUpperCase();
     if (normalizedId === "CENTRO_CLINICO") return true;
+
     const normalizedName = unit.name.toLowerCase().replace(/[_\s]/g, "");
     return (
       normalizedId.includes("CENTRO_CLINICO") ||
@@ -380,20 +358,15 @@ export default function Settings() {
     );
   };
 
-  // LEGACY: Specialty inference removed - now handled by SettingsSpecialties
-  // using extendedSettings.specialties as single source of truth
-
-  // LEGACY: All specialty handlers removed - now in SettingsSpecialties component
-  // using extendedSettings.specialties as single source of truth
-
   // ============= CATEGORY HANDLERS =============
   const handleToggleCategory = (catId: string) => {
     const cat = settings.categories.find((c) => c.id === catId);
-    const updatedCategories = settings.categories.map((c) =>
-      c.id === catId ? { ...c, active: !c.active } : c
-    );
+    const updatedCategories = settings.categories.map((c) => (c.id === catId ? { ...c, active: !c.active } : c));
     updateSettings({ categories: updatedCategories });
-    addAuditLog("UPDATE_SETTINGS", `Categoria "${cat?.name}" ${updatedCategories.find((c) => c.id === catId)?.active ? "ativada" : "desativada"}`);
+    addAuditLog(
+      "UPDATE_SETTINGS",
+      `Categoria "${cat?.name}" ${updatedCategories.find((c) => c.id === catId)?.active ? "ativada" : "desativada"}`,
+    );
     toast.success("Configuração salva!");
   };
 
@@ -401,16 +374,18 @@ export default function Settings() {
     const trimmed = newCategory.trim();
     if (!trimmed) return;
 
-    const exists = settings.categories.some(
-      (c) => c.name.toLowerCase() === trimmed.toLowerCase()
-    );
+    const exists = settings.categories.some((c) => c.name.toLowerCase() === trimmed.toLowerCase());
     if (exists) {
       toast.error("Categoria já existe!");
       return;
     }
 
     const newCat = {
-      id: trimmed.toLowerCase().replace(/\s+/g, "_").normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+      id: trimmed
+        .toLowerCase()
+        .replace(/\s+/g, "_")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, ""),
       name: trimmed,
       type: newCategoryType,
       active: true,
@@ -419,12 +394,13 @@ export default function Settings() {
       internalNote: "",
     };
 
-    const updatedCategories = [...settings.categories, newCat].sort((a, b) =>
-      a.name.localeCompare(b.name, "pt-BR")
-    );
+    const updatedCategories = [...settings.categories, newCat].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
 
     updateSettings({ categories: updatedCategories });
-    addAuditLog("UPDATE_SETTINGS", `Categoria "${trimmed}" (${newCategoryType === "INCOME" ? "Entrada" : "Saída"}) adicionada`);
+    addAuditLog(
+      "UPDATE_SETTINGS",
+      `Categoria "${trimmed}" (${newCategoryType === "INCOME" ? "Entrada" : "Saída"}) adicionada`,
+    );
     setNewCategory("");
     toast.success("Categoria adicionada!");
   };
@@ -455,7 +431,7 @@ export default function Settings() {
     }
 
     const exists = settings.categories.some(
-      (c) => c.id !== editingCatId && c.name.toLowerCase() === trimmed.toLowerCase()
+      (c) => c.id !== editingCatId && c.name.toLowerCase() === trimmed.toLowerCase(),
     );
     if (exists) {
       toast.error("Já existe uma categoria com esse nome!");
@@ -464,18 +440,25 @@ export default function Settings() {
 
     const oldCat = settings.categories.find((c) => c.id === editingCatId);
     const updatedCategories = settings.categories
-      .map((c) => c.id === editingCatId ? { 
-        ...c, 
-        name: trimmed, 
-        type: editingCatType,
-        isStrategic: editingCatStrategic,
-        impactsPredictability: editingCatImpacts,
-        internalNote: editingCatNote,
-      } : c)
+      .map((c) =>
+        c.id === editingCatId
+          ? {
+              ...c,
+              name: trimmed,
+              type: editingCatType,
+              isStrategic: editingCatStrategic,
+              impactsPredictability: editingCatImpacts,
+              internalNote: editingCatNote,
+            }
+          : c,
+      )
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
 
     updateSettings({ categories: updatedCategories });
-    addAuditLog("UPDATE_SETTINGS", `Categoria "${oldCat?.name}" atualizada para "${trimmed}" (${editingCatType === "INCOME" ? "Entrada" : "Saída"})`);
+    addAuditLog(
+      "UPDATE_SETTINGS",
+      `Categoria "${oldCat?.name}" atualizada para "${trimmed}" (${editingCatType === "INCOME" ? "Entrada" : "Saída"})`,
+    );
     setEditingCatId(null);
     setEditingCatName("");
     setEditingCatStrategic(false);
@@ -493,25 +476,22 @@ export default function Settings() {
   };
 
   // Filter categories by type
-  const incomeCategories = settings.categories.filter(c => c.type === "INCOME");
-  const expenseCategories = settings.categories.filter(c => c.type === "EXPENSE");
+  const incomeCategories = settings.categories.filter((c) => c.type === "INCOME");
+  const expenseCategories = settings.categories.filter((c) => c.type === "EXPENSE");
 
   // Render category card
-  const renderCategoryCard = (cat: typeof settings.categories[0], isExpense: boolean) => {
+  const renderCategoryCard = (cat: (typeof settings.categories)[0], isExpense: boolean) => {
     const baseStyles = isExpense
-      ? cat.active 
-        ? "border-destructive/20 bg-destructive/5" 
+      ? cat.active
+        ? "border-destructive/20 bg-destructive/5"
         : "border-border bg-muted/30 opacity-60"
-      : cat.active 
-        ? "border-success/20 bg-success/5" 
+      : cat.active
+        ? "border-success/20 bg-success/5"
         : "border-border bg-muted/30 opacity-60";
 
     if (editingCatId === cat.id) {
       return (
-        <div
-          key={cat.id}
-          className={`rounded-lg border p-4 ${baseStyles}`}
-        >
+        <div key={cat.id} className={`rounded-lg border p-4 ${baseStyles}`}>
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Input
@@ -548,6 +528,7 @@ export default function Settings() {
                   Categoria estratégica
                 </Label>
               </div>
+
               <div className="flex items-center gap-2">
                 <Checkbox
                   id={`impacts-${cat.id}`}
@@ -559,6 +540,7 @@ export default function Settings() {
                   Impacta previsibilidade
                 </Label>
               </div>
+
               <div className="space-y-1">
                 <Label className="text-xs flex items-center gap-1">
                   <StickyNote className="h-3 w-3 text-muted-foreground" />
@@ -590,28 +572,29 @@ export default function Settings() {
     }
 
     return (
-      <div
-        key={cat.id}
-        className={`flex items-center justify-between rounded-lg border px-4 py-3 ${baseStyles}`}
-      >
+      <div key={cat.id} className={`flex items-center justify-between rounded-lg border px-4 py-3 ${baseStyles}`}>
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <span className="text-sm font-medium text-foreground truncate">{cat.name}</span>
+
           {cat.isStrategic && (
             <span title="Categoria estratégica">
               <Star className="h-3 w-3 text-warning shrink-0" />
             </span>
           )}
+
           {cat.impactsPredictability && (
             <span title="Impacta previsibilidade">
               <BarChart3 className="h-3 w-3 text-info shrink-0" />
             </span>
           )}
+
           {cat.internalNote && (
             <span title={cat.internalNote}>
               <StickyNote className="h-3 w-3 text-muted-foreground shrink-0" />
             </span>
           )}
         </div>
+
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
@@ -621,6 +604,7 @@ export default function Settings() {
           >
             <Pencil className="h-3 w-3" />
           </Button>
+
           <Button
             variant="ghost"
             size="icon"
@@ -629,11 +613,8 @@ export default function Settings() {
           >
             <Trash2 className="h-3 w-3" />
           </Button>
-          <Switch
-            checked={cat.active}
-            onCheckedChange={() => handleToggleCategory(cat.id)}
-            className="scale-75"
-          />
+
+          <Switch checked={cat.active} onCheckedChange={() => handleToggleCategory(cat.id)} className="scale-75" />
         </div>
       </div>
     );
@@ -644,9 +625,7 @@ export default function Settings() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground lg:text-3xl">Configurações</h1>
-          <p className="text-sm text-muted-foreground">
-            Personalize unidades, subunidades e categorias do sistema
-          </p>
+          <p className="text-sm text-muted-foreground">Personalize unidades, subunidades e categorias do sistema</p>
         </div>
 
         <Tabs defaultValue="units" className="space-y-6">
@@ -655,34 +634,42 @@ export default function Settings() {
               <Building2 className="h-4 w-4" />
               <span className="hidden sm:inline">Unidades</span>
             </TabsTrigger>
+
             <TabsTrigger value="categories" className="gap-1 text-xs lg:text-sm">
               <Tag className="h-4 w-4" />
               <span className="hidden sm:inline">Categorias</span>
             </TabsTrigger>
+
             <TabsTrigger value="production-types" className="gap-1 text-xs lg:text-sm">
               <Package className="h-4 w-4" />
               <span className="hidden sm:inline">Produção</span>
             </TabsTrigger>
+
             <TabsTrigger value="exam-types" className="gap-1 text-xs lg:text-sm">
               <FileText className="h-4 w-4" />
               <span className="hidden sm:inline">Exames</span>
             </TabsTrigger>
+
             <TabsTrigger value="specialties" className="gap-1 text-xs lg:text-sm">
               <Stethoscope className="h-4 w-4" />
               <span className="hidden sm:inline">Especialidades</span>
             </TabsTrigger>
+
             <TabsTrigger value="payers" className="gap-1 text-xs lg:text-sm">
               <Users className="h-4 w-4" />
               <span className="hidden sm:inline">Pagadores</span>
             </TabsTrigger>
+
             <TabsTrigger value="packages" className="gap-1 text-xs lg:text-sm">
               <Boxes className="h-4 w-4" />
               <span className="hidden sm:inline">Pacotes</span>
             </TabsTrigger>
+
             <TabsTrigger value="parameters" className="gap-1 text-xs lg:text-sm">
               <Settings2 className="h-4 w-4" />
               <span className="hidden sm:inline">Parâmetros</span>
             </TabsTrigger>
+
             {isAdmin() && (
               <TabsTrigger value="demo" className="gap-1 text-xs lg:text-sm text-amber-600">
                 <FlaskConical className="h-4 w-4" />
@@ -695,9 +682,7 @@ export default function Settings() {
           <TabsContent value="units" className="space-y-4">
             <div className="rounded-xl border border-border bg-card p-6">
               <h3 className="mb-4 font-semibold text-foreground">Unidades de Negócio</h3>
-              <p className="mb-6 text-sm text-muted-foreground">
-                Gerencie as unidades e seus setores/subunidades
-              </p>
+              <p className="mb-6 text-sm text-muted-foreground">Gerencie as unidades e seus setores/subunidades</p>
 
               <div className="mb-6 flex gap-3">
                 <Input
@@ -711,11 +696,7 @@ export default function Settings() {
                   <Plus className="h-4 w-4" />
                   Adicionar
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleRestoreDefaultUnits}
-                  disabled={!isAdmin()}
-                >
+                <Button variant="outline" onClick={handleRestoreDefaultUnits} disabled={!isAdmin()}>
                   Restaurar Unidades Padrão
                 </Button>
               </div>
@@ -727,11 +708,7 @@ export default function Settings() {
                   const subunitCount = unit.subunits?.length || 0;
 
                   return (
-                    <Collapsible
-                      key={unit.id}
-                      open={isExpanded}
-                      onOpenChange={() => toggleUnitExpansion(unit.id)}
-                    >
+                    <Collapsible key={unit.id} open={isExpanded} onOpenChange={() => toggleUnitExpansion(unit.id)}>
                       <div className="rounded-lg border border-border overflow-hidden">
                         {/* Unit header */}
                         <div className="flex items-center justify-between p-4 bg-card">
@@ -758,7 +735,12 @@ export default function Settings() {
                                   className="max-w-[200px]"
                                   autoFocus
                                 />
-                                <Button size="icon" variant="ghost" onClick={handleSaveEditUnit} className="h-8 w-8 text-success">
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={handleSaveEditUnit}
+                                  className="h-8 w-8 text-success"
+                                >
                                   <Check className="h-4 w-4" />
                                 </Button>
                                 <Button size="icon" variant="ghost" onClick={handleCancelEditUnit} className="h-8 w-8">
@@ -793,13 +775,18 @@ export default function Settings() {
                                 >
                                   <Pencil className="h-4 w-4" />
                                 </Button>
+
                                 <Button
                                   variant="ghost"
                                   size="icon"
                                   onClick={() => handleRemoveUnit(unit.id, unit.name)}
                                   className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
                                   disabled={transactionCount > 0}
-                                  title={transactionCount > 0 ? "Não é possível excluir: existem movimentações vinculadas" : "Excluir unidade"}
+                                  title={
+                                    transactionCount > 0
+                                      ? "Não é possível excluir: existem movimentações vinculadas"
+                                      : "Excluir unidade"
+                                  }
                                 >
                                   {transactionCount > 0 ? (
                                     <AlertTriangle className="h-4 w-4" />
@@ -807,10 +794,8 @@ export default function Settings() {
                                     <Trash2 className="h-4 w-4" />
                                   )}
                                 </Button>
-                                <Switch
-                                  checked={unit.active}
-                                  onCheckedChange={() => handleToggleUnit(unit.id)}
-                                />
+
+                                <Switch checked={unit.active} onCheckedChange={() => handleToggleUnit(unit.id)} />
                               </>
                             )}
                           </div>
@@ -829,15 +814,16 @@ export default function Settings() {
                               <Input
                                 placeholder="Novo setor..."
                                 value={newSubunit[unit.id] || ""}
-                                onChange={(e) => setNewSubunit((prev) => ({ ...prev, [unit.id]: e.target.value }))}
+                                onChange={(e) =>
+                                  setNewSubunit((prev) => ({
+                                    ...prev,
+                                    [unit.id]: e.target.value,
+                                  }))
+                                }
                                 onKeyDown={(e) => e.key === "Enter" && handleAddSubunit(unit.id)}
                                 className="h-8 text-sm max-w-xs"
                               />
-                              <Button
-                                size="sm"
-                                onClick={() => handleAddSubunit(unit.id)}
-                                className="h-8 gap-1"
-                              >
+                              <Button size="sm" onClick={() => handleAddSubunit(unit.id)} className="h-8 gap-1">
                                 <Plus className="h-3 w-3" />
                                 Adicionar
                               </Button>
@@ -867,10 +853,20 @@ export default function Settings() {
                                           className="h-7 text-sm max-w-[150px]"
                                           autoFocus
                                         />
-                                        <Button size="icon" variant="ghost" onClick={() => handleSaveEditSubunit(unit.id)} className="h-6 w-6 text-success">
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          onClick={() => handleSaveEditSubunit(unit.id)}
+                                          className="h-6 w-6 text-success"
+                                        >
                                           <Check className="h-3 w-3" />
                                         </Button>
-                                        <Button size="icon" variant="ghost" onClick={handleCancelEditSubunit} className="h-6 w-6">
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          onClick={handleCancelEditSubunit}
+                                          className="h-6 w-6"
+                                        >
                                           <X className="h-3 w-3" />
                                         </Button>
                                       </div>
@@ -915,7 +911,7 @@ export default function Settings() {
                               💡 Subunidades ficam disponíveis para filtros analíticos (Score, Projeção, Cenários).
                             </p>
 
-                            {/* Specialties Section - Moved to dedicated tab */}
+                            {/* Specialties info note */}
                             {isCentroClinico(unit) && (
                               <div className="mt-6 pt-4 border-t border-border">
                                 <div className="flex items-center gap-2 text-muted-foreground">
@@ -935,7 +931,7 @@ export default function Settings() {
               </div>
 
               <p className="mt-4 text-xs text-muted-foreground">
-                Total: {settings.units.length} unidades ({settings.units.filter(u => u.active).length} ativas)
+                Total: {settings.units.length} unidades ({settings.units.filter((u) => u.active).length} ativas)
               </p>
             </div>
           </TabsContent>
@@ -944,9 +940,7 @@ export default function Settings() {
           <TabsContent value="categories" className="space-y-4">
             <div className="rounded-xl border border-border bg-card p-6">
               <h3 className="mb-4 font-semibold text-foreground">Categorias</h3>
-              <p className="mb-6 text-sm text-muted-foreground">
-                Gerencie as categorias de entradas e saídas
-              </p>
+              <p className="mb-6 text-sm text-muted-foreground">Gerencie as categorias de entradas e saídas</p>
 
               {/* Add new category */}
               <div className="mb-6 flex flex-wrap gap-3">
@@ -1023,7 +1017,8 @@ export default function Settings() {
               </div>
 
               <p className="mt-4 text-xs text-muted-foreground">
-                Total: {settings.categories.length} categorias ({settings.categories.filter(c => c.active).length} ativas)
+                Total: {settings.categories.length} categorias ({settings.categories.filter((c) => c.active).length}{" "}
+                ativas)
               </p>
             </div>
           </TabsContent>
@@ -1031,9 +1026,9 @@ export default function Settings() {
           {/* ============= PRODUCTION TYPES TAB ============= */}
           <TabsContent value="production-types" className="space-y-4">
             <SettingsProductionTypes
-              productionTypes={extendedSettings.productionTypes || []}
-              productions={productions}
-              onUpdate={(types) => setExtendedSettings(prev => ({ ...prev, productionTypes: types }))}
+              productionTypes={extendedSettings?.productionTypes ?? []}
+              productions={productions ?? []}
+              onUpdate={(types) => setExtendedSettings((prev) => ({ ...prev, productionTypes: types }))}
               onAddLog={addAuditLog}
             />
           </TabsContent>
@@ -1041,10 +1036,10 @@ export default function Settings() {
           {/* ============= EXAM TYPES TAB ============= */}
           <TabsContent value="exam-types" className="space-y-4">
             <SettingsExamTypes
-              examTypes={extendedSettings.examTypes || []}
-              productionTypes={extendedSettings.productionTypes || []}
-              productions={productions}
-              onUpdate={(types) => setExtendedSettings(prev => ({ ...prev, examTypes: types }))}
+              examTypes={extendedSettings?.examTypes ?? []}
+              productionTypes={extendedSettings?.productionTypes ?? []}
+              productions={productions ?? []}
+              onUpdate={(types) => setExtendedSettings((prev) => ({ ...prev, examTypes: types }))}
               onAddLog={addAuditLog}
             />
           </TabsContent>
@@ -1055,7 +1050,9 @@ export default function Settings() {
               specialties={extendedSettings?.specialties ?? []}
               productions={productions ?? []}
               transactions={allTransactions ?? []}
-              onUpdate={(specs) => setExtendedSettings(prev => ({ ...(prev ?? {}), specialties: specs }) as ExpandedSettings)}
+              onUpdate={(specs) =>
+                setExtendedSettings((prev) => ({ ...(prev ?? {}), specialties: specs }) as ExpandedSettings)
+              }
               onAddLog={addAuditLog}
             />
           </TabsContent>
@@ -1066,7 +1063,7 @@ export default function Settings() {
               payers={extendedSettings?.payers ?? []}
               productions={productions ?? []}
               receivables={receivables ?? []}
-              onUpdate={(payers) => setExtendedSettings(prev => ({ ...prev, payers }) as ExpandedSettings)}
+              onUpdate={(payers) => setExtendedSettings((prev) => ({ ...prev, payers }) as ExpandedSettings)}
               onAddLog={addAuditLog}
             />
           </TabsContent>
@@ -1079,13 +1076,17 @@ export default function Settings() {
           {/* ============= PARAMETERS TAB ============= */}
           <TabsContent value="parameters" className="space-y-4">
             <SettingsParameters
-              parameters={extendedSettings?.systemParameters ?? {
-                daysForBillingAlert: 15,
-                allowFutureCompetence: false,
-                allowPhysicalDeletion: false,
-                criticalActionConfirmation: "SIMPLE",
-              }}
-              onUpdate={(params) => setExtendedSettings(prev => ({ ...prev, systemParameters: params }) as ExpandedSettings)}
+              parameters={
+                extendedSettings?.systemParameters ?? {
+                  daysForBillingAlert: 15,
+                  allowFutureCompetence: false,
+                  allowPhysicalDeletion: false,
+                  criticalActionConfirmation: "SIMPLE",
+                }
+              }
+              onUpdate={(params) =>
+                setExtendedSettings((prev) => ({ ...prev, systemParameters: params }) as ExpandedSettings)
+              }
               onAddLog={addAuditLog}
               userName={user?.name || "Sistema"}
             />
