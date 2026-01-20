@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/utils/formatters";
 import { ProductionStats as ProductionStatsType } from "@/types";
@@ -19,6 +20,8 @@ export function ProductionStats({ stats }: ProductionStatsProps) {
   const companyId = (currentCompany as any)?.id || (profile as any)?.company_id;
 
   const [doctorNameById, setDoctorNameById] = useState<Record<string, string>>({});
+
+  const [doctorMetric, setDoctorMetric] = useState<"quantity" | "value">("quantity");
 
   useEffect(() => {
     const fetchDoctorNames = async () => {
@@ -52,6 +55,7 @@ export function ProductionStats({ stats }: ProductionStatsProps) {
 
   const topDoctors = useMemo(() => {
     const byDoctor = ((stats as any)?.byDoctor ?? {}) as Record<string, any>;
+
     return Object.entries(byDoctor)
       .map(([doctorId, data]) => ({
         doctorId,
@@ -60,9 +64,13 @@ export function ProductionStats({ stats }: ProductionStatsProps) {
         quantity: Number((data as any)?.quantity ?? 0),
         value: Number((data as any)?.value ?? 0),
       }))
-      .sort((a, b) => b.quantity - a.quantity)
+      .sort((a, b) => {
+        const aMetric = doctorMetric === "value" ? a.value : a.quantity;
+        const bMetric = doctorMetric === "value" ? b.value : b.quantity;
+        return bMetric - aMetric;
+      })
       .slice(0, 7);
-  }, [(stats as any)?.byDoctor, doctorNameById]);
+  }, [(stats as any)?.byDoctor, doctorNameById, doctorMetric]);
 
   return (
     <div className="space-y-4">
@@ -243,10 +251,31 @@ export function ProductionStats({ stats }: ProductionStatsProps) {
 
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <UserRound className="h-4 w-4 text-muted-foreground" />
-              Por Médico(a) (Qtde)
-            </CardTitle>
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <UserRound className="h-4 w-4 text-muted-foreground" />
+                Por Médico(a)
+              </CardTitle>
+
+              <div className="flex items-center gap-1">
+                <Button
+                  size="sm"
+                  variant={doctorMetric === "quantity" ? "default" : "outline"}
+                  className="h-7 px-2 text-xs"
+                  onClick={() => setDoctorMetric("quantity")}
+                >
+                  Qtde
+                </Button>
+                <Button
+                  size="sm"
+                  variant={doctorMetric === "value" ? "default" : "outline"}
+                  className="h-7 px-2 text-xs"
+                  onClick={() => setDoctorMetric("value")}
+                >
+                  R$
+                </Button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
@@ -256,7 +285,7 @@ export function ProductionStats({ stats }: ProductionStatsProps) {
                     <span className="text-muted-foreground truncate">{d.name}</span>
                     <div className="flex items-center gap-2">
                       <Badge variant="outline" className="text-[10px] h-5">
-                        {d.quantity}
+                        {doctorMetric === "value" ? formatCurrency(d.value) : d.quantity}
                       </Badge>
                       <span className="text-xs text-muted-foreground">({d.count} reg.)</span>
                     </div>
