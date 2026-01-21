@@ -8,10 +8,13 @@ import autoTable from "jspdf-autotable";
 import { format, differenceInDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { ProductionReportExportData } from "@/components/production/ProductionReportExport";
-import { formatUnitDisplayName,
+import {
+  formatUnitDisplayName,
   formatSpecialtyDisplayName,
   formatConvenioDisplayName,
-  displayLabel,, formatCurrency } from "@/utils/formatters";
+  displayLabel,
+  formatCurrency,
+} from "@/utils/formatters";
 
 // Logo (PNG base64) for header
 const SALLUS_LOGO_PNG =
@@ -286,7 +289,6 @@ export async function generateProductionReportPDF({
 
     yPos = (doc as any).lastAutoTable.finalY + 4;
   }
-
 
   // Top 5 Médicos
   if (data.doctorRanking && data.doctorRanking.length > 0) {
