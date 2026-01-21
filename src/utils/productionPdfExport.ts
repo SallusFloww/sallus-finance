@@ -27,6 +27,30 @@ interface ExportOptions {
   includeUnbilled: boolean;
 }
 
+// Build doctor ranking from raw productions (fallback when doctorRanking is not provided)
+function buildDoctorRanking(raw: any[]) {
+  const map = new Map<string, { name: string; quantity: number; value: number; count: number }>();
+
+  for (const p of raw || []) {
+    const name = p?.doctorName && String(p.doctorName).trim() ? String(p.doctorName).trim() : "Sem médico";
+
+    const prev = map.get(name) || { name, quantity: 0, value: 0, count: 0 };
+
+    prev.quantity += Number(p?.quantity ?? 0);
+    prev.value += Number(p?.totalValue ?? 0);
+    prev.count += 1;
+
+    map.set(name, prev);
+  }
+
+  const arr = Array.from(map.values()).filter((r) => r.quantity > 0);
+
+  // Ordena por valor (visão diretiva)
+  arr.sort((a, b) => b.value - a.value);
+
+  return arr;
+}
+
 // Format unit name (using centralized utility)
 function formatUnitName(unit: string): string {
   return formatUnitDisplayName(unit);
@@ -290,34 +314,28 @@ export async function generateProductionReportPDF({
     yPos = (doc as any).lastAutoTable.finalY + 4;
   }
 
-  // Top 5 Médicos (Qtde / Valor)
-  const derivedDoctorRanking =
-    (data as any).doctorRanking && Array.isArray((data as any).doctorRanking)
-      ? (data as any).doctorRanking
-      : buildDoctorRanking((data as any).rawProductions || []);
+  // Top 5 Médicos (Qtde / Valor) - derivado de rawProductions
+  const doctorRanking = buildDoctorRanking((data as any).rawProductions || []).filter((r) => r.name !== "Sem médico");
 
-  // remove "Sem médico" from ranking if user filtered a doctor specifically
-  const doctorRows = derivedDoctorRanking.filter((r: any) => (r?.name || "") !== "Sem médico");
-
-  if (doctorRows.length > 0) {
+  if (doctorRanking.length > 0) {
     doc.setFontSize(9);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(50);
     doc.text("Médicos (Top 5)", margin, yPos);
     yPos += 4;
 
-    const docData = doctorRows
+    const doctorTable = doctorRanking
       .slice(0, 5)
-      .map((row: any) => [
-        String(row.name).length > 35 ? String(row.name).substring(0, 32) + "..." : String(row.name),
-        Number(row.quantity ?? 0).toLocaleString("pt-BR"),
-        formatCurrency(Number(row.value ?? 0)),
+      .map((row) => [
+        row.name.length > 35 ? row.name.substring(0, 32) + "..." : row.name,
+        row.quantity.toLocaleString("pt-BR"),
+        formatCurrency(row.value),
       ]);
 
     autoTable(doc, {
       startY: yPos,
       head: [["Médico", "Qtd", "Valor"]],
-      body: docData,
+      body: doctorTable,
       margin: { left: margin, right: margin },
       styles: { fontSize: 8, cellPadding: 1.5 },
       headStyles: { fillColor: [100, 140, 180], textColor: 255 },
@@ -327,7 +345,7 @@ export async function generateProductionReportPDF({
     yPos = (doc as any).lastAutoTable.finalY + 4;
   }
 
-  // Top 5 Procedimentos// Top 5 Procedimentos
+  // Top 5 Procedimentos
   if (data.topProcedures.length > 0) {
     doc.setFontSize(9);
     doc.setFont("helvetica", "bold");
