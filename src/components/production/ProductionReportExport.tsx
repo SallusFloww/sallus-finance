@@ -39,24 +39,26 @@ export interface ProductionReportExportData {
   selectedConvenio: string;
   selectedType: string;
   selectedSpecialty: string;
-  
+  selectedDoctor?: string;
+
   // Core data
   totalQuantity: number;
   previousTotalQuantity: number;
   variationPercent: number;
   variationAbsolute: number;
   isSmallSample: boolean;
-  
+
   // Rankings
   unitRanking: Array<{ name: string; quantity: number; percentage: number; variation: number | null }>;
   specialtyRanking: Array<{ name: string; quantity: number; percentage: number }>;
   typeBreakdown: Array<{ type: string; label: string; quantity: number; percentage: number }>;
   convenioRanking: Array<{ name: string; quantity: number; percentage: number; riskLevel: string }>;
+  doctorRanking?: Array<{ id: string; name: string; count: number; quantity: number; value: number }>;
   topProcedures: Array<{ name: string; code?: string; quantity: number; percentage: number }>;
-  
+
   // Time series
   evolutionData: Array<{ date: string; dateLabel: string; total: number }>;
-  
+
   // Consolidated table
   consolidatedTable: Array<{
     productionType: string;
@@ -66,32 +68,34 @@ export interface ProductionReportExportData {
     quantity: number;
     percentage: number;
   }>;
-  
+
   // Unbilled items
   unbilledProductions: Production[];
-  
+
   // Top unit/convenio
   topUnit: { name: string; quantity: number; percentage: number } | null;
   topConvenio: { name: string; quantity: number; percentage: number } | null;
   topProcedure: { name: string; quantity: number; percentage: number } | null;
-  
+
   // Raw productions for Base_Producao sheet (line-by-line export)
   rawProductions: Array<{
-    productionDate: string;        // YYYY-MM-DD
-    competencia: string;           // YYYY-MM (interno)
+    productionDate: string; // YYYY-MM-DD
+    competencia: string; // YYYY-MM (interno)
     unit: string;
-    payer: string;                 // PARTICULAR/CONVENIO
+    payer: string; // PARTICULAR/CONVENIO
     convenio?: string | null;
     paymentMethod?: string | null; // HOTFIX: Modo de pagamento para PARTICULAR
     productionType: string;
-    procedureName: string;         // description
+    procedureName: string; // description
     patientName?: string | null;
+    doctorId?: string | null;
+    doctorName?: string | null;
     quantity: number;
     unitValue: number;
     totalValue: number;
     specialty?: string | null;
     status?: string;
-    importSource?: string;         // manual/import
+    importSource?: string; // manual/import
     importBatchId?: string | null;
   }>;
 }
@@ -105,7 +109,7 @@ export function ProductionReportExport({ data, disabled = false }: ProductionRep
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportType, setExportType] = useState<"pdf" | "excel">("excel");
-  
+
   // Export options
   const [includeEvolution, setIncludeEvolution] = useState(true);
   const [includeConsolidated, setIncludeConsolidated] = useState(true);
@@ -171,7 +175,10 @@ export function ProductionReportExport({ data, disabled = false }: ProductionRep
   };
 
   const filtersDisplay = [
-    { label: "Período", value: `${format(new Date(data.startDate), "dd/MM/yyyy")} a ${format(new Date(data.endDate), "dd/MM/yyyy")}` },
+    {
+      label: "Período",
+      value: `${format(new Date(data.startDate), "dd/MM/yyyy")} a ${format(new Date(data.endDate), "dd/MM/yyyy")}`,
+    },
     { label: "Unidade", value: formatFilter(data.selectedUnit, "Todas") },
     { label: "Convênio", value: formatFilter(data.selectedConvenio, "Todos") },
     { label: "Tipo", value: formatFilter(data.selectedType, "Todos") },
@@ -212,9 +219,7 @@ export function ProductionReportExport({ data, disabled = false }: ProductionRep
               )}
               Exportar Relatório
             </DialogTitle>
-            <DialogDescription>
-              Configure as opções de exportação do Relatório Gerencial de Produção.
-            </DialogDescription>
+            <DialogDescription>Configure as opções de exportação do Relatório Gerencial de Produção.</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
@@ -240,7 +245,7 @@ export function ProductionReportExport({ data, disabled = false }: ProductionRep
             {/* Export options */}
             <div className="space-y-3">
               <div className="text-sm font-medium">Incluir no relatório:</div>
-              
+
               <div className="space-y-2">
                 <div className="flex items-center space-x-2">
                   <Checkbox
@@ -271,8 +276,8 @@ export function ProductionReportExport({ data, disabled = false }: ProductionRep
                     onCheckedChange={(checked) => setIncludeUnbilled(checked === true)}
                     disabled={unbilledCount === 0}
                   />
-                  <Label 
-                    htmlFor="unbilled" 
+                  <Label
+                    htmlFor="unbilled"
                     className={`text-sm font-normal cursor-pointer ${unbilledCount === 0 ? "text-muted-foreground" : ""}`}
                   >
                     Pendências operacionais
@@ -291,7 +296,9 @@ export function ProductionReportExport({ data, disabled = false }: ProductionRep
               <strong>Total de produções:</strong> {data.totalQuantity.toLocaleString("pt-BR")}
               {data.variationPercent !== 0 && (
                 <span className={data.variationPercent >= 0 ? "text-green-600" : "text-red-600"}>
-                  {" "}({data.variationPercent >= 0 ? "+" : ""}{data.variationPercent.toFixed(1)}% vs anterior)
+                  {" "}
+                  ({data.variationPercent >= 0 ? "+" : ""}
+                  {data.variationPercent.toFixed(1)}% vs anterior)
                 </span>
               )}
             </div>
