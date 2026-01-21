@@ -290,20 +290,28 @@ export async function generateProductionReportPDF({
     yPos = (doc as any).lastAutoTable.finalY + 4;
   }
 
-  // Top 5 Médicos
-  if (data.doctorRanking && data.doctorRanking.length > 0) {
+  // Top 5 Médicos (Qtde / Valor)
+  const derivedDoctorRanking =
+    (data as any).doctorRanking && Array.isArray((data as any).doctorRanking)
+      ? (data as any).doctorRanking
+      : buildDoctorRanking((data as any).rawProductions || []);
+
+  // remove "Sem médico" from ranking if user filtered a doctor specifically
+  const doctorRows = derivedDoctorRanking.filter((r: any) => (r?.name || "") !== "Sem médico");
+
+  if (doctorRows.length > 0) {
     doc.setFontSize(9);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(50);
-    doc.text("Médicos", margin, yPos);
+    doc.text("Médicos (Top 5)", margin, yPos);
     yPos += 4;
 
-    const docData = data.doctorRanking
+    const docData = doctorRows
       .slice(0, 5)
-      .map((row) => [
-        row.name.length > 35 ? row.name.substring(0, 32) + "..." : row.name,
-        row.quantity.toLocaleString("pt-BR"),
-        formatCurrency(row.value),
+      .map((row: any) => [
+        String(row.name).length > 35 ? String(row.name).substring(0, 32) + "..." : String(row.name),
+        Number(row.quantity ?? 0).toLocaleString("pt-BR"),
+        formatCurrency(Number(row.value ?? 0)),
       ]);
 
     autoTable(doc, {
@@ -319,7 +327,7 @@ export async function generateProductionReportPDF({
     yPos = (doc as any).lastAutoTable.finalY + 4;
   }
 
-  // Top 5 Procedimentos
+  // Top 5 Procedimentos// Top 5 Procedimentos
   if (data.topProcedures.length > 0) {
     doc.setFontSize(9);
     doc.setFont("helvetica", "bold");
