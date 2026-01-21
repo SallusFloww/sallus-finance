@@ -1220,7 +1220,7 @@ export default function ProductionReport() {
         ══════════════════════════════════════════════════════════════════ */}
         <section className="bg-muted/30 rounded-2xl p-5 border border-border/50">
           <div className="flex flex-col gap-4">
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-7">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium text-muted-foreground">Início</Label>
                 <Input
@@ -1346,7 +1346,7 @@ export default function ProductionReport() {
               Avulso + Pacotes
             </Badge>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
             {/* Consultas - usando reportItems (já normalizados para legados) */}
             <Card className="shadow-sm border-border/60 bg-gradient-to-br from-blue-50/50 to-transparent dark:from-blue-950/20">
               <CardContent className="pt-5 pb-5">
