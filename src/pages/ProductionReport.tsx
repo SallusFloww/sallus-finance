@@ -428,6 +428,13 @@ export default function ProductionReport() {
       productionType: selectedType !== "all" ? selectedType : undefined,
     });
 
+    // Filtro por Médico(a)
+    if (selectedDoctorId === "__none__") {
+      filtered = filtered.filter((p) => !p.doctorId && !p.doctor_id);
+    } else if (selectedDoctorId !== "all") {
+      filtered = filtered.filter((p) => (p.doctorId || p.doctor_id) === selectedDoctorId);
+    }
+
     // Filtro adicional por especialidade (CORREÇÃO: sem fallback para unit)
     if (selectedSpecialty !== "all") {
       if (selectedSpecialty === "__SEM_ESPECIALIDADE__") {
@@ -438,7 +445,16 @@ export default function ProductionReport() {
     }
 
     return filtered;
-  }, [filterProductions, startDate, endDate, selectedUnit, selectedConvenio, selectedType, selectedSpecialty]);
+  }, [
+    filterProductions,
+    startDate,
+    endDate,
+    selectedUnit,
+    selectedConvenio,
+    selectedType,
+    selectedSpecialty,
+    selectedDoctorId,
+  ]);
 
   // Cálculo do período anterior (mesmo número de dias)
   const periodDays = useMemo(() => {
@@ -1065,6 +1081,7 @@ export default function ProductionReport() {
       selectedConvenio,
       selectedType,
       selectedSpecialty,
+      selectedDoctor: selectedDoctorId,
 
       // Core data
       totalQuantity,
@@ -1124,6 +1141,11 @@ export default function ProductionReport() {
         productionType: p.productionType,
         procedureName: p.description,
         patientName: p.patientName || null,
+        doctorId: (p as any).doctorId || (p as any).doctor_id || null,
+        doctorName: (() => {
+          const did = (p as any).doctorId || (p as any).doctor_id;
+          return did ? doctorNameById[did] || null : null;
+        })(),
         quantity: p.quantity,
         unitValue: p.unitValue,
         totalValue: p.estimatedValue || p.quantity * p.unitValue,
@@ -1155,6 +1177,9 @@ export default function ProductionReport() {
       strategicKPIs,
       topProcedure,
       filteredProductions,
+      selectedDoctorId,
+      doctorRanking,
+      doctorNameById,
     ],
   );
 
