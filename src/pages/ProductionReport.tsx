@@ -430,9 +430,9 @@ export default function ProductionReport() {
 
     // Filtro por Médico(a)
     if (selectedDoctorId === "__none__") {
-      filtered = filtered.filter((p) => !p.doctorId && !p.doctor_id);
+      filtered = filtered.filter((p) => !p.doctorId);
     } else if (selectedDoctorId !== "all") {
-      filtered = filtered.filter((p) => (p.doctorId || p.doctor_id) === selectedDoctorId);
+      filtered = filtered.filter((p) => p.doctorId === selectedDoctorId);
     }
 
     // Filtro adicional por especialidade (CORREÇÃO: sem fallback para unit)
@@ -639,7 +639,7 @@ export default function ProductionReport() {
     const totalQty = filteredProductions.reduce((sum, p) => sum + (p.quantity ?? 0), 0);
 
     filteredProductions.forEach((p: any) => {
-      const doctorId = String((p as any)?.doctorId ?? (p as any)?.doctor_id ?? "").trim();
+      const doctorId = String((p as any)?.doctorId ?? (p as any)?.doctorId ?? "").trim();
       if (!doctorId) return;
 
       if (!map[doctorId]) map[doctorId] = { quantity: 0, value: 0, count: 0 };
@@ -1141,9 +1141,9 @@ export default function ProductionReport() {
         productionType: p.productionType,
         procedureName: p.description,
         patientName: p.patientName || null,
-        doctorId: (p as any).doctorId || (p as any).doctor_id || null,
+        doctorId: (p as any).doctorId || (p as any).doctorId || null,
         doctorName: (() => {
-          const did = (p as any).doctorId || (p as any).doctor_id;
+          const did = (p as any).doctorId || (p as any).doctorId;
           return did ? doctorNameById[did] || null : null;
         })(),
         quantity: p.quantity,
