@@ -306,6 +306,7 @@ export function exportProductionReportToExcel({
     "Tipo de Produção",
     "Procedimento",
     "Paciente",
+    "Médico",
     "Qtde",
     "Valor Unitário",
     "Valor Total",
@@ -333,6 +334,7 @@ export function exportProductionReportToExcel({
         displayLabel(row.productionType),
         row.procedureName,
         row.patientName || "",
+        row.doctorName || "",
         parseBRNumber(row.quantity),
         parseBRNumber(row.unitValue),
         parseBRNumber(row.totalValue),
@@ -356,6 +358,7 @@ export function exportProductionReportToExcel({
     { wch: 18 }, // Tipo de Produção
     { wch: 35 }, // Procedimento
     { wch: 25 }, // Paciente
+    { wch: 22 }, // Médico
     { wch: 8 }, // Qtde
     { wch: 14 }, // Valor Unitário
     { wch: 14 }, // Valor Total
