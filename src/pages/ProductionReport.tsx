@@ -1220,7 +1220,7 @@ export default function ProductionReport() {
         ══════════════════════════════════════════════════════════════════ */}
         <section className="bg-muted/30 rounded-2xl p-5 border border-border/50">
           <div className="flex flex-col gap-4">
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-7">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium text-muted-foreground">Início</Label>
                 <Input
@@ -1383,6 +1383,37 @@ export default function ProductionReport() {
                 <p className="text-[10px] text-muted-foreground mt-2 italic">
                   Avulso CONSULTA + Pacotes (consult_amount)
                 </p>
+              </CardContent>
+            </Card>
+
+            {/* Exames - usando reportItems (avulso) */}
+            <Card className="shadow-sm border-border/60 bg-gradient-to-br from-violet-50/50 to-transparent dark:from-violet-950/20">
+              <CardContent className="pt-5 pb-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Exames</p>
+                    <p className="text-2xl font-bold text-foreground mt-2 tabular-nums">
+                      {(() => {
+                        const quantity = reportItems
+                          .filter((item) => item.reportType === "EXAME")
+                          .reduce((sum, item) => sum + item.quantity, 0);
+                        return quantity.toLocaleString("pt-BR");
+                      })()}
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {(() => {
+                        const value = reportItems
+                          .filter((item) => item.reportType === "EXAME")
+                          .reduce((sum, item) => sum + item.amount, 0);
+                        return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+                      })()}
+                    </p>
+                  </div>
+                  <div className="p-2.5 bg-violet-100 dark:bg-violet-900/30 rounded-xl">
+                    <FlaskConical className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-2 italic">Avulso EXAME</p>
               </CardContent>
             </Card>
 
