@@ -289,6 +289,35 @@ export async function generateProductionReportPDF({
     yPos = (doc as any).lastAutoTable.finalY + 4;
   }
 
+  // Top 5 Médicos
+  if (data.doctorRanking && data.doctorRanking.length > 0) {
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(50);
+    doc.text("Médicos", margin, yPos);
+    yPos += 4;
+
+    const docData = data.doctorRanking
+      .slice(0, 5)
+      .map((row) => [
+        row.name.length > 35 ? row.name.substring(0, 32) + "..." : row.name,
+        row.quantity.toLocaleString("pt-BR"),
+        formatCurrency(row.value),
+      ]);
+
+    autoTable(doc, {
+      startY: yPos,
+      head: [["Médico", "Qtd", "Valor"]],
+      body: docData,
+      margin: { left: margin, right: margin },
+      styles: { fontSize: 8, cellPadding: 1.5 },
+      headStyles: { fillColor: [100, 140, 180], textColor: 255 },
+      columnStyles: { 0: { cellWidth: contentWidth * 0.45 } },
+    });
+
+    yPos = (doc as any).lastAutoTable.finalY + 4;
+  }
+
   // Top 5 Procedimentos
   if (data.topProcedures.length > 0) {
     doc.setFontSize(9);
