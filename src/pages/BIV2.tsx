@@ -238,15 +238,7 @@ function BIV2Content() {
       doctorId: filters.doctorId,
       productionType: filters.productionType,
     };
-  }, [
-    filters.startDate,
-    filters.endDate,
-    filters.unit,
-    filters.payer,
-    filters.category,
-    filters.doctorId,
-    filters.productionType,
-  ]);
+  }, [filters.startDate, filters.endDate, filters.unit, filters.payer, filters.category, filters.doctorId, filters.productionType]);
 
   const prev = useBIData(prevFilters);
 
@@ -414,24 +406,22 @@ function BIV2Content() {
 
   return (
     <DashboardLayout>
-      {/* ✅ FUNDO PREMIUM DO BI */}
-      <div className="relative min-h-screen bg-transparent">
-        {/* base gradient */}
-        <div className="absolute inset-0 z-0 bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-800/70" />
-        {/* glow suave topo */}
-        <div className="absolute -top-32 left-1/2 z-0 h-[26rem] w-[60rem] -translate-x-1/2 blur-3xl opacity-35 bg-gradient-to-r from-emerald-500/25 via-emerald-300/15 to-emerald-400/25" />
-        {/* vinheta leve */}
-        <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.05)_0%,rgba(0,0,0,0.10)_60%,rgba(0,0,0,0.22)_100%)]" />
+      {/* ✅ FUNDO PREMIUM DO BI (POWER BI CANVAS) */
+      <div className="relative min-h-screen bg-background">
+        {/* Canvas Power BI (claro, premium, com textura leve) */}
+        <div className="absolute inset-0 z-0 bg-gradient-to-br from-slate-50 via-white to-slate-100" />
+        <div className="absolute inset-0 z-0 opacity-[0.35] [background-image:radial-gradient(rgba(0,0,0,0.08)_1px,transparent_1px)] [background-size:18px_18px]" />
+        <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_20%_10%,rgba(16,185,129,0.12)_0%,transparent_45%),radial-gradient(circle_at_80%_0%,rgba(59,130,246,0.10)_0%,transparent_40%)]" />
 
         {/* ✅ CONTEÚDO */}
         <div className="relative z-10 space-y-4 animate-fade-in p-4 md:p-6">
           {/* ✅ Header com faixa premium */}
-          <div className="rounded-xl bg-white/5 backdrop-blur border border-white/10 p-3">
+          <div className="rounded-2xl bg-white border border-border/60 shadow-sm p-4">
             <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
               <div>
                 <div className="flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5 text-white/80" />
-                  <h1 className="text-2xl font-bold text-white">Sallus Finance — BI Executivo</h1>
+                  <BarChart3 className="h-5 w-5 text-foreground/80" />
+                  <h1 className="text-2xl font-bold text-foreground">Sallus Finance — BI Executivo</h1>
 
                   <Badge variant="secondary" className="text-[10px] gap-1">
                     <Sparkles className="h-3 w-3" />
@@ -439,25 +429,25 @@ function BIV2Content() {
                   </Badge>
 
                   {directorMode && (
-                    <Badge variant="outline" className="text-[10px] bg-white/10 text-white border-white/20">
+                    <Badge variant="outline" className="text-[10px] bg-muted/30 text-foreground border-border/60">
                       Modo Diretor
                     </Badge>
                   )}
                 </div>
 
-                <p className="text-sm text-white/70">
+                <p className="text-sm text-foreground/70">
                   Clique para filtrar • Cross-filter real • Drilldown • Interface premium
                 </p>
 
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <Badge
                     variant="outline"
-                    className="text-[10px] bg-white/10 text-white border-white/15 flex items-center gap-2"
+                    className="text-[10px] bg-muted/30 text-foreground border-border/60 flex items-center gap-2"
                     title="Seleção atual (Power BI)"
                   >
                     <Wand2 className="h-3 w-3" />
                     {selectionTitle}
-                    <span className="text-white/50">• ESC limpa seleções</span>
+                    <span className="text-foreground/50">• ESC limpa seleções</span>
                   </Badge>
 
                   {(filters.doctorId !== "all" || filters.productionType !== "all") && (
@@ -472,7 +462,7 @@ function BIV2Content() {
               <div className="flex flex-wrap items-center gap-2">
                 <Badge
                   variant="outline"
-                  className="text-xs flex items-center gap-2 bg-white/5 text-white border-white/15"
+                  className="text-xs flex items-center gap-2 bg-white/5 text-foreground border-border/60"
                 >
                   <Calendar className="h-3.5 w-3.5" />
                   {format(filters.startDate, "dd/MM", { locale: ptBR })} -{" "}
@@ -493,7 +483,7 @@ function BIV2Content() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 text-xs bg-white/5 text-white border-white/15 hover:bg-white/10 hover:text-white"
+                  className="h-8 text-xs bg-white/5 text-foreground border-border/60 hover:bg-muted/30 hover:text-foreground"
                   onClick={() => {
                     clearFilter("doctorId");
                     clearFilter("productionType");
@@ -508,7 +498,7 @@ function BIV2Content() {
 
                 <button
                   onClick={clearAllFilters}
-                  className="text-xs px-2 py-1 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-white/85 transition"
+                  className="text-xs px-2 py-1 rounded-lg bg-muted/30 hover:bg-muted/40 border border-border/60 text-foreground/85 transition"
                   type="button"
                   title="Reset total (inclui datas)"
                 >
@@ -520,7 +510,7 @@ function BIV2Content() {
 
           {/* Filtros */}
           {!directorMode && (
-            <Card className="bg-white/95 backdrop-blur border-white/30">
+            <Card className="bg-white border-border/60 shadow-sm">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
                   <Layers className="h-4 w-4 text-muted-foreground" />
@@ -541,7 +531,7 @@ function BIV2Content() {
           {/* Alerts + leitura executiva */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="lg:col-span-2">
-              <Card className="bg-white/95 backdrop-blur border-white/30">
+              <Card className="bg-white border-border/60 shadow-sm">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-semibold flex items-center gap-2">
                     <TrendingUp className="h-4 w-4 text-muted-foreground" />
@@ -578,13 +568,13 @@ function BIV2Content() {
               </Card>
             </div>
 
-            <div className="bg-white/95 backdrop-blur rounded-xl border border-white/30">
+            <div className="bg-white rounded-2xl border border-border/60 shadow-sm">
               <BIAlertsCard kpis={kpis} agingData={chartData.aging} payerData={chartData.receivedByPayer} />
             </div>
           </div>
 
           {/* KPIs (com cross-filter real) */}
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-4 xl:grid-cols-8">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
             <KpiCard
               title="Receita (Recebido)"
               value={fmtBRL(kpis.recebido ?? 0)}
@@ -707,12 +697,12 @@ function BIV2Content() {
 
           {/* Insights */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="bg-white/95 backdrop-blur rounded-xl border border-white/30">
+            <div className="bg-white rounded-2xl border border-border/60 shadow-sm">
               <BIInsightsCard kpis={kpis} agingCritical={agingCritical} />
             </div>
 
             {!directorMode && (
-              <div className="bg-white/95 backdrop-blur rounded-xl border border-white/30 p-4">
+              <div className="bg-white rounded-2xl border border-border/60 shadow-sm p-4">
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-semibold flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-muted-foreground" />
@@ -726,9 +716,7 @@ function BIV2Content() {
                 <ul className="mt-3 space-y-2 text-xs text-muted-foreground">
                   <li>• Clique em qualquer gráfico para aplicar filtro (toggle: clique novamente remove).</li>
                   <li>• Use o filtro de Médico + Tipo para “entrar” na operação e ver o mix real.</li>
-                  <li>
-                    • Aperte <b>ESC</b> para limpar seleções rápidas sem mexer nas datas.
-                  </li>
+                  <li>• Aperte <b>ESC</b> para limpar seleções rápidas sem mexer nas datas.</li>
                   <li>• “Modo Diretor” esconde filtros e deixa 100% foco em leitura executiva.</li>
                 </ul>
               </div>
@@ -736,7 +724,7 @@ function BIV2Content() {
           </div>
 
           {/* Footer + Drilldown */}
-          <div className="bg-white/95 backdrop-blur rounded-xl border border-white/30">
+          <div className="bg-white rounded-2xl border border-border/60 shadow-sm">
             <BIFooter lastUpdated={lastUpdated ?? null} />
           </div>
 
