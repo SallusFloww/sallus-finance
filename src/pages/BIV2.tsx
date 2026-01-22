@@ -238,7 +238,15 @@ function BIV2Content() {
       doctorId: filters.doctorId,
       productionType: filters.productionType,
     };
-  }, [filters.startDate, filters.endDate, filters.unit, filters.payer, filters.category, filters.doctorId, filters.productionType]);
+  }, [
+    filters.startDate,
+    filters.endDate,
+    filters.unit,
+    filters.payer,
+    filters.category,
+    filters.doctorId,
+    filters.productionType,
+  ]);
 
   const prev = useBIData(prevFilters);
 
@@ -406,7 +414,7 @@ function BIV2Content() {
 
   return (
     <DashboardLayout>
-      {/* ✅ FUNDO PREMIUM DO BI (POWER BI CANVAS) */
+      {/* ✅ FUNDO PREMIUM DO BI (POWER BI CANVAS) */}
       <div className="relative min-h-screen bg-background">
         {/* Canvas Power BI (claro, premium, com textura leve) */}
         <div className="absolute inset-0 z-0 bg-gradient-to-br from-slate-50 via-white to-slate-100" />
@@ -716,7 +724,9 @@ function BIV2Content() {
                 <ul className="mt-3 space-y-2 text-xs text-muted-foreground">
                   <li>• Clique em qualquer gráfico para aplicar filtro (toggle: clique novamente remove).</li>
                   <li>• Use o filtro de Médico + Tipo para “entrar” na operação e ver o mix real.</li>
-                  <li>• Aperte <b>ESC</b> para limpar seleções rápidas sem mexer nas datas.</li>
+                  <li>
+                    • Aperte <b>ESC</b> para limpar seleções rápidas sem mexer nas datas.
+                  </li>
                   <li>• “Modo Diretor” esconde filtros e deixa 100% foco em leitura executiva.</li>
                 </ul>
               </div>
