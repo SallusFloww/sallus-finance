@@ -1,24 +1,17 @@
-import { useState } from "react";
-import { CalendarIcon, Eye, RotateCcw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { CalendarIcon, Eye, RotateCcw, Stethoscope, Layers } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { useBIFilters, PeriodPreset } from "@/contexts/BIFilterContext";
+
+import { useAuth } from "@/contexts/AuthContext";
+import { useDoctors } from "@/hooks/useDoctors";
+import { useBIFilters, PeriodPreset, ProductionType } from "@/contexts/BIFilterContext";
 import { Settings } from "@/types";
 
 interface BIGlobalFiltersProps {
@@ -27,20 +20,31 @@ interface BIGlobalFiltersProps {
   uniqueCategories: string[];
 }
 
+const productionTypeOptions: { value: ProductionType; label: string; icon?: any }[] = [
+  { value: "all", label: "Todos Tipos" },
+  { value: "CONSULTA", label: "Consulta" },
+  { value: "EXAME", label: "Exame" },
+  { value: "BOX", label: "Box/Taxa" },
+  { value: "MAT_MED", label: "Mat/Med" },
+  { value: "PACOTE_BOX", label: "Pacote BOX" },
+  { value: "PACOTE_GTA", label: "Pacote GTA" },
+];
+
 export function BIGlobalFilters({ settings, uniquePayers, uniqueCategories }: BIGlobalFiltersProps) {
-  const {
-    filters,
-    setPeriodPreset,
-    setCustomDateRange,
-    setFilter,
-    lastUpdated,
-    clearAllFilters,
-  } = useBIFilters();
+  const { currentCompany } = useAuth();
+  const { data: doctors = [], isLoading: doctorsLoading } = useDoctors(currentCompany?.id);
+
+  const { filters, setPeriodPreset, setCustomDateRange, setFilter, lastUpdated, clearAllFilters } = useBIFilters();
 
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
     from: filters.startDate,
     to: filters.endDate,
   });
+
+  // ✅ Mantém o calendário sincronizado quando trocar preset (Mês atual / 3m / 6m / 12m)
+  useEffect(() => {
+    setDateRange({ from: filters.startDate, to: filters.endDate });
+  }, [filters.startDate, filters.endDate]);
 
   const handleDateRangeChange = (range: { from?: Date; to?: Date }) => {
     if (range.from && range.to) {
@@ -56,6 +60,14 @@ export function BIGlobalFilters({ settings, uniquePayers, uniqueCategories }: BI
     { preset: "12m", label: "12 meses" },
   ];
 
+  const activeDoctors = useMemo(() => {
+    return (doctors || []).filter((d: any) => d?.active);
+  }, [doctors]);
+
+  // Só pra não deixar o select estourar com lista gigante (e também fica mais leve)
+  const safeCategories = useMemo(() => uniqueCategories.slice(0, 30), [uniqueCategories]);
+  const safePayers = useMemo(() => uniquePayers.slice(0, 40), [uniquePayers]);
+
   return (
     <div className="bg-card border border-border rounded-lg shadow-sm">
       {/* Header */}
@@ -65,15 +77,18 @@ export function BIGlobalFilters({ settings, uniquePayers, uniqueCategories }: BI
             <Eye className="h-3 w-3 mr-1" />
             Read-only
           </Badge>
+
           <span className="text-xs text-muted-foreground">
             Dados consolidados até: {format(lastUpdated, "dd/MM HH:mm")}
           </span>
         </div>
+
         <Button
           variant="ghost"
           size="sm"
           className="h-7 text-xs"
           onClick={clearAllFilters}
+          title="Resetar todos os filtros"
         >
           <RotateCcw className="h-3 w-3 mr-1" />
           Resetar
@@ -105,8 +120,9 @@ export function BIGlobalFilters({ settings, uniquePayers, uniqueCategories }: BI
               size="sm"
               className={cn(
                 "h-8 justify-start text-left font-normal min-w-[200px]",
-                filters.periodPreset === "custom" && "border-primary"
+                filters.periodPreset === "custom" && "border-primary",
               )}
+              title="Selecionar período personalizado"
             >
               <CalendarIcon className="mr-2 h-3.5 w-3.5" />
               <span className="text-xs">
@@ -115,6 +131,7 @@ export function BIGlobalFilters({ settings, uniquePayers, uniqueCategories }: BI
               </span>
             </Button>
           </PopoverTrigger>
+
           <PopoverContent className="w-auto p-0" align="start">
             <Calendar
               initialFocus
@@ -134,7 +151,7 @@ export function BIGlobalFilters({ settings, uniquePayers, uniqueCategories }: BI
 
         {/* Unit Filter */}
         <Select value={filters.unit} onValueChange={(v) => setFilter("unit", v)}>
-          <SelectTrigger className="h-8 w-[140px] text-xs">
+          <SelectTrigger className="h-8 w-[150px] text-xs">
             <SelectValue placeholder="Unidade" />
           </SelectTrigger>
           <SelectContent>
@@ -151,12 +168,12 @@ export function BIGlobalFilters({ settings, uniquePayers, uniqueCategories }: BI
 
         {/* Payer Filter */}
         <Select value={filters.payer} onValueChange={(v) => setFilter("payer", v)}>
-          <SelectTrigger className="h-8 w-[140px] text-xs">
+          <SelectTrigger className="h-8 w-[150px] text-xs">
             <SelectValue placeholder="Pagador" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos Pagadores</SelectItem>
-            {uniquePayers.map((payer) => (
+            {safePayers.map((payer) => (
               <SelectItem key={payer} value={payer}>
                 {payer}
               </SelectItem>
@@ -166,12 +183,12 @@ export function BIGlobalFilters({ settings, uniquePayers, uniqueCategories }: BI
 
         {/* Category Filter */}
         <Select value={filters.category} onValueChange={(v) => setFilter("category", v)}>
-          <SelectTrigger className="h-8 w-[140px] text-xs">
+          <SelectTrigger className="h-8 w-[150px] text-xs">
             <SelectValue placeholder="Categoria" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas Categorias</SelectItem>
-            {uniqueCategories.slice(0, 20).map((cat) => (
+            {safeCategories.map((cat) => (
               <SelectItem key={cat} value={cat}>
                 {cat}
               </SelectItem>
@@ -179,9 +196,44 @@ export function BIGlobalFilters({ settings, uniquePayers, uniqueCategories }: BI
           </SelectContent>
         </Select>
 
+        {/* ✅ NOVO — Doctor Filter */}
+        <Select value={filters.doctorId} onValueChange={(v) => setFilter("doctorId", v)}>
+          <SelectTrigger className="h-8 w-[180px] text-xs">
+            <div className="flex items-center gap-2">
+              <Stethoscope className="h-3.5 w-3.5 text-muted-foreground" />
+              <SelectValue placeholder={doctorsLoading ? "Carregando..." : "Médico"} />
+            </div>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos Médicos</SelectItem>
+            {activeDoctors.map((d: any) => (
+              <SelectItem key={d.id} value={d.id}>
+                {d.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* ✅ NOVO — Production Type Filter */}
+        <Select value={filters.productionType} onValueChange={(v) => setFilter("productionType", v as ProductionType)}>
+          <SelectTrigger className="h-8 w-[160px] text-xs">
+            <div className="flex items-center gap-2">
+              <Layers className="h-3.5 w-3.5 text-muted-foreground" />
+              <SelectValue placeholder="Tipo" />
+            </div>
+          </SelectTrigger>
+          <SelectContent>
+            {productionTypeOptions.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
         {/* Aging Filter */}
         <Select value={filters.agingRange} onValueChange={(v) => setFilter("agingRange", v as any)}>
-          <SelectTrigger className="h-8 w-[120px] text-xs">
+          <SelectTrigger className="h-8 w-[130px] text-xs">
             <SelectValue placeholder="Aging" />
           </SelectTrigger>
           <SelectContent>
