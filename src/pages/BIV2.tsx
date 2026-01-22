@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback } from "react";
+import React, { useMemo, useCallback, useEffect, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { differenceInCalendarDays, subDays } from "date-fns";
@@ -7,6 +7,7 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 import { BIFilterProvider, useBIFilters } from "@/contexts/BIFilterContext";
@@ -19,10 +20,15 @@ import { BIFooter } from "@/components/bi/BIFooter";
 
 import {
   CashEvolutionChart,
+  IncomeVsExpenseChart,
   ConversionFunnelChart,
   ReceivedByPayerChart,
   TopExpenseCategoriesChart,
+  ProductionByTypeChart,
+  DoctorRankingChart,
+  BilledByUnitChart,
   AgingChart,
+  GlossByPayerChart,
 } from "@/components/bi/BICharts";
 
 import { useBIData } from "@/hooks/useBIData";
@@ -38,6 +44,11 @@ import {
   Receipt,
   ArrowUpDown,
   Layers,
+  Sparkles,
+  Stethoscope,
+  Wand2,
+  RotateCcw,
+  SlidersHorizontal,
 } from "lucide-react";
 
 type BIAllowedPeriod = "current" | "3m" | "6m" | "12m";
@@ -45,9 +56,15 @@ type BIAllowedPeriod = "current" | "3m" | "6m" | "12m";
 type BIFilters = {
   startDate: Date;
   endDate: Date;
-  unit: string;
+  unit?: string;
   payerType: "all";
   period?: BIAllowedPeriod;
+
+  // ✅ Power BI Mode
+  payer?: string;
+  category?: string;
+  doctorId?: string;
+  productionType?: string;
 };
 
 function pctDelta(curr: number, prev: number) {
@@ -135,11 +152,41 @@ function mapPeriodPresetToAllowed(preset: string): BIAllowedPeriod | undefined {
   return undefined;
 }
 
+function MiniStat(props: { label: string; value: string; icon?: React.ReactNode }) {
+  const { label, value, icon } = props;
+  return (
+    <div className="rounded-lg border bg-muted/20 p-3">
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-muted-foreground">{label}</div>
+        {icon ? <div className="text-muted-foreground">{icon}</div> : null}
+      </div>
+      <div className="text-lg font-semibold">{value}</div>
+    </div>
+  );
+}
+
 function BIV2Content() {
   const { filters, drilldownContext, lastUpdated, setFilters, clearFilter, clearAllFilters } = useBIFilters();
 
   const { transactions: txContext } = useApp();
   const { settings } = txContext;
+
+  const [directorMode, setDirectorMode] = useState<boolean>(() => {
+    try {
+      const stored = localStorage.getItem("sallus_bi_director_mode");
+      return stored ? stored === "1" : false;
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("sallus_bi_director_mode", directorMode ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, [directorMode]);
 
   const periodAllowed = useMemo(() => mapPeriodPresetToAllowed(filters.periodPreset), [filters.periodPreset]);
 
@@ -151,8 +198,23 @@ function BIV2Content() {
       unit: filters.unit,
       payerType: "all",
       period: periodAllowed,
+
+      // ✅ Power BI Mode (Cross-filter real)
+      payer: filters.payer,
+      category: filters.category,
+      doctorId: filters.doctorId,
+      productionType: filters.productionType,
     }),
-    [filters.startDate, filters.endDate, filters.unit, periodAllowed],
+    [
+      filters.startDate,
+      filters.endDate,
+      filters.unit,
+      filters.payer,
+      filters.category,
+      filters.doctorId,
+      filters.productionType,
+      periodAllowed,
+    ],
   );
 
   const { kpis, chartData, recentTransactions } = useBIData(currentFilters);
@@ -169,8 +231,22 @@ function BIV2Content() {
       unit: filters.unit,
       payerType: "all",
       period: undefined,
+
+      // 🔥 comparação respeita seleção atual do usuário (Power BI feeling)
+      payer: filters.payer,
+      category: filters.category,
+      doctorId: filters.doctorId,
+      productionType: filters.productionType,
     };
-  }, [filters.startDate, filters.endDate, filters.unit]);
+  }, [
+    filters.startDate,
+    filters.endDate,
+    filters.unit,
+    filters.payer,
+    filters.category,
+    filters.doctorId,
+    filters.productionType,
+  ]);
 
   const prev = useBIData(prevFilters);
 
@@ -222,6 +298,27 @@ function BIV2Content() {
   const resultadoPrev = (prev.kpis?.entradas ?? 0) - (prev.kpis?.saidas ?? 0);
   const deltaResultado = pctDelta(resultadoAtual, resultadoPrev);
 
+  // ✅ KPIs extra (surreal)
+  const examesValue = useMemo(() => {
+    const row = chartData.productionByType.find((x: any) => String(x.type).toUpperCase() === "EXAME");
+    return row?.value ?? 0;
+  }, [chartData.productionByType]);
+
+  const examesQty = useMemo(() => {
+    const row = chartData.productionByType.find((x: any) => String(x.type).toUpperCase() === "EXAME");
+    return row?.quantity ?? 0;
+  }, [chartData.productionByType]);
+
+  const totalQty = useMemo(() => {
+    return chartData.productionByType.reduce((sum: number, x: any) => sum + (x.quantity || 0), 0);
+  }, [chartData.productionByType]);
+
+  const ticketMedio = useMemo(() => {
+    const q = totalQty || 0;
+    if (!q) return 0;
+    return (kpis.produzido || 0) / q;
+  }, [kpis.produzido, totalQty]);
+
   const lastUpdatedLabel = useMemo(() => {
     if (!lastUpdated) return "—";
     if (typeof lastUpdated === "string") return lastUpdated;
@@ -261,7 +358,6 @@ function BIV2Content() {
         // ✅ limpa o que o KPI mexeu (mantém o resto dos filtros do usuário)
         clearFilter("origin");
         clearFilter("viewType");
-        // obs: não mexe em unit/payer/category/agingRange etc.
         return;
       }
 
@@ -290,6 +386,32 @@ function BIV2Content() {
     [clearFilter, isKpiActive, setFilters],
   );
 
+  // ✅ barra de "seleção" estilo Power BI
+  const selectionTitle = useMemo(() => {
+    const parts: string[] = [];
+    if (filters.doctorId && filters.doctorId !== "all") parts.push("Médico selecionado");
+    if (filters.productionType && filters.productionType !== "all") parts.push(`Tipo: ${filters.productionType}`);
+    if (filters.payer && filters.payer !== "all") parts.push(`Pagador: ${filters.payer}`);
+    if (filters.category && filters.category !== "all") parts.push(`Categoria: ${filters.category}`);
+    if (filters.unit && filters.unit !== "all") parts.push(`Unidade: ${filters.unit}`);
+    return parts.length ? parts.join(" • ") : "Sem seleção (modo livre)";
+  }, [filters]);
+
+  // Atalho: ESC = limpar seleções rápidas (não zera data!)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        // limpa as seleções “visuais” (Power BI feelings)
+        clearFilter("doctorId");
+        clearFilter("productionType");
+        clearFilter("payer");
+        clearFilter("category");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [clearFilter]);
+
   return (
     <DashboardLayout>
       {/* ✅ FUNDO PREMIUM DO BI */}
@@ -309,21 +431,45 @@ function BIV2Content() {
               <div>
                 <div className="flex items-center gap-2">
                   <BarChart3 className="h-5 w-5 text-white/80" />
-                  <h1 className="text-2xl font-bold text-white">BI v2 — Executivo</h1>
-                  <Badge variant="secondary" className="text-[10px]">
-                    BETA
+                  <h1 className="text-2xl font-bold text-white">Sallus Finance — BI Executivo</h1>
+
+                  <Badge variant="secondary" className="text-[10px] gap-1">
+                    <Sparkles className="h-3 w-3" />
+                    POWER BI MODE
                   </Badge>
+
+                  {directorMode && (
+                    <Badge variant="outline" className="text-[10px] bg-white/10 text-white border-white/20">
+                      Modo Diretor
+                    </Badge>
+                  )}
                 </div>
+
                 <p className="text-sm text-white/70">
-                  Power BI-like: hierarquia, leitura e comparação • Cross-filter • Read-only
+                  Clique para filtrar • Cross-filter real • Drilldown • Interface premium
                 </p>
+
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] bg-white/10 text-white border-white/15 flex items-center gap-2"
+                    title="Seleção atual (Power BI)"
+                  >
+                    <Wand2 className="h-3 w-3" />
+                    {selectionTitle}
+                    <span className="text-white/50">• ESC limpa seleções</span>
+                  </Badge>
+
+                  {(filters.doctorId !== "all" || filters.productionType !== "all") && (
+                    <Badge variant="secondary" className="text-[10px] gap-1">
+                      <Stethoscope className="h-3 w-3" />
+                      Filtro Médico/Tipo ativo
+                    </Badge>
+                  )}
+                </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="text-xs">
-                  Somente leitura
-                </Badge>
-
+              <div className="flex flex-wrap items-center gap-2">
                 <Badge
                   variant="outline"
                   className="text-xs flex items-center gap-2 bg-white/5 text-white border-white/15"
@@ -333,10 +479,38 @@ function BIV2Content() {
                   {format(filters.endDate, "dd/MM/yyyy", { locale: ptBR })}
                 </Badge>
 
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => setDirectorMode((s) => !s)}
+                  title="Alternar Modo Diretor"
+                >
+                  <SlidersHorizontal className="h-3.5 w-3.5 mr-1" />
+                  {directorMode ? "Modo Analista" : "Modo Diretor"}
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs bg-white/5 text-white border-white/15 hover:bg-white/10 hover:text-white"
+                  onClick={() => {
+                    clearFilter("doctorId");
+                    clearFilter("productionType");
+                    clearFilter("payer");
+                    clearFilter("category");
+                  }}
+                  title="Limpar seleções rápidas (médico/tipo/pagador/categoria)"
+                >
+                  <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                  Limpar seleção
+                </Button>
+
                 <button
                   onClick={clearAllFilters}
                   className="text-xs px-2 py-1 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-white/85 transition"
                   type="button"
+                  title="Reset total (inclui datas)"
                 >
                   Limpar tudo
                 </button>
@@ -345,31 +519,33 @@ function BIV2Content() {
           </div>
 
           {/* Filtros */}
-          <Card className="bg-white/95 backdrop-blur border-white/30">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Layers className="h-4 w-4 text-muted-foreground" />
-                Filtros
-                <span className="text-xs text-muted-foreground font-normal">
-                  • Última atualização: {lastUpdatedLabel}
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <BIGlobalFilters settings={settings} uniquePayers={uniquePayers} uniqueCategories={uniqueCategories} />
-              <Separator />
-              <BIActiveFiltersBar />
-            </CardContent>
-          </Card>
+          {!directorMode && (
+            <Card className="bg-white/95 backdrop-blur border-white/30">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Layers className="h-4 w-4 text-muted-foreground" />
+                  Filtros
+                  <span className="text-xs text-muted-foreground font-normal">
+                    • Última atualização: {lastUpdatedLabel}
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <BIGlobalFilters settings={settings} uniquePayers={uniquePayers} uniqueCategories={uniqueCategories} />
+                <Separator />
+                <BIActiveFiltersBar />
+              </CardContent>
+            </Card>
+          )}
 
-          {/* Alerts compactos */}
+          {/* Alerts + leitura executiva */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="lg:col-span-2">
               <Card className="bg-white/95 backdrop-blur border-white/30">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-semibold flex items-center gap-2">
                     <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                    Leitura rápida do período
+                    Leitura executiva do período
                     {isScoreInFormation && (
                       <Badge variant="outline" className="text-[10px] ml-2">
                         Score em formação
@@ -377,32 +553,27 @@ function BIV2Content() {
                     )}
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div className="rounded-lg border bg-muted/20 p-3">
-                    <div className="text-xs text-muted-foreground">Taxa de recebimento</div>
-                    <div className="text-lg font-semibold">
-                      {isNaN(kpis.taxaRecebimento) ? "0%" : `${kpis.taxaRecebimento.toFixed(0)}%`}
-                    </div>
-                    <div className="text-[10px] text-muted-foreground">Recebido ÷ Faturado</div>
-                  </div>
-
-                  <div className="rounded-lg border bg-muted/20 p-3">
-                    <div className="text-xs text-muted-foreground">Taxa de faturamento</div>
-                    <div className="text-lg font-semibold">
-                      {isNaN(kpis.taxaFaturamento) ? "0%" : `${kpis.taxaFaturamento.toFixed(0)}%`}
-                    </div>
-                    <div className="text-[10px] text-muted-foreground">Faturado ÷ Produzido</div>
-                  </div>
-
-                  <div className="rounded-lg border bg-muted/20 p-3">
-                    <div className="text-xs text-muted-foreground">Em aberto</div>
-                    <div className="text-lg font-semibold">{fmtBRL(kpis.emAberto ?? 0)}</div>
-                    <div className="text-[10px] text-muted-foreground">
-                      {(kpis.faturado || 1) > 0
-                        ? `${((kpis.emAberto / (kpis.faturado || 1)) * 100).toFixed(0)}% do faturado`
-                        : "—"}
-                    </div>
-                  </div>
+                <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <MiniStat
+                    label="Taxa de recebimento"
+                    value={isNaN(kpis.taxaRecebimento) ? "0%" : `${kpis.taxaRecebimento.toFixed(0)}%`}
+                    icon={<TrendingUp className="h-4 w-4" />}
+                  />
+                  <MiniStat
+                    label="Taxa de faturamento"
+                    value={isNaN(kpis.taxaFaturamento) ? "0%" : `${kpis.taxaFaturamento.toFixed(0)}%`}
+                    icon={<Receipt className="h-4 w-4" />}
+                  />
+                  <MiniStat
+                    label="Em aberto"
+                    value={fmtBRL(kpis.emAberto ?? 0)}
+                    icon={<ArrowUpDown className="h-4 w-4" />}
+                  />
+                  <MiniStat
+                    label="Aging crítico (61+)"
+                    value={fmtBRL(agingCritical)}
+                    icon={<Sparkles className="h-4 w-4" />}
+                  />
                 </CardContent>
               </Card>
             </div>
@@ -413,7 +584,7 @@ function BIV2Content() {
           </div>
 
           {/* KPIs (com cross-filter real) */}
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-4 xl:grid-cols-8">
             <KpiCard
               title="Receita (Recebido)"
               value={fmtBRL(kpis.recebido ?? 0)}
@@ -440,6 +611,24 @@ function BIV2Content() {
               hint="Clique para filtrar (Competência)"
               active={isKpiActive("faturado")}
               onClick={() => toggleKpiFilter("faturado")}
+            />
+            <KpiCard
+              title="Exames"
+              value={`${fmtBRL(examesValue)} • ${examesQty}x`}
+              delta={pctDelta(examesValue, 0)} // delta de exames não tem histórico direto aqui
+              icon={<Sparkles className="h-4 w-4" />}
+              hint="Clique no gráfico p/ filtrar"
+              active={filters.productionType === "EXAME"}
+              onClick={() => setFilters({ productionType: filters.productionType === "EXAME" ? "all" : "EXAME" })}
+            />
+            <KpiCard
+              title="Ticket médio"
+              value={fmtBRL(ticketMedio)}
+              delta={pctDelta(ticketMedio, 0)}
+              icon={<Wand2 className="h-4 w-4" />}
+              hint="Produção ÷ quantidades"
+              active={false}
+              onClick={() => {}}
             />
             <KpiCard
               title="Entradas (Caixa)"
@@ -470,55 +659,50 @@ function BIV2Content() {
             />
           </div>
 
-          {/* Charts Row 1 */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card className="bg-white/95 backdrop-blur border-white/30">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">Evolução do Caixa</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <CashEvolutionChart data={chartData.cashEvolution} />
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white/95 backdrop-blur border-white/30">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">Funil: Produção → Faturado → Recebido</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ConversionFunnelChart data={chartData.funnel} />
-              </CardContent>
-            </Card>
+          {/* === POWER BI GRID 1 === */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <div className="lg:col-span-8">
+              <CashEvolutionChart data={chartData.cashEvolution} />
+            </div>
+            <div className="lg:col-span-4 space-y-4">
+              <ConversionFunnelChart data={chartData.funnel} />
+            </div>
           </div>
 
-          {/* Charts Row 2 */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <Card className="bg-white/95 backdrop-blur border-white/30">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">Top Pagadores / Convênios</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ReceivedByPayerChart data={chartData.receivedByPayer} />
-              </CardContent>
-            </Card>
+          {/* === POWER BI GRID 2 (clicável) === */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <div className="lg:col-span-4">
+              <ReceivedByPayerChart data={chartData.receivedByPayer} />
+            </div>
+            <div className="lg:col-span-4">
+              <TopExpenseCategoriesChart data={chartData.topExpenseCategories} />
+            </div>
+            <div className="lg:col-span-4">
+              <AgingChart data={chartData.aging} />
+            </div>
+          </div>
 
-            <Card className="bg-white/95 backdrop-blur border-white/30">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">Top Categorias de Saída</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <TopExpenseCategoriesChart data={chartData.topExpenseCategories} />
-              </CardContent>
-            </Card>
+          {/* === POWER BI GRID 3 (médicos + mix + unidades) === */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <div className="lg:col-span-5">
+              <DoctorRankingChart data={chartData.productionByDoctor} />
+            </div>
+            <div className="lg:col-span-4">
+              <ProductionByTypeChart data={chartData.productionByType} />
+            </div>
+            <div className="lg:col-span-3">
+              <BilledByUnitChart data={chartData.billedByUnit} />
+            </div>
+          </div>
 
-            <Card className="bg-white/95 backdrop-blur border-white/30">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">Aging — Recebíveis por Faixa</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <AgingChart data={chartData.aging} />
-              </CardContent>
-            </Card>
+          {/* === POWER BI GRID 4 (caixa + glosa) === */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <div className="lg:col-span-7">
+              <IncomeVsExpenseChart data={chartData.incomeVsExpense} />
+            </div>
+            <div className="lg:col-span-5">
+              <GlossByPayerChart data={chartData.glossByPayer} />
+            </div>
           </div>
 
           {/* Insights */}
@@ -526,6 +710,29 @@ function BIV2Content() {
             <div className="bg-white/95 backdrop-blur rounded-xl border border-white/30">
               <BIInsightsCard kpis={kpis} agingCritical={agingCritical} />
             </div>
+
+            {!directorMode && (
+              <div className="bg-white/95 backdrop-blur rounded-xl border border-white/30 p-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-semibold flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-muted-foreground" />
+                    Dicas rápidas de uso (Power BI)
+                  </div>
+                  <Badge variant="outline" className="text-[10px]">
+                    PRO
+                  </Badge>
+                </div>
+
+                <ul className="mt-3 space-y-2 text-xs text-muted-foreground">
+                  <li>• Clique em qualquer gráfico para aplicar filtro (toggle: clique novamente remove).</li>
+                  <li>• Use o filtro de Médico + Tipo para “entrar” na operação e ver o mix real.</li>
+                  <li>
+                    • Aperte <b>ESC</b> para limpar seleções rápidas sem mexer nas datas.
+                  </li>
+                  <li>• “Modo Diretor” esconde filtros e deixa 100% foco em leitura executiva.</li>
+                </ul>
+              </div>
+            )}
           </div>
 
           {/* Footer + Drilldown */}
