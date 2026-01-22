@@ -1,3 +1,4 @@
+import * as React from "react";
 import {
   LineChart,
   Line,
@@ -19,6 +20,8 @@ import { BIChartData } from "@/hooks/useBIData";
 import { formatCurrency, formatCompactCurrency } from "@/utils/formatters";
 import { useBIFilters } from "@/contexts/BIFilterContext";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
+import { useDoctors } from "@/hooks/useDoctors";
 
 const COLORS = [
   "hsl(210, 70%, 40%)",
@@ -52,8 +55,8 @@ function ChartCard({ title, type, children, isEmpty, interactive }: ChartCardPro
               </Badge>
             )}
           </div>
-          <Badge 
-            variant="outline" 
+          <Badge
+            variant="outline"
             className={`text-[10px] h-5 px-1.5 ${
               type === "caixa" ? "border-primary/30 text-primary" : "border-secondary/30 text-secondary"
             }`}
@@ -67,11 +70,18 @@ function ChartCard({ title, type, children, isEmpty, interactive }: ChartCardPro
           <div className="flex flex-col items-center justify-center h-[200px] text-muted-foreground bg-muted/20 rounded-lg border border-dashed">
             <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mb-3">
               <svg className="w-6 h-6 text-muted-foreground/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                />
               </svg>
             </div>
             <p className="text-sm font-medium">Dados insuficientes para visualização</p>
-            <p className="text-xs mt-1 text-center max-w-[200px]">Ajuste os filtros ou aguarde consolidação do período</p>
+            <p className="text-xs mt-1 text-center max-w-[200px]">
+              Ajuste os filtros ou aguarde consolidação do período
+            </p>
           </div>
         ) : (
           children
@@ -91,24 +101,21 @@ export function CashEvolutionChart({ data }: { data: BIChartData["cashEvolution"
         <LineChart data={data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
           <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
-          <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => formatCompactCurrency(v)} />
-          <Tooltip 
+          <YAxis
+            tick={{ fontSize: 10 }}
+            stroke="hsl(var(--muted-foreground))"
+            tickFormatter={(v) => formatCompactCurrency(v)}
+          />
+          <Tooltip
             formatter={(value: number) => formatCurrency(value)}
-            contentStyle={{ 
-              backgroundColor: "hsl(var(--card))", 
+            contentStyle={{
+              backgroundColor: "hsl(var(--card))",
               border: "1px solid hsl(var(--border))",
               borderRadius: "8px",
-              fontSize: "12px"
+              fontSize: "12px",
             }}
           />
-          <Line 
-            type="monotone" 
-            dataKey="saldo" 
-            stroke="hsl(210, 70%, 40%)" 
-            strokeWidth={2}
-            dot={false}
-            name="Saldo"
-          />
+          <Line type="monotone" dataKey="saldo" stroke="hsl(210, 70%, 40%)" strokeWidth={2} dot={false} name="Saldo" />
         </LineChart>
       </ResponsiveContainer>
     </ChartCard>
@@ -125,14 +132,18 @@ export function IncomeVsExpenseChart({ data }: { data: BIChartData["incomeVsExpe
         <BarChart data={data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
           <XAxis dataKey="period" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
-          <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => formatCompactCurrency(v)} />
-          <Tooltip 
+          <YAxis
+            tick={{ fontSize: 10 }}
+            stroke="hsl(var(--muted-foreground))"
+            tickFormatter={(v) => formatCompactCurrency(v)}
+          />
+          <Tooltip
             formatter={(value: number) => formatCurrency(value)}
-            contentStyle={{ 
-              backgroundColor: "hsl(var(--card))", 
+            contentStyle={{
+              backgroundColor: "hsl(var(--card))",
               border: "1px solid hsl(var(--border))",
               borderRadius: "8px",
-              fontSize: "12px"
+              fontSize: "12px",
             }}
           />
           <Legend wrapperStyle={{ fontSize: "11px" }} />
@@ -160,21 +171,21 @@ export function ConversionFunnelChart({ data }: { data: BIChartData["funnel"] })
     });
   };
 
-  // Funnel as horizontal bars for better interactivity
-  const maxValue = Math.max(...data.map(d => d.value), 1);
-  
+  const maxValue = Math.max(...data.map((d) => d.value), 1);
+
   return (
-    <ChartCard title="Funil: Produção → Recebido" type="competencia" isEmpty={data.every(d => d.value === 0)} interactive>
+    <ChartCard
+      title="Funil: Produção → Recebido"
+      type="competencia"
+      isEmpty={data.every((d) => d.value === 0)}
+      interactive
+    >
       <div className="space-y-3 py-2">
         {data.map((item, index) => {
           const width = (item.value / maxValue) * 100;
           const colors = ["hsl(210, 70%, 40%)", "hsl(165, 60%, 35%)", "hsl(38, 80%, 50%)", "hsl(0, 65%, 50%)"];
           return (
-            <div
-              key={item.stage}
-              className="group cursor-pointer"
-              onClick={() => handleClick(item.stage, item.value)}
-            >
+            <div key={item.stage} className="group cursor-pointer" onClick={() => handleClick(item.stage, item.value)}>
               <div className="flex items-center justify-between text-xs mb-1">
                 <span className="font-medium group-hover:text-primary transition-colors">{item.stage}</span>
                 <span className="text-muted-foreground">{formatCurrency(item.value)}</span>
@@ -229,28 +240,23 @@ export function ReceivedByPayerChart({ data }: { data: BIChartData["receivedByPa
             style={{ cursor: "pointer" }}
           >
             {data.map((_, index) => (
-              <Cell 
-                key={`cell-${index}`} 
+              <Cell
+                key={`cell-${index}`}
                 fill={COLORS[index % COLORS.length]}
                 className="hover:opacity-80 transition-opacity"
               />
             ))}
           </Pie>
-          <Tooltip 
+          <Tooltip
             formatter={(value: number, name: string) => [formatCurrency(value), name]}
-            contentStyle={{ 
-              backgroundColor: "hsl(var(--card))", 
+            contentStyle={{
+              backgroundColor: "hsl(var(--card))",
               border: "1px solid hsl(var(--border))",
               borderRadius: "8px",
-              fontSize: "12px"
+              fontSize: "12px",
             }}
           />
-          <Legend 
-            layout="vertical" 
-            align="right" 
-            verticalAlign="middle"
-            wrapperStyle={{ fontSize: "10px" }}
-          />
+          <Legend layout="vertical" align="right" verticalAlign="middle" wrapperStyle={{ fontSize: "10px" }} />
         </PieChart>
       </ResponsiveContainer>
     </ChartCard>
@@ -276,9 +282,9 @@ export function TopExpenseCategoriesChart({ data }: { data: BIChartData["topExpe
   return (
     <ChartCard title="Top 10 Categorias de Saída" type="caixa" isEmpty={data.length === 0} interactive>
       <ResponsiveContainer width="100%" height={220}>
-        <BarChart 
-          data={data.slice(0, 7)} 
-          layout="vertical" 
+        <BarChart
+          data={data.slice(0, 7)}
+          layout="vertical"
           margin={{ top: 5, right: 20, left: 60, bottom: 5 }}
           onClick={(e) => {
             if (e?.activePayload?.[0]) {
@@ -289,15 +295,26 @@ export function TopExpenseCategoriesChart({ data }: { data: BIChartData["topExpe
           style={{ cursor: "pointer" }}
         >
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-          <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => formatCompactCurrency(v)} />
-          <YAxis type="category" dataKey="category" tick={{ fontSize: 9 }} stroke="hsl(var(--muted-foreground))" width={55} />
-          <Tooltip 
+          <XAxis
+            type="number"
+            tick={{ fontSize: 10 }}
+            stroke="hsl(var(--muted-foreground))"
+            tickFormatter={(v) => formatCompactCurrency(v)}
+          />
+          <YAxis
+            type="category"
+            dataKey="category"
+            tick={{ fontSize: 9 }}
+            stroke="hsl(var(--muted-foreground))"
+            width={55}
+          />
+          <Tooltip
             formatter={(value: number) => formatCurrency(value)}
-            contentStyle={{ 
-              backgroundColor: "hsl(var(--card))", 
+            contentStyle={{
+              backgroundColor: "hsl(var(--card))",
               border: "1px solid hsl(var(--border))",
               borderRadius: "8px",
-              fontSize: "12px"
+              fontSize: "12px",
             }}
           />
           <Bar dataKey="value" fill="hsl(0, 65%, 50%)" radius={[0, 4, 4, 0]} className="hover:opacity-80" />
@@ -308,30 +325,120 @@ export function TopExpenseCategoriesChart({ data }: { data: BIChartData["topExpe
 }
 
 // ============================================
-// Produção por Tipo
+// Produção por Tipo (INTERATIVO - Power BI)
 // ============================================
 export function ProductionByTypeChart({ data }: { data: BIChartData["productionByType"] }) {
+  const { onChartClick } = useBIFilters();
+
   return (
-    <ChartCard title="Produção por Tipo" type="competencia" isEmpty={data.length === 0}>
+    <ChartCard title="Produção por Tipo" type="competencia" isEmpty={data.length === 0} interactive>
       <ResponsiveContainer width="100%" height={220}>
-        <BarChart data={data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+        <BarChart
+          data={data}
+          margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
+          onClick={(e) => {
+            if (e?.activePayload?.[0]) {
+              const { type } = e.activePayload[0].payload;
+              onChartClick("productionType", type);
+            }
+          }}
+          style={{ cursor: "pointer" }}
+        >
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
           <XAxis dataKey="type" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
-          <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => formatCompactCurrency(v)} />
-          <Tooltip 
+          <YAxis
+            tick={{ fontSize: 10 }}
+            stroke="hsl(var(--muted-foreground))"
+            tickFormatter={(v) => formatCompactCurrency(v)}
+          />
+          <Tooltip
             formatter={(value: number, name: string) => [
               name === "value" ? formatCurrency(value) : value,
-              name === "value" ? "Valor" : "Quantidade"
+              name === "value" ? "Valor" : "Quantidade",
             ]}
-            contentStyle={{ 
-              backgroundColor: "hsl(var(--card))", 
+            contentStyle={{
+              backgroundColor: "hsl(var(--card))",
               border: "1px solid hsl(var(--border))",
               borderRadius: "8px",
-              fontSize: "12px"
+              fontSize: "12px",
             }}
           />
           <Legend wrapperStyle={{ fontSize: "11px" }} />
-          <Bar dataKey="value" fill="hsl(165, 60%, 35%)" name="Valor" radius={[4, 4, 0, 0]} />
+          <Bar
+            dataKey="value"
+            fill="hsl(165, 60%, 35%)"
+            name="Valor"
+            radius={[4, 4, 0, 0]}
+            className="hover:opacity-80"
+          />
+        </BarChart>
+      </ResponsiveContainer>
+    </ChartCard>
+  );
+}
+
+// ============================================
+// ✅ Top Médicos (INTERATIVO - Power BI Click-to-Filter)
+// ============================================
+export function DoctorRankingChart({ data }: { data: BIChartData["productionByDoctor"] }) {
+  const { onChartClick, filters } = useBIFilters();
+  const { currentCompany } = useAuth();
+  const { data: doctors = [] } = useDoctors(currentCompany?.id);
+
+  const doctorName = React.useCallback(
+    (id: string) => {
+      if (!id || id === "SEM_MEDICO") return "Sem médico";
+      const found = (doctors as any[]).find((d) => d?.id === id);
+      return found?.name || "Médico";
+    },
+    [doctors],
+  );
+
+  const isEmpty = !data || data.length === 0;
+
+  return (
+    <ChartCard title="Top Médicos (Produção)" type="competencia" isEmpty={isEmpty} interactive>
+      <ResponsiveContainer width="100%" height={220}>
+        <BarChart
+          data={data}
+          margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
+          onClick={(e) => {
+            if (e?.activePayload?.[0]) {
+              const { doctorId } = e.activePayload[0].payload;
+              onChartClick("doctor", doctorId);
+            }
+          }}
+          style={{ cursor: "pointer" }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+          <XAxis
+            dataKey="doctorId"
+            tick={{ fontSize: 10 }}
+            stroke="hsl(var(--muted-foreground))"
+            tickFormatter={(v) => doctorName(String(v))}
+          />
+          <YAxis
+            tick={{ fontSize: 10 }}
+            stroke="hsl(var(--muted-foreground))"
+            tickFormatter={(v) => formatCompactCurrency(v)}
+          />
+          <Tooltip
+            formatter={(value: number) => formatCurrency(value)}
+            labelFormatter={(label) => doctorName(String(label))}
+            contentStyle={{
+              backgroundColor: "hsl(var(--card))",
+              border: "1px solid hsl(var(--border))",
+              borderRadius: "8px",
+              fontSize: "12px",
+            }}
+          />
+          <Bar dataKey="value" fill="hsl(210, 70%, 40%)" radius={[4, 4, 0, 0]} className="hover:opacity-80">
+            {(data || []).map((row, idx) => {
+              const selected = filters.doctorId && filters.doctorId !== "all" && row.doctorId === filters.doctorId;
+              const dimOthers = filters.doctorId && filters.doctorId !== "all" && !selected;
+              return <Cell key={`cell-doc-${idx}`} fill="hsl(210, 70%, 40%)" opacity={dimOthers ? 0.35 : 1} />;
+            })}
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
     </ChartCard>
@@ -347,8 +454,8 @@ export function BilledByUnitChart({ data }: { data: BIChartData["billedByUnit"] 
   return (
     <ChartCard title="Faturado por Unidade" type="competencia" isEmpty={data.length === 0} interactive>
       <ResponsiveContainer width="100%" height={220}>
-        <BarChart 
-          data={data} 
+        <BarChart
+          data={data}
           margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
           onClick={(e) => {
             if (e?.activePayload?.[0]) {
@@ -359,14 +466,18 @@ export function BilledByUnitChart({ data }: { data: BIChartData["billedByUnit"] 
         >
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
           <XAxis dataKey="unit" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
-          <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => formatCompactCurrency(v)} />
-          <Tooltip 
+          <YAxis
+            tick={{ fontSize: 10 }}
+            stroke="hsl(var(--muted-foreground))"
+            tickFormatter={(v) => formatCompactCurrency(v)}
+          />
+          <Tooltip
             formatter={(value: number) => formatCurrency(value)}
-            contentStyle={{ 
-              backgroundColor: "hsl(var(--card))", 
+            contentStyle={{
+              backgroundColor: "hsl(var(--card))",
               border: "1px solid hsl(var(--border))",
               borderRadius: "8px",
-              fontSize: "12px"
+              fontSize: "12px",
             }}
           />
           <Bar dataKey="value" fill="hsl(210, 70%, 40%)" radius={[4, 4, 0, 0]} className="hover:opacity-80" />
@@ -383,10 +494,10 @@ export function AgingChart({ data }: { data: BIChartData["aging"] }) {
   const { onChartClick, openDrilldown } = useBIFilters();
 
   const agingColors = [
-    "hsl(152, 60%, 38%)",  // 0-30 - verde
-    "hsl(38, 80%, 50%)",   // 31-60 - amarelo
-    "hsl(25, 90%, 50%)",   // 61-90 - laranja
-    "hsl(0, 65%, 50%)",    // 90+ - vermelho
+    "hsl(152, 60%, 38%)", // 0-30 - verde
+    "hsl(38, 80%, 50%)", // 31-60 - amarelo
+    "hsl(25, 90%, 50%)", // 61-90 - laranja
+    "hsl(0, 65%, 50%)", // 90+ - vermelho
   ];
 
   const handleClick = (range: string, value: number) => {
@@ -395,15 +506,23 @@ export function AgingChart({ data }: { data: BIChartData["aging"] }) {
       type: "aging",
       title: `Aging: ${range}`,
       value: range,
-      filters: { agingRange: range === "0-30 dias" ? "0-30" : range === "31-60 dias" ? "31-60" : range === "61-90 dias" ? "61-90" : "90+" },
+      filters: {
+        agingRange:
+          range === "0-30 dias" ? "0-30" : range === "31-60 dias" ? "31-60" : range === "61-90 dias" ? "61-90" : "90+",
+      },
     });
   };
 
   return (
-    <ChartCard title="Aging - Recebíveis por Faixa" type="competencia" isEmpty={data.every(d => d.value === 0)} interactive>
+    <ChartCard
+      title="Aging - Recebíveis por Faixa"
+      type="competencia"
+      isEmpty={data.every((d) => d.value === 0)}
+      interactive
+    >
       <ResponsiveContainer width="100%" height={220}>
-        <BarChart 
-          data={data} 
+        <BarChart
+          data={data}
           margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
           onClick={(e) => {
             if (e?.activePayload?.[0]) {
@@ -415,17 +534,21 @@ export function AgingChart({ data }: { data: BIChartData["aging"] }) {
         >
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
           <XAxis dataKey="range" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
-          <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => formatCompactCurrency(v)} />
-          <Tooltip 
-            formatter={(value: number, name: string, props: any) => [
+          <YAxis
+            tick={{ fontSize: 10 }}
+            stroke="hsl(var(--muted-foreground))"
+            tickFormatter={(v) => formatCompactCurrency(v)}
+          />
+          <Tooltip
+            formatter={(value: number, _name: string, props: any) => [
               formatCurrency(value),
-              `${props.payload.count} títulos`
+              `${props.payload.count} títulos`,
             ]}
-            contentStyle={{ 
-              backgroundColor: "hsl(var(--card))", 
+            contentStyle={{
+              backgroundColor: "hsl(var(--card))",
               border: "1px solid hsl(var(--border))",
               borderRadius: "8px",
-              fontSize: "12px"
+              fontSize: "12px",
             }}
           />
           <Bar dataKey="value" radius={[4, 4, 0, 0]} className="hover:opacity-80">
@@ -449,17 +572,21 @@ export function GlossByPayerChart({ data }: { data: BIChartData["glossByPayer"] 
         <BarChart data={data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
           <XAxis dataKey="payer" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
-          <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => formatCompactCurrency(v)} />
-          <Tooltip 
-            formatter={(value: number, name: string, props: any) => [
+          <YAxis
+            tick={{ fontSize: 10 }}
+            stroke="hsl(var(--muted-foreground))"
+            tickFormatter={(v) => formatCompactCurrency(v)}
+          />
+          <Tooltip
+            formatter={(value: number, _name: string, props: any) => [
               formatCurrency(value),
-              `${props.payload.percentage.toFixed(1)}% do total`
+              `${props.payload.percentage.toFixed(1)}% do total`,
             ]}
-            contentStyle={{ 
-              backgroundColor: "hsl(var(--card))", 
+            contentStyle={{
+              backgroundColor: "hsl(var(--card))",
               border: "1px solid hsl(var(--border))",
               borderRadius: "8px",
-              fontSize: "12px"
+              fontSize: "12px",
             }}
           />
           <Bar dataKey="value" fill="hsl(0, 65%, 50%)" radius={[4, 4, 0, 0]} />
