@@ -1,32 +1,24 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { format, parse, isValid, startOfMonth, endOfMonth, isWithinInterval } from "date-fns";
-import { Upload, Download, FileText, AlertCircle, Loader2, AlertTriangle, Package, Search, ArrowUpDown } from "lucide-react";
+import {
+  Upload,
+  Download,
+  FileText,
+  AlertCircle,
+  Loader2,
+  AlertTriangle,
+  Package,
+  Search,
+  ArrowUpDown,
+} from "lucide-react";
 import { toast } from "sonner";
 
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -56,6 +48,7 @@ interface ImportContext {
   payer_type: "CONVENIO" | "PARTICULAR";
   convenio: string;
   payment_method: string;
+  doctor_id?: string; // ✅ opcional
 }
 
 type RowStatus = "OK" | "ERRO" | "DUPLICADA";
@@ -65,6 +58,8 @@ interface ParsedRow {
   production_date: string | null; // YYYY-MM-DD
   unit_value: number | null;
   paciente_nome: string;
+  doctor_id?: string | null;
+  doctor_name?: string | null;
   isValid: boolean;
   errors: string[];
   isDuplicate: boolean;
@@ -108,10 +103,10 @@ const DEFAULT_PAYERS = [
 
 // Modelo CSV enxuto (colunas obrigatórias apenas)
 const TEMPLATE_CSV = `sep=;
-data_producao;valor_unitario;paciente_nome
-15/01/2026;150,00;João da Silva
-16/01/2026;200,00;
-17/01/2026;175,50;Maria Souza`;
+data_producao;valor_unitario;paciente_nome;medico
+15/01/2026;150,00;João da Silva;
+16/01/2026;200,00;;
+17/01/2026;175,50;Maria Souza;`;
 
 // ============= HELPERS =============
 
@@ -122,34 +117,43 @@ function parseDateOnly(yyyyMmDd: string): Date {
 // Status priority for sorting (ERRO > DUPLICADA > OK)
 function getStatusPriority(status: RowStatus): number {
   switch (status) {
-    case "ERRO": return 0;
-    case "DUPLICADA": return 1;
-    case "OK": return 2;
-    default: return 3;
+    case "ERRO":
+      return 0;
+    case "DUPLICADA":
+      return 1;
+    case "OK":
+      return 2;
+    default:
+      return 3;
   }
 }
 
+function normalizeDoctorName(name: string): string {
+  return (name || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // remove acentos
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 // ============= COMPONENT =============
-export function ProductionImportModal({
-  open,
-  onOpenChange,
-  onImportComplete,
-}: ProductionImportModalProps) {
+export function ProductionImportModal({ open, onOpenChange, onImportComplete }: ProductionImportModalProps) {
   const { currentCompany } = useAuth();
   const { settings, extendedSettings } = useCompanySettings();
   const { refreshAll } = useGlobalRealtime();
   const { calculateComponents, validateTotal, getEffectiveRule } = usePackagePricing();
 
   // ============= DERIVED DATA =============
-  
+
   // Unidades - IDÊNTICO ao formulário manual
-  const units = settings?.units?.filter(u => u.active !== false) || [];
+  const units = settings?.units?.filter((u) => u.active !== false) || [];
 
   // Tipos de produção - MESMA FONTE do formulário manual (BASE_PRODUCTION_TYPES + PACOTE_BOX/GTA)
   // GARANTIR que pacotes SEMPRE apareçam, independente das configurações da empresa
   const productionTypes = useMemo(() => {
     const allTypes = [...new Set([...BASE_PRODUCTION_TYPES, ...PACKAGE_PRODUCTION_TYPES])];
-    return allTypes.map(id => ({
+    return allTypes.map((id) => ({
       id,
       name: PRODUCTION_TYPE_LABELS[id] || id,
     }));
@@ -161,11 +165,11 @@ export function ProductionImportModal({
     if (fromSettings && Array.isArray(fromSettings) && fromSettings.length > 0) {
       return fromSettings.filter((p: any) => p.type === "CONVENIO" && p.active !== false);
     }
-    return DEFAULT_PAYERS.filter(p => p.type === "CONVENIO");
+    return DEFAULT_PAYERS.filter((p) => p.type === "CONVENIO");
   }, [extendedSettings?.payers]);
 
   // ============= STATE =============
-  
+
   const [step, setStep] = useState<Step>("context");
   const [isImporting, setIsImporting] = useState(false);
   const importingRef = useRef(false);
@@ -177,15 +181,72 @@ export function ProductionImportModal({
     payer_type: "CONVENIO",
     convenio: "",
     payment_method: "",
+    doctor_id: "",
   });
+
+  // ============= MÉDICO (OPCIONAL) =============
+  const companyId = currentCompany?.id;
+
+  const [doctorOptions, setDoctorOptions] = useState<{ id: string; name: string }[]>([]);
+  const [doctorsLoading, setDoctorsLoading] = useState(false);
+
+  const doctorNameToId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const d of doctorOptions) {
+      map.set(normalizeDoctorName(d.name), d.id);
+    }
+    return map;
+  }, [doctorOptions]);
+
+  useEffect(() => {
+    const fetchDoctors = async () => {
+      if (!companyId || !open) {
+        setDoctorOptions([]);
+        return;
+      }
+
+      try {
+        setDoctorsLoading(true);
+
+        const { data, error } = await supabase
+          .from("doctors")
+          .select("id, name, active, company_id")
+          .eq("company_id", companyId)
+          .eq("active", true)
+          .order("name", { ascending: true });
+
+        if (error) {
+          console.error("Erro ao buscar médicos:", error);
+          setDoctorOptions([]);
+          return;
+        }
+
+        const normalized = (data ?? [])
+          .map((d: any) => ({
+            id: String(d?.id ?? ""),
+            name: String(d?.name ?? "").trim(),
+          }))
+          .filter((d: any) => Boolean(d.id) && Boolean(d.name));
+
+        setDoctorOptions(normalized);
+      } catch (err) {
+        console.error("Erro ao buscar médicos:", err);
+        setDoctorOptions([]);
+      } finally {
+        setDoctorsLoading(false);
+      }
+    };
+
+    fetchDoctors();
+  }, [companyId, open]);
 
   const [fileName, setFileName] = useState("");
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
   const [duplicatesConfirmed, setDuplicatesConfirmed] = useState(false);
-  
+
   // NEW: Toggle para incluir duplicadas (por padrão DESMARCADO = só importa NOVAS)
   const [includeDuplicates, setIncludeDuplicates] = useState(false);
-  
+
   // NEW: Filtros e ordenação da tabela
   const [filterType, setFilterType] = useState<FilterType>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -222,10 +283,10 @@ export function ProductionImportModal({
 
   const summary = useMemo(() => {
     const total = parsedRows.length;
-    const valid = parsedRows.filter(r => r.isValid);
-    const invalid = parsedRows.filter(r => !r.isValid);
-    const duplicates = parsedRows.filter(r => r.isValid && r.isDuplicate);
-    const newRows = parsedRows.filter(r => r.isValid && !r.isDuplicate);
+    const valid = parsedRows.filter((r) => r.isValid);
+    const invalid = parsedRows.filter((r) => !r.isValid);
+    const duplicates = parsedRows.filter((r) => r.isValid && r.isDuplicate);
+    const newRows = parsedRows.filter((r) => r.isValid && !r.isDuplicate);
 
     return {
       total,
@@ -239,10 +300,10 @@ export function ProductionImportModal({
   }, [parsedRows]);
 
   const hasDuplicates = summary.duplicateCount > 0;
-  
+
   // Quantas linhas serão importadas de fato
   const rowsToImportCount = includeDuplicates ? summary.validCount : summary.newCount;
-  
+
   // Pode importar se tem linhas novas (ou duplicadas + confirmado)
   const canImport = rowsToImportCount > 0 && (!includeDuplicates || !hasDuplicates || duplicatesConfirmed);
 
@@ -270,225 +331,279 @@ export function ProductionImportModal({
   const parseValue = useCallback((value: string): number | null => {
     if (!value?.trim()) return null;
     let normalized = value.trim().replace(/\s/g, "");
-    
+
     // Formato brasileiro: 1.234,56 → 1234.56
     if (normalized.includes(",") && normalized.includes(".")) {
       normalized = normalized.replace(/\./g, "").replace(",", ".");
     } else if (normalized.includes(",")) {
       normalized = normalized.replace(",", ".");
     }
-    
+
     const num = parseFloat(normalized);
     return isNaN(num) || num <= 0 ? null : num;
   }, []);
 
-  const validateRow = useCallback((rawRow: Record<string, string>, rowNumber: number): ParsedRow => {
-    const errors: string[] = [];
+  const validateRow = useCallback(
+    (rawRow: Record<string, string>, rowNumber: number): ParsedRow => {
+      const errors: string[] = [];
 
-    // Parse date
-    const dateStr = rawRow["data_producao"] || rawRow["data_produção"] || "";
-    const { date, formatted: production_date } = parseDate(dateStr);
+      // Parse date
+      const dateStr = rawRow["data_producao"] || rawRow["data_produção"] || "";
+      const { date, formatted: production_date } = parseDate(dateStr);
 
-    if (!production_date) {
-      errors.push("Data inválida");
-    } else if (date) {
-      // Validar se está dentro da competência
-      const [year, month] = context.competencia.split("-").map(Number);
-      const compStart = startOfMonth(new Date(year, month - 1));
-      const compEnd = endOfMonth(new Date(year, month - 1));
+      if (!production_date) {
+        errors.push("Data inválida");
+      } else if (date) {
+        // Validar se está dentro da competência
+        const [year, month] = context.competencia.split("-").map(Number);
+        const compStart = startOfMonth(new Date(year, month - 1));
+        const compEnd = endOfMonth(new Date(year, month - 1));
 
-      if (!isWithinInterval(date, { start: compStart, end: compEnd })) {
-        errors.push(`Fora da competência ${format(compStart, "MM/yyyy")}`);
+        if (!isWithinInterval(date, { start: compStart, end: compEnd })) {
+          errors.push(`Fora da competência ${format(compStart, "MM/yyyy")}`);
+        }
       }
-    }
 
-    // Parse value
-    const valueStr = rawRow["valor_unitario"] || rawRow["valor_unitário"] || "";
-    const unit_value = parseValue(valueStr);
-    if (unit_value === null) {
-      errors.push("Valor inválido");
-    }
+      // Parse value
+      const valueStr = rawRow["valor_unitario"] || rawRow["valor_unitário"] || "";
+      const unit_value = parseValue(valueStr);
+      if (unit_value === null) {
+        errors.push("Valor inválido");
+      }
 
-    // Paciente (opcional)
-    const paciente_nome = (rawRow["paciente_nome"] || rawRow["paciente"] || "").trim();
+      // Paciente (opcional)
+      const paciente_nome = (rawRow["paciente_nome"] || rawRow["paciente"] || "").trim();
 
-    // ============= VALIDAÇÃO DE PACOTE =============
-    let isPackage = false;
-    let consultAmount = 0;
-    let feeAmount = 0;
-    let matmedAmount = 0;
+      // Médico (opcional) — pode vir no CSV por ID ou por nome; se não vier, pode usar o padrão do contexto
+      const rawDoctorId = (rawRow["doctor_id"] || rawRow["medico_id"] || rawRow["médico_id"] || "").trim();
+      const rawDoctorName = (
+        rawRow["doctor_name"] ||
+        rawRow["medico_nome"] ||
+        rawRow["médico_nome"] ||
+        rawRow["medico"] ||
+        rawRow["médico"] ||
+        rawRow["doctor"] ||
+        ""
+      ).trim();
 
-    if (isPackageImport && unit_value !== null && production_date && context.convenio) {
-      isPackage = true;
-      const packageType = context.production_type as PackageType;
-      const planId = context.convenio;
-      
-      // Usar a mesma função do lançamento manual
-      const validation = validateTotal(unit_value, planId, packageType, production_date, 1);
-      
-      if (!validation.valid) {
-        errors.push(validation.message || "Valor do pacote menor que consulta+box");
+      let doctor_id: string | null = null;
+      let doctor_name: string | null = null;
+
+      if (rawDoctorId) {
+        doctor_id = rawDoctorId;
+        doctor_name = rawDoctorName || null;
+      } else if (rawDoctorName) {
+        const mapped = doctorNameToId.get(normalizeDoctorName(rawDoctorName));
+        if (mapped) {
+          doctor_id = mapped;
+          doctor_name = rawDoctorName;
+        } else {
+          // Se veio nome e não achou, é erro (para evitar importação silenciosa errada)
+          errors.push(`Médico não encontrado: "${rawDoctorName}"`);
+        }
       } else {
-        // Calcular componentes
-        const components = calculateComponents(unit_value, planId, packageType, production_date, 1);
-        consultAmount = components.consultAmount;
-        feeAmount = components.feeAmount;
-        matmedAmount = components.matmedAmount;
+        // sem médico na linha → deixa null e (se houver) RPC aplica o padrão do contexto
+        doctor_id = null;
+        doctor_name = null;
       }
-    }
 
-    return {
-      rowNumber,
-      production_date,
-      unit_value,
-      paciente_nome,
-      isValid: errors.length === 0,
-      errors,
-      isDuplicate: false,
-      status: errors.length === 0 ? "OK" : "ERRO",
-      // Package breakdown
-      isPackage,
-      consultAmount,
-      feeAmount,
-      matmedAmount,
-    };
-  }, [context.competencia, context.convenio, context.production_type, parseDate, parseValue, isPackageImport, validateTotal, calculateComponents]);
+      // ============= VALIDAÇÃO DE PACOTE =============
+      let isPackage = false;
+      let consultAmount = 0;
+      let feeAmount = 0;
+      let matmedAmount = 0;
+
+      if (isPackageImport && unit_value !== null && production_date && context.convenio) {
+        isPackage = true;
+        const packageType = context.production_type as PackageType;
+        const planId = context.convenio;
+
+        // Usar a mesma função do lançamento manual
+        const validation = validateTotal(unit_value, planId, packageType, production_date, 1);
+
+        if (!validation.valid) {
+          errors.push(validation.message || "Valor do pacote menor que consulta+box");
+        } else {
+          // Calcular componentes
+          const components = calculateComponents(unit_value, planId, packageType, production_date, 1);
+          consultAmount = components.consultAmount;
+          feeAmount = components.feeAmount;
+          matmedAmount = components.matmedAmount;
+        }
+      }
+
+      return {
+        rowNumber,
+        production_date,
+        unit_value,
+        paciente_nome,
+        doctor_id,
+        doctor_name,
+        isValid: errors.length === 0,
+        errors,
+        isDuplicate: false,
+        status: errors.length === 0 ? "OK" : "ERRO",
+        // Package breakdown
+        isPackage,
+        consultAmount,
+        feeAmount,
+        matmedAmount,
+      };
+    },
+    [
+      context.competencia,
+      context.convenio,
+      context.production_type,
+      parseDate,
+      parseValue,
+      isPackageImport,
+      validateTotal,
+      calculateComponents,
+    ],
+  );
 
   // ============= DUPLICATE CHECK =============
 
-  const checkDuplicates = useCallback(async (rows: ParsedRow[]) => {
-    if (!currentCompany?.id) return;
+  const checkDuplicates = useCallback(
+    async (rows: ParsedRow[]) => {
+      if (!currentCompany?.id) return;
 
-    const validRows = rows.filter(r => r.isValid && r.production_date);
-    if (validRows.length === 0) return;
+      const validRows = rows.filter((r) => r.isValid && r.production_date);
+      if (validRows.length === 0) return;
 
-    try {
-      // Buscar produções existentes com mesmo contexto
-      let query = supabase
-        .from("productions")
-        .select("production_date, unit_value, production_type, unit, payer_type, convenio, paciente_nome")
-        .eq("company_id", currentCompany.id)
-        .eq("competencia", context.competencia)
-        .eq("unit", context.unit)
-        .eq("production_type", context.production_type)
-        .eq("payer_type", context.payer_type);
+      try {
+        // Buscar produções existentes com mesmo contexto
+        let query = supabase
+          .from("productions")
+          .select("production_date, unit_value, production_type, unit, payer_type, convenio, paciente_nome")
+          .eq("company_id", currentCompany.id)
+          .eq("competencia", context.competencia)
+          .eq("unit", context.unit)
+          .eq("production_type", context.production_type)
+          .eq("payer_type", context.payer_type);
 
-      if (context.payer_type === "CONVENIO" && context.convenio) {
-        query = query.eq("convenio", context.convenio);
-      }
-
-      const { data: existing } = await query;
-
-      if (!existing || existing.length === 0) {
-        // Sem duplicados
-        setParsedRows(rows.map(r => ({
-          ...r,
-          isDuplicate: false,
-          status: r.isValid ? "OK" : "ERRO",
-        })));
-        return;
-      }
-
-      // Criar set de chaves existentes
-      const existingKeys = new Set(
-        existing.map(p =>
-          `${p.production_date}|${Number(p.unit_value).toFixed(2)}|${(p.paciente_nome || "").toLowerCase().trim()}`
-        )
-      );
-
-      // Marcar duplicados
-      const updatedRows = rows.map(r => {
-        if (!r.isValid || !r.production_date) {
-          return { ...r, isDuplicate: false, status: "ERRO" as RowStatus };
+        if (context.payer_type === "CONVENIO" && context.convenio) {
+          query = query.eq("convenio", context.convenio);
         }
 
-        const key = `${r.production_date}|${(r.unit_value || 0).toFixed(2)}|${r.paciente_nome.toLowerCase().trim()}`;
-        const isDuplicate = existingKeys.has(key);
+        const { data: existing } = await query;
 
-        return {
-          ...r,
-          isDuplicate,
-          status: isDuplicate ? "DUPLICADA" as RowStatus : "OK" as RowStatus,
-        };
-      });
+        if (!existing || existing.length === 0) {
+          // Sem duplicados
+          setParsedRows(
+            rows.map((r) => ({
+              ...r,
+              isDuplicate: false,
+              status: r.isValid ? "OK" : "ERRO",
+            })),
+          );
+          return;
+        }
 
-      setParsedRows(updatedRows);
-    } catch (err) {
-      console.error("Erro ao verificar duplicados:", err);
-    }
-  }, [currentCompany?.id, context]);
+        // Criar set de chaves existentes
+        const existingKeys = new Set(
+          existing.map(
+            (p) =>
+              `${p.production_date}|${Number(p.unit_value).toFixed(2)}|${(p.paciente_nome || "").toLowerCase().trim()}`,
+          ),
+        );
+
+        // Marcar duplicados
+        const updatedRows = rows.map((r) => {
+          if (!r.isValid || !r.production_date) {
+            return { ...r, isDuplicate: false, status: "ERRO" as RowStatus };
+          }
+
+          const key = `${r.production_date}|${(r.unit_value || 0).toFixed(2)}|${r.paciente_nome.toLowerCase().trim()}`;
+          const isDuplicate = existingKeys.has(key);
+
+          return {
+            ...r,
+            isDuplicate,
+            status: isDuplicate ? ("DUPLICADA" as RowStatus) : ("OK" as RowStatus),
+          };
+        });
+
+        setParsedRows(updatedRows);
+      } catch (err) {
+        console.error("Erro ao verificar duplicados:", err);
+      }
+    },
+    [currentCompany?.id, context],
+  );
 
   // ============= FILE UPLOAD =============
 
-  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleFileUpload = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
 
-    setFileName(file.name);
-    setDuplicatesConfirmed(false);
+      setFileName(file.name);
+      setDuplicatesConfirmed(false);
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      let text = event.target?.result as string;
-      if (!text) {
-        toast.error("Erro ao ler arquivo");
-        return;
-      }
-
-      // Remover BOM do Excel
-      text = text.replace(/^\uFEFF/, "");
-
-      // Remover linha sep=; se existir
-      if (text.startsWith("sep=")) {
-        const firstNewline = text.indexOf("\n");
-        if (firstNewline !== -1) {
-          text = text.substring(firstNewline + 1);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        let text = event.target?.result as string;
+        if (!text) {
+          toast.error("Erro ao ler arquivo");
+          return;
         }
-      }
 
-      const lines = text.split(/\r?\n/).filter(line => line.trim());
-      if (lines.length < 2) {
-        toast.error("CSV deve ter cabeçalho e ao menos uma linha de dados");
-        return;
-      }
+        // Remover BOM do Excel
+        text = text.replace(/^\uFEFF/, "");
 
-      // Detectar separador
-      const headerLine = lines[0];
-      const separator = headerLine.includes(";") ? ";" : ",";
+        // Remover linha sep=; se existir
+        if (text.startsWith("sep=")) {
+          const firstNewline = text.indexOf("\n");
+          if (firstNewline !== -1) {
+            text = text.substring(firstNewline + 1);
+          }
+        }
 
-      const headers = headerLine
-        .split(separator)
-        .map(h => h.trim().toLowerCase().replace(/[""]/g, ""));
+        const lines = text.split(/\r?\n/).filter((line) => line.trim());
+        if (lines.length < 2) {
+          toast.error("CSV deve ter cabeçalho e ao menos uma linha de dados");
+          return;
+        }
 
-      // Validar colunas obrigatórias
-      const hasDate = headers.some(h => h.includes("data"));
-      const hasValue = headers.some(h => h.includes("valor"));
+        // Detectar separador
+        const headerLine = lines[0];
+        const separator = headerLine.includes(";") ? ";" : ",";
 
-      if (!hasDate || !hasValue) {
-        toast.error("CSV deve conter colunas: data_producao, valor_unitario");
-        return;
-      }
+        const headers = headerLine.split(separator).map((h) => h.trim().toLowerCase().replace(/[""]/g, ""));
 
-      // Parse linhas
-      const rows: ParsedRow[] = [];
-      for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
+        // Validar colunas obrigatórias
+        const hasDate = headers.some((h) => h.includes("data"));
+        const hasValue = headers.some((h) => h.includes("valor"));
 
-        const values = line.split(separator).map(v => v.trim().replace(/[""]/g, ""));
-        const rawRow: Record<string, string> = {};
-        headers.forEach((header, idx) => {
-          rawRow[header] = values[idx] || "";
-        });
+        if (!hasDate || !hasValue) {
+          toast.error("CSV deve conter colunas: data_producao, valor_unitario");
+          return;
+        }
 
-        rows.push(validateRow(rawRow, i));
-      }
+        // Parse linhas
+        const rows: ParsedRow[] = [];
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
 
-      setParsedRows(rows);
-    };
+          const values = line.split(separator).map((v) => v.trim().replace(/[""]/g, ""));
+          const rawRow: Record<string, string> = {};
+          headers.forEach((header, idx) => {
+            rawRow[header] = values[idx] || "";
+          });
 
-    reader.readAsText(file, "UTF-8");
-  }, [validateRow]);
+          rows.push(validateRow(rawRow, i));
+        }
+
+        setParsedRows(rows);
+      };
+
+      reader.readAsText(file, "UTF-8");
+    },
+    [validateRow],
+  );
 
   // Verificar duplicados quando parsedRows mudar
   useEffect(() => {
@@ -524,10 +639,10 @@ export function ProductionImportModal({
     }
 
     // NOVO: Filtrar linhas - por padrão só NOVAS, a menos que includeDuplicates
-    const rowsToProcess = includeDuplicates 
-      ? parsedRows.filter(r => r.isValid)
-      : parsedRows.filter(r => r.isValid && !r.isDuplicate);
-      
+    const rowsToProcess = includeDuplicates
+      ? parsedRows.filter((r) => r.isValid)
+      : parsedRows.filter((r) => r.isValid && !r.isDuplicate);
+
     if (rowsToProcess.length === 0) {
       toast.error("Nenhuma linha válida para importar");
       return;
@@ -538,10 +653,11 @@ export function ProductionImportModal({
 
     try {
       // Preparar linhas com dados de pacote quando aplicável
-      const rowsToInsert = rowsToProcess.map(r => ({
+      const rowsToInsert = rowsToProcess.map((r) => ({
         production_date: r.production_date,
         unit_value: r.unit_value,
         paciente_nome: r.paciente_nome || null,
+        doctor_id: r.doctor_id || null,
         // Campos de pacote
         is_package: r.isPackage || false,
         consult_amount: r.consultAmount || 0,
@@ -556,6 +672,7 @@ export function ProductionImportModal({
         payer_type: context.payer_type,
         convenio: context.convenio || null,
         payment_method: context.payer_type === "PARTICULAR" ? context.payment_method : null,
+        doctor_id: context.doctor_id || null,
         // Indicar que é importação de pacote para a RPC usar os valores calculados
         is_package_import: isPackageImport,
         package_type: isPackageImport ? context.production_type : null,
@@ -583,7 +700,7 @@ export function ProductionImportModal({
       }
 
       toast.success(
-        `Importação concluída: ${result.imported_count} produções criadas | Total ${formatCurrency(result.total_value || 0)}`
+        `Importação concluída: ${result.imported_count} produções criadas | Total ${formatCurrency(result.total_value || 0)}`,
       );
 
       refreshAll();
@@ -606,22 +723,20 @@ export function ProductionImportModal({
     // Apply filter
     switch (filterType) {
       case "errors":
-        rows = rows.filter(r => r.status === "ERRO");
+        rows = rows.filter((r) => r.status === "ERRO");
         break;
       case "duplicates":
-        rows = rows.filter(r => r.status === "DUPLICADA");
+        rows = rows.filter((r) => r.status === "DUPLICADA");
         break;
       case "new":
-        rows = rows.filter(r => r.status === "OK" && !r.isDuplicate);
+        rows = rows.filter((r) => r.status === "OK" && !r.isDuplicate);
         break;
     }
 
     // Apply search (by paciente_nome)
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase().trim();
-      rows = rows.filter(r => 
-        r.paciente_nome.toLowerCase().includes(query)
-      );
+      rows = rows.filter((r) => r.paciente_nome.toLowerCase().includes(query));
     }
 
     // Apply sorting
@@ -646,7 +761,7 @@ export function ProductionImportModal({
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
-      setSortDirection(d => d === "asc" ? "desc" : "asc");
+      setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
     } else {
       setSortField(field);
       setSortDirection("asc");
@@ -664,6 +779,7 @@ export function ProductionImportModal({
       payer_type: "CONVENIO",
       convenio: "",
       payment_method: "",
+      doctor_id: "",
     });
     setFileName("");
     setParsedRows([]);
@@ -701,8 +817,8 @@ export function ProductionImportModal({
             <Alert>
               <FileText className="h-4 w-4" />
               <AlertDescription>
-                Preencha o contexto que será aplicado a <strong>TODAS</strong> as linhas do CSV.
-                Idêntico ao lançamento manual.
+                Preencha o contexto que será aplicado a <strong>TODAS</strong> as linhas do CSV. Idêntico ao lançamento
+                manual.
               </AlertDescription>
             </Alert>
 
@@ -712,13 +828,13 @@ export function ProductionImportModal({
                 <Label>Tipo de Produção *</Label>
                 <Select
                   value={context.production_type}
-                  onValueChange={v => setContext(c => ({ ...c, production_type: v }))}
+                  onValueChange={(v) => setContext((c) => ({ ...c, production_type: v }))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {productionTypes.map(type => (
+                    {productionTypes.map((type) => (
                       <SelectItem key={type.id} value={type.id}>
                         {type.name}
                       </SelectItem>
@@ -730,15 +846,12 @@ export function ProductionImportModal({
               {/* Unidade */}
               <div className="space-y-2">
                 <Label>Unidade *</Label>
-                <Select
-                  value={context.unit}
-                  onValueChange={v => setContext(c => ({ ...c, unit: v }))}
-                >
+                <Select value={context.unit} onValueChange={(v) => setContext((c) => ({ ...c, unit: v }))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {units.map(unit => (
+                    {units.map((unit) => (
                       <SelectItem key={unit.id} value={unit.id}>
                         {unit.name}
                       </SelectItem>
@@ -747,18 +860,44 @@ export function ProductionImportModal({
                 </Select>
               </div>
 
+              {/* Médico (opcional) */}
+              <div className="space-y-2">
+                <Label>Médico (opcional)</Label>
+                <Select
+                  value={context.doctor_id || "__NONE__"}
+                  onValueChange={(v) => setContext((c) => ({ ...c, doctor_id: v === "__NONE__" ? "" : v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={doctorsLoading ? "Carregando..." : "Sem médico"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__NONE__">Sem médico</SelectItem>
+                    {doctorOptions.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <p className="text-xs text-muted-foreground">
+                  Dica: você pode preencher no CSV a coluna <b>medico</b> (nome) ou <b>doctor_id</b> (UUID). Se não
+                  preencher, usamos este médico como padrão (ou fica sem médico).
+                </p>
+              </div>
+
               {/* Competência - EXIBE MM/YYYY */}
               <div className="space-y-2">
                 <Label>Competência *</Label>
                 <Select
                   value={context.competencia}
-                  onValueChange={v => setContext(c => ({ ...c, competencia: v }))}
+                  onValueChange={(v) => setContext((c) => ({ ...c, competencia: v }))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {competenciaOptions.map(opt => (
+                    {competenciaOptions.map((opt) => (
                       <SelectItem key={opt.value} value={opt.value}>
                         {opt.label}
                       </SelectItem>
@@ -772,12 +911,14 @@ export function ProductionImportModal({
                 <Label>Pagador *</Label>
                 <Select
                   value={context.payer_type}
-                  onValueChange={v => setContext(c => ({
-                    ...c,
-                    payer_type: v as "CONVENIO" | "PARTICULAR",
-                    convenio: v === "PARTICULAR" ? "" : c.convenio,
-                    payment_method: v === "CONVENIO" ? "" : c.payment_method,
-                  }))}
+                  onValueChange={(v) =>
+                    setContext((c) => ({
+                      ...c,
+                      payer_type: v as "CONVENIO" | "PARTICULAR",
+                      convenio: v === "PARTICULAR" ? "" : c.convenio,
+                      payment_method: v === "CONVENIO" ? "" : c.payment_method,
+                    }))
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -793,10 +934,7 @@ export function ProductionImportModal({
               {context.payer_type === "CONVENIO" && (
                 <div className="space-y-2 col-span-2">
                   <Label>Convênio *</Label>
-                  <Select
-                    value={context.convenio}
-                    onValueChange={v => setContext(c => ({ ...c, convenio: v }))}
-                  >
+                  <Select value={context.convenio} onValueChange={(v) => setContext((c) => ({ ...c, convenio: v }))}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione o convênio..." />
                     </SelectTrigger>
@@ -817,13 +955,13 @@ export function ProductionImportModal({
                   <Label>Modo de Pagamento *</Label>
                   <Select
                     value={context.payment_method}
-                    onValueChange={v => setContext(c => ({ ...c, payment_method: v }))}
+                    onValueChange={(v) => setContext((c) => ({ ...c, payment_method: v }))}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {PAYMENT_METHODS.map(pm => (
+                      {PAYMENT_METHODS.map((pm) => (
                         <SelectItem key={pm.id} value={pm.id}>
                           {pm.name}
                         </SelectItem>
@@ -860,25 +998,33 @@ export function ProductionImportModal({
                 )}
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
-                <span>Tipo: <strong>{productionTypes.find(t => t.id === context.production_type)?.name}</strong></span>
-                <span>Unidade: <strong>{units.find(u => u.id === context.unit)?.name}</strong></span>
-                <span>Competência: <strong>{context.competencia.split("-").reverse().join("/")}</strong></span>
+                <span>
+                  Tipo: <strong>{productionTypes.find((t) => t.id === context.production_type)?.name}</strong>
+                </span>
+                <span>
+                  Unidade: <strong>{units.find((u) => u.id === context.unit)?.name}</strong>
+                </span>
+                <span>
+                  Competência: <strong>{context.competencia.split("-").reverse().join("/")}</strong>
+                </span>
                 <span>
                   Pagador:{" "}
                   <strong>
-                    {context.payer_type === "PARTICULAR" 
-                      ? "Particular" 
+                    {context.payer_type === "PARTICULAR"
+                      ? "Particular"
                       : payers.find((p: any) => p.id === context.convenio)?.name || context.convenio}
                   </strong>
                 </span>
                 {context.payer_type === "PARTICULAR" && context.payment_method && (
-                  <span>Pagamento: <strong>{PAYMENT_METHODS.find(p => p.id === context.payment_method)?.name}</strong></span>
+                  <span>
+                    Pagamento: <strong>{PAYMENT_METHODS.find((p) => p.id === context.payment_method)?.name}</strong>
+                  </span>
                 )}
               </div>
               {isPackageImport && (
                 <div className="mt-2 text-xs text-muted-foreground border-t pt-2">
-                  <span className="text-foreground font-medium">Breakdown automático:</span>{" "}
-                  Consulta + Box/Taxa + Mat/Med = Total (usando regras de precificação do convênio selecionado)
+                  <span className="text-foreground font-medium">Breakdown automático:</span> Consulta + Box/Taxa +
+                  Mat/Med = Total (usando regras de precificação do convênio selecionado)
                 </div>
               )}
             </div>
@@ -886,12 +1032,7 @@ export function ProductionImportModal({
             {/* Upload area */}
             <div className="flex items-center gap-4">
               <div className="flex-1">
-                <Input
-                  type="file"
-                  accept=".csv"
-                  onChange={handleFileUpload}
-                  className="cursor-pointer"
-                />
+                <Input type="file" accept=".csv" onChange={handleFileUpload} className="cursor-pointer" />
               </div>
               <Button variant="outline" size="sm" onClick={downloadTemplate}>
                 <Download className="h-4 w-4 mr-1" />
@@ -904,11 +1045,21 @@ export function ProductionImportModal({
               <>
                 {/* Stats simples no topo */}
                 <div className="flex flex-wrap gap-4 text-sm py-2 px-3 bg-muted/30 rounded-md">
-                  <span>Total: <strong>{summary.total}</strong></span>
-                  <span className="text-green-600">Novas: <strong>{summary.newCount}</strong></span>
-                  <span className="text-destructive">Com erro: <strong>{summary.invalidCount}</strong></span>
-                  <span className="text-amber-600">Duplicadas: <strong>{summary.duplicateCount}</strong></span>
-                  <span className="ml-auto">Valor novas: <strong>{formatCurrency(summary.newTotalValue)}</strong></span>
+                  <span>
+                    Total: <strong>{summary.total}</strong>
+                  </span>
+                  <span className="text-green-600">
+                    Novas: <strong>{summary.newCount}</strong>
+                  </span>
+                  <span className="text-destructive">
+                    Com erro: <strong>{summary.invalidCount}</strong>
+                  </span>
+                  <span className="text-amber-600">
+                    Duplicadas: <strong>{summary.duplicateCount}</strong>
+                  </span>
+                  <span className="ml-auto">
+                    Valor novas: <strong>{formatCurrency(summary.newTotalValue)}</strong>
+                  </span>
                 </div>
 
                 {/* Filtros e busca */}
@@ -968,7 +1119,7 @@ export function ProductionImportModal({
                     <Table>
                       <TableHeader className="sticky top-0 bg-background z-10">
                         <TableRow>
-                          <TableHead 
+                          <TableHead
                             className="w-14 text-xs cursor-pointer select-none"
                             onClick={() => toggleSort("rowNumber")}
                           >
@@ -977,7 +1128,7 @@ export function ProductionImportModal({
                               {sortField === "rowNumber" && <ArrowUpDown className="h-3 w-3" />}
                             </span>
                           </TableHead>
-                          <TableHead 
+                          <TableHead
                             className="w-24 text-xs cursor-pointer select-none"
                             onClick={() => toggleSort("date")}
                           >
@@ -987,6 +1138,7 @@ export function ProductionImportModal({
                             </span>
                           </TableHead>
                           <TableHead className="text-xs">Paciente</TableHead>
+                          <TableHead className="text-xs">Médico</TableHead>
                           <TableHead className="w-24 text-right text-xs">Valor</TableHead>
                           {/* Colunas de breakdown para pacotes */}
                           {isPackageImport && (
@@ -996,7 +1148,7 @@ export function ProductionImportModal({
                               <TableHead className="w-20 text-right text-xs">Mat/Med</TableHead>
                             </>
                           )}
-                          <TableHead 
+                          <TableHead
                             className="w-24 text-center text-xs cursor-pointer select-none"
                             onClick={() => toggleSort("status")}
                           >
@@ -1009,24 +1161,38 @@ export function ProductionImportModal({
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredAndSortedRows.map(row => (
+                        {filteredAndSortedRows.map((row) => (
                           <TableRow
                             key={row.rowNumber}
                             className={
-                              row.status === "ERRO" ? "bg-destructive/5" :
-                              row.status === "DUPLICADA" ? "bg-amber-500/5" : ""
+                              row.status === "ERRO"
+                                ? "bg-destructive/5"
+                                : row.status === "DUPLICADA"
+                                  ? "bg-amber-500/5"
+                                  : ""
                             }
                           >
                             <TableCell className="text-muted-foreground font-mono text-xs py-1.5">
                               {row.rowNumber}
                             </TableCell>
                             <TableCell className="py-1.5 text-sm">
-                              {row.production_date
-                                ? format(parseDateOnly(row.production_date), "dd/MM/yyyy")
-                                : "-"}
+                              {row.production_date ? format(parseDateOnly(row.production_date), "dd/MM/yyyy") : "-"}
                             </TableCell>
                             <TableCell className="py-1.5 text-sm truncate max-w-[150px]">
                               {row.paciente_nome || <span className="text-muted-foreground">-</span>}
+                            </TableCell>
+                            <TableCell className="py-1.5 text-sm truncate max-w-[220px]">
+                              {row.doctor_name ? (
+                                <Badge variant="secondary" className="text-[11px]">
+                                  {row.doctor_name}
+                                </Badge>
+                              ) : context.doctor_id ? (
+                                <Badge variant="outline" className="text-[11px]">
+                                  Médico do contexto
+                                </Badge>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
                             </TableCell>
                             <TableCell className="text-right py-1.5 font-mono text-sm">
                               {row.unit_value !== null ? formatCurrency(row.unit_value) : "-"}
@@ -1041,7 +1207,9 @@ export function ProductionImportModal({
                                   {row.isValid && row.feeAmount ? formatCurrency(row.feeAmount) : "-"}
                                 </TableCell>
                                 <TableCell className="text-right py-1.5 font-mono text-xs text-muted-foreground">
-                                  {row.isValid && row.matmedAmount !== undefined ? formatCurrency(row.matmedAmount) : "-"}
+                                  {row.isValid && row.matmedAmount !== undefined
+                                    ? formatCurrency(row.matmedAmount)
+                                    : "-"}
                                 </TableCell>
                               </>
                             )}
@@ -1079,9 +1247,10 @@ export function ProductionImportModal({
                     <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
                     <div className="flex-1 space-y-3">
                       <p className="text-sm font-medium text-amber-800">
-                        Existem {summary.duplicateCount} linha(s) duplicada(s). Por padrão, serão importadas apenas as <strong>{summary.newCount}</strong> linhas novas.
+                        Existem {summary.duplicateCount} linha(s) duplicada(s). Por padrão, serão importadas apenas as{" "}
+                        <strong>{summary.newCount}</strong> linhas novas.
                       </p>
-                      
+
                       {/* Toggle para incluir duplicadas */}
                       <div className="flex items-center space-x-2">
                         <Switch
@@ -1093,14 +1262,14 @@ export function ProductionImportModal({
                           Incluir duplicadas na importação
                         </Label>
                       </div>
-                      
+
                       {/* Checkbox de confirmação (só aparece se toggle ativo) */}
                       {includeDuplicates && (
                         <div className="flex items-center space-x-2 pl-4 border-l-2 border-amber-400">
                           <Checkbox
                             id="confirm-duplicates"
                             checked={duplicatesConfirmed}
-                            onCheckedChange={checked => setDuplicatesConfirmed(!!checked)}
+                            onCheckedChange={(checked) => setDuplicatesConfirmed(!!checked)}
                           />
                           <Label htmlFor="confirm-duplicates" className="text-sm cursor-pointer">
                             Confirmo que revisei as duplicidades
@@ -1116,7 +1285,10 @@ export function ProductionImportModal({
                   <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />
                     <AlertDescription>
-                      Nenhuma linha para importar. {summary.invalidCount > 0 && "Corrija os erros no CSV."} {summary.duplicateCount > 0 && summary.newCount === 0 && "Todas as linhas válidas são duplicadas."}
+                      Nenhuma linha para importar. {summary.invalidCount > 0 && "Corrija os erros no CSV."}{" "}
+                      {summary.duplicateCount > 0 &&
+                        summary.newCount === 0 &&
+                        "Todas as linhas válidas são duplicadas."}
                     </AlertDescription>
                   </Alert>
                 )}
@@ -1140,8 +1312,7 @@ export function ProductionImportModal({
                   {isImporting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   {includeDuplicates && hasDuplicates
                     ? `⚠️ Importar mesmo assim (${rowsToImportCount})`
-                    : `Importar (${rowsToImportCount} novas)`
-                  }
+                    : `Importar (${rowsToImportCount} novas)`}
                 </Button>
               </div>
             </div>
