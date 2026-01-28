@@ -35,6 +35,9 @@ const getProductionTypeLabel = (type: string): string => {
 // Tipos de pacote convênio
 const PACKAGE_PRODUCTION_TYPES = ["PACOTE_BOX", "PACOTE_GTA"];
 
+// ✅ Tipo Mat/Med (lançamento manual)
+const MATMED_PRODUCTION_TYPE = "MAT_MED";
+
 const CONVENIOS = ["IPASGO", "UNIMED", "BRADESCO", "GEAP", "SUS"];
 
 // Sugestões padrão de exames
@@ -199,9 +202,15 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
   ].sort();
 
   const therapyTypes = [...new Set([...DEFAULT_THERAPY_TYPES, ...savedTherapyTypes])].sort();
-  // Incluir pacotes convênio na lista de tipos
+
+  // ✅ Incluir pacotes convênio e MAT/MED na lista de tipos (manual)
   const productionTypes = [
-    ...new Set([...BASE_PRODUCTION_TYPES, ...PACKAGE_PRODUCTION_TYPES, ...savedProductionTypes]),
+    ...new Set([
+      ...BASE_PRODUCTION_TYPES,
+      MATMED_PRODUCTION_TYPE, // ⭐ aqui está o pulo do gato
+      ...PACKAGE_PRODUCTION_TYPES,
+      ...savedProductionTypes,
+    ]),
   ];
 
   const [formData, setFormData] = useState({
@@ -264,10 +273,33 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
       : SPECIALTIES.map((s) => ({ id: s.id, name: s.name, active: true }));
   const hasCustomSpecialties = masterSpecialties.length > 0;
 
+  // Descrição automática por tipo
+  const getDefaultDescription = (type: string): string => {
+    switch (type) {
+      case "CONSULTA":
+        return "Consulta Médica";
+      case "QUIMIOTERAPIA":
+        return "Sessão de Quimioterapia";
+      case "BOX_PS":
+        return "Atendimento Box/PS";
+      case "INTERNACAO":
+        return "Internação";
+      case "PACOTE_BOX":
+        return "Pacote Box (Convênio)";
+      case "PACOTE_GTA":
+        return "Pacote GTA (Convênio)";
+      case MATMED_PRODUCTION_TYPE:
+        return "Materiais e Medicamentos";
+      default:
+        return "";
+    }
+  };
+
   // Reset campos dinâmicos quando muda o tipo de produção
   useEffect(() => {
     const newType = formData.productionType;
     const isPackage = PACKAGE_PRODUCTION_TYPES.includes(newType);
+
     setFormData((prev) => ({
       ...prev,
       examType: "",
@@ -294,26 +326,6 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
       setFormData((prev) => ({ ...prev, specialty: "" }));
     }
   }, [formData.unit, isCentroClinico]);
-
-  // Descrição automática por tipo
-  const getDefaultDescription = (type: string): string => {
-    switch (type) {
-      case "CONSULTA":
-        return "Consulta Médica";
-      case "QUIMIOTERAPIA":
-        return "Sessão de Quimioterapia";
-      case "BOX_PS":
-        return "Atendimento Box/PS";
-      case "INTERNACAO":
-        return "Internação";
-      case "PACOTE_BOX":
-        return "Pacote Box (Convênio)";
-      case "PACOTE_GTA":
-        return "Pacote GTA (Convênio)";
-      default:
-        return "";
-    }
-  };
 
   // Format competencia (MM/YYYY)
   const formatCompetencia = (value: string): string => {
@@ -457,6 +469,8 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
       description = formData.therapySessionType || formData.description;
     } else if (isPackageType) {
       description = getProductionTypeLabel(formData.productionType);
+    } else if (formData.productionType === MATMED_PRODUCTION_TYPE) {
+      description = formData.description || getDefaultDescription(MATMED_PRODUCTION_TYPE);
     }
 
     // FALLBACK: Se ainda não tem descrição, usar o próprio tipo de produção
@@ -701,6 +715,17 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
           </div>
         );
 
+      // ✅ MAT/MED agora tem bloco próprio (não fica “custom”)
+      case MATMED_PRODUCTION_TYPE:
+        return (
+          <div className="p-4 rounded-lg bg-sky-500/10 border border-sky-500/20">
+            <p className="text-sm text-sky-700 font-medium">🧾 Mat/Med</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Materiais e medicamentos. Use quantidade + valor total estimado como referência.
+            </p>
+          </div>
+        );
+
       case "OUTRO":
         return (
           <div className="space-y-4">
@@ -935,6 +960,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
             </Select>
             <p className="text-xs text-muted-foreground">Ajuda em relatórios por profissional (sem ser obrigatório).</p>
           </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Pagador *</Label>
@@ -959,7 +985,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
               </Select>
             </div>
 
-            {/* CORREÇÃO #2: Campo Forma de Pagamento para PARTICULAR */}
+            {/* Campo Forma de Pagamento para PARTICULAR */}
             {formData.payerType === "PARTICULAR" && (
               <div className="space-y-2">
                 <Label>Forma de Pagamento *</Label>
