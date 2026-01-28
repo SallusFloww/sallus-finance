@@ -135,7 +135,7 @@ export function useReceivablesDB() {
 
     try {
       setLoading(true);
-      const { data, error: fetchError } = await supabase
+      const { data, error: fetchError } = await (supabase as any)
         .from("receivables")
         .select("*")
         .eq("company_id", currentCompany.id)
@@ -194,7 +194,7 @@ export function useReceivablesDB() {
         // 1) DEDUPE NO BANCO (compatível mesmo sem migração): se já existe igual criado há pouco, não duplica
         // Obs: isso cobre o cenário atual de duplicação mesmo antes de criar coluna/índice de idempotência.
         const twoMinutesAgoIso = new Date(Date.now() - 2 * 60 * 1000).toISOString();
-        const { data: existingSimilar, error: existingSimilarErr } = await supabase
+        const { data: existingSimilar, error: existingSimilarErr } = await (supabase as any)
           .from("receivables")
           .select("*")
           .eq("company_id", currentCompany.id)
@@ -243,9 +243,9 @@ export function useReceivablesDB() {
 
         // Primeira tentativa: com idempotency_key (se houver)
         {
-          const { data: inserted, error: insertError } = await supabase
+          const { data: inserted, error: insertError } = await (supabase as any)
             .from("receivables")
-            .insert([payloadWithIdempotency])
+            .insert([payloadWithIdempotency] as any)
             .select()
             .single();
 
@@ -258,7 +258,7 @@ export function useReceivablesDB() {
 
             // 23505 = unique_violation (quando tiver índice único por idempotency_key)
             if (code === "23505" && data.idempotencyKey) {
-              const { data: existingByKey, error: existingByKeyErr } = await supabase
+              const { data: existingByKey, error: existingByKeyErr } = await (supabase as any)
                 .from("receivables")
                 .select("*")
                 .eq("company_id", currentCompany.id)
@@ -274,9 +274,9 @@ export function useReceivablesDB() {
             }
 
             if (msg.toLowerCase().includes("idempotency_key") && msg.toLowerCase().includes("does not exist")) {
-              const { data: insertedFallback, error: insertFallbackErr } = await supabase
+              const { data: insertedFallback, error: insertFallbackErr } = await (supabase as any)
                 .from("receivables")
-                .insert([basePayload])
+                .insert([basePayload] as any)
                 .select()
                 .single();
 
@@ -345,7 +345,7 @@ export function useReceivablesDB() {
       if (data.notes !== undefined) updateData.notes = data.notes;
       if (data.competencia !== undefined) updateData.competencia = data.competencia;
 
-      const { error: updateError } = await supabase.from("receivables").update(updateData).eq("id", id);
+      const { error: updateError } = await (supabase as any).from("receivables").update(updateData).eq("id", id);
 
       if (updateError) {
         toast.error("Erro ao atualizar recebível");
@@ -516,7 +516,7 @@ export function useReceivablesDB() {
           ),
         );
 
-        const { error: updateError } = await supabase
+        const { error: updateError } = await (supabase as any)
           .from("receivables")
           .update({
             status: "RECEBIDO",
@@ -624,7 +624,7 @@ export function useReceivablesDB() {
         );
       }
 
-      const { error: updateError } = await supabase
+      const { error: updateError } = await (supabase as any)
         .from("receivables")
         .update({
           status: glossType === "TOTAL" ? "GLOSADO" : "RECEBIDO_COM_GLOSA",
@@ -672,7 +672,7 @@ export function useReceivablesDB() {
         ),
       );
 
-      const { error: updateError } = await supabase
+      const { error: updateError } = await (supabase as any)
         .from("receivables")
         .update({
           appeal_status: "EM_RECURSO",
@@ -719,7 +719,7 @@ export function useReceivablesDB() {
 
       const newStatus = newGlossedAmount <= 0 ? "RECEBIDO" : receivable.status;
 
-      const { error: updateError } = await supabase
+      const { error: updateError } = await (supabase as any)
         .from("receivables")
         .update({
           status: newStatus,
@@ -762,7 +762,7 @@ export function useReceivablesDB() {
         ),
       );
 
-      const { error: updateError } = await supabase
+      const { error: updateError } = await (supabase as any)
         .from("receivables")
         .update({
           appeal_status: "INDEFERIDO",
