@@ -44,32 +44,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { useProductionDB } from "@/hooks/useProductionDB";
@@ -127,10 +105,10 @@ export default function SuggestedBilling() {
   const { transactions } = useApp();
   const { settings } = transactions;
   const { profile } = useAuth();
-  
+
   // Compatibilidade com código legado
   const user = { name: profile?.full_name || "Sistema" };
-  
+
   const {
     productions,
     openProductions,
@@ -158,6 +136,7 @@ export default function SuggestedBilling() {
   // Estados do modal de confirmação
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [isPreConfirmOpen, setIsPreConfirmOpen] = useState(false);
+  const [isBillingSubmitting, setIsBillingSubmitting] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<SuggestedBillingGroup | null>(null);
   const [selectedProductionIds, setSelectedProductionIds] = useState<Set<string>>(new Set());
   const [billingFormData, setBillingFormData] = useState({
@@ -207,30 +186,30 @@ export default function SuggestedBilling() {
   // Critérios: Unidade + Competência + Tipo de Produção + Pagador + Convênio
   const suggestedGroups = useMemo(() => {
     // Filtrar apenas produções com status PRODUZIDO (não faturadas)
-    let filteredProductions = productions.filter(p => p.status === "PRODUZIDO");
+    let filteredProductions = productions.filter((p) => p.status === "PRODUZIDO");
 
     // Aplicar filtros
     if (selectedUnit !== "all") {
-      filteredProductions = filteredProductions.filter(p => p.unit === selectedUnit);
+      filteredProductions = filteredProductions.filter((p) => p.unit === selectedUnit);
     }
     if (selectedConvenio !== "all") {
       if (selectedConvenio === "PARTICULAR") {
-        filteredProductions = filteredProductions.filter(p => p.payerType === "PARTICULAR");
+        filteredProductions = filteredProductions.filter((p) => p.payerType === "PARTICULAR");
       } else {
-        filteredProductions = filteredProductions.filter(p => p.convenio === selectedConvenio);
+        filteredProductions = filteredProductions.filter((p) => p.convenio === selectedConvenio);
       }
     }
     if (selectedCompetencia !== "all") {
-      filteredProductions = filteredProductions.filter(p => p.competencia === selectedCompetencia);
+      filteredProductions = filteredProductions.filter((p) => p.competencia === selectedCompetencia);
     }
 
     // AGRUPAMENTO INTELIGENTE: Unidade + Competência + Tipo + Pagador + Convênio
     const groups: Record<string, SuggestedBillingGroup> = {};
 
     filteredProductions.forEach((p) => {
-      const convenioKey = p.payerType === "PARTICULAR" ? "PARTICULAR" : (p.convenio || "OUTROS");
+      const convenioKey = p.payerType === "PARTICULAR" ? "PARTICULAR" : p.convenio || "OUTROS";
       const payerKey = p.payerType || "CONVENIO";
-      
+
       // Chave composta com TODOS os critérios obrigatórios
       const key = `${p.unit}|${p.competencia}|${p.productionType}|${payerKey}|${convenioKey}`;
 
@@ -274,9 +253,9 @@ export default function SuggestedBilling() {
 
     // Calcular dias de atraso e status de faturamento
     const today = new Date();
-    const result = Object.values(groups).map(g => {
+    const result = Object.values(groups).map((g) => {
       const daysOld = differenceInDays(today, parseISO(g.oldestProductionDate));
-      
+
       // Determinar status de faturamento do grupo
       let billingStatus: "not_billed" | "partially_billed" | "fully_billed" = "not_billed";
       if (g.linkedCount === g.productions.length && g.linkedCount > 0) {
@@ -301,16 +280,16 @@ export default function SuggestedBilling() {
     const totalGroups = suggestedGroups.length;
     const totalQuantity = suggestedGroups.reduce((sum, g) => sum + g.totalQuantity, 0);
     const totalValue = suggestedGroups.reduce((sum, g) => sum + g.estimatedValue, 0);
-    const criticalGroups = suggestedGroups.filter(g => g.daysOld > 15).length;
-    const attentionGroups = suggestedGroups.filter(g => g.daysOld > 7 && g.daysOld <= 15).length;
-    
+    const criticalGroups = suggestedGroups.filter((g) => g.daysOld > 15).length;
+    const attentionGroups = suggestedGroups.filter((g) => g.daysOld > 7 && g.daysOld <= 15).length;
+
     return { totalGroups, totalQuantity, totalValue, criticalGroups, attentionGroups };
   }, [suggestedGroups]);
 
   // Alerta de produções antigas sem faturamento
   const oldUnbilledAlert = useMemo(() => {
     const oldProductions = suggestedGroups.filter(
-      g => g.daysOld > ALERT_DAYS_THRESHOLD && g.billingStatus === "not_billed"
+      (g) => g.daysOld > ALERT_DAYS_THRESHOLD && g.billingStatus === "not_billed",
     );
     return oldProductions.length > 0 ? oldProductions : null;
   }, [suggestedGroups]);
@@ -333,23 +312,23 @@ export default function SuggestedBilling() {
 
   const proceedToConfirmDialog = () => {
     if (!selectedGroup) return;
-    
+
     setIsPreConfirmOpen(false);
-    
+
     // Selecionar todas as produções livres por padrão
-    const freeProductions = selectedGroup.productions.filter(p => !isLinkedToReceivable(p));
-    setSelectedProductionIds(new Set(freeProductions.map(p => p.id)));
-    
+    const freeProductions = selectedGroup.productions.filter((p) => !isLinkedToReceivable(p));
+    setSelectedProductionIds(new Set(freeProductions.map((p) => p.id)));
+
     // Gerar descrição sugerida - agora com tipo único
     const typeLabel = getProductionTypeLabel(selectedGroup.productionType);
     const suggestedDesc = `${typeLabel} – ${selectedGroup.unit} – ${selectedGroup.convenio} – ${selectedGroup.competencia}`;
-    
+
     // Calcular valor com precisão: soma de (quantity * unitValue) ou estimatedValue
     const freeValue = freeProductions.reduce((sum, p) => {
-      const prodValue = p.estimatedValue || (p.quantity * p.unitValue);
+      const prodValue = p.estimatedValue || p.quantity * p.unitValue;
       return sum + prodValue;
     }, 0);
-    
+
     setBillingFormData({
       billingDate: format(new Date(), "yyyy-MM-dd"),
       description: suggestedDesc,
@@ -357,7 +336,7 @@ export default function SuggestedBilling() {
       expectedReceiptDays: "30",
       notes: `Faturamento sugerido com base em ${freeProductions.length} procedimentos. Valor unitário médio: ${formatCurrency(freeValue / Math.max(1, freeProductions.length))}.`,
     });
-    
+
     setIsConfirmDialogOpen(true);
   };
 
@@ -369,16 +348,16 @@ export default function SuggestedBilling() {
       newSelected.add(id);
     }
     setSelectedProductionIds(newSelected);
-    
+
     // Recalcular valor estimado com precisão de centavos
     if (selectedGroup) {
-      const selectedProds = selectedGroup.productions.filter(p => newSelected.has(p.id));
+      const selectedProds = selectedGroup.productions.filter((p) => newSelected.has(p.id));
       // Soma exata: quantity * unitValue para cada produção
       const newValue = selectedProds.reduce((sum, p) => {
-        const prodValue = p.estimatedValue || (p.quantity * p.unitValue);
+        const prodValue = p.estimatedValue || p.quantity * p.unitValue;
         return sum + prodValue;
       }, 0);
-      setBillingFormData(prev => ({
+      setBillingFormData((prev) => ({
         ...prev,
         billedAmount: newValue.toFixed(2),
       }));
@@ -386,6 +365,10 @@ export default function SuggestedBilling() {
   };
 
   const handleConfirmBilling = async () => {
+    if (isBillingSubmitting) {
+      toast.error("Faturamento já está sendo processado. Aguarde...");
+      return;
+    }
     if (!selectedGroup || selectedProductionIds.size === 0) {
       toast.error("Selecione pelo menos uma produção para faturar");
       return;
@@ -404,56 +387,69 @@ export default function SuggestedBilling() {
     }
 
     // Validar se valor não diverge excessivamente das produções
-    const selectedProds = selectedGroup.productions.filter(p => selectedProductionIds.has(p.id));
+    const selectedProds = selectedGroup.productions.filter((p) => selectedProductionIds.has(p.id));
     const expectedValue = selectedProds.reduce((sum, p) => sum + p.estimatedValue, 0);
-    
+
     if (Math.abs(billedAmount - expectedValue) > expectedValue * 0.5) {
-      toast.warning(`Atenção: Valor faturado (${formatCurrency(billedAmount)}) difere significativamente do estimado (${formatCurrency(expectedValue)})`);
+      toast.warning(
+        `Atenção: Valor faturado (${formatCurrency(billedAmount)}) difere significativamente do estimado (${formatCurrency(expectedValue)})`,
+      );
     }
 
-    // Criar o Receivable (Faturamento a Receber)
-    const newReceivable = await addReceivable({
-      billingDate: billingFormData.billingDate,
-      competencia: selectedGroup.competencia,
-      unit: selectedGroup.unit,
-      source: selectedGroup.convenio,
-      description: billingFormData.description,
-      billedAmount,
-      status: "FATURADO" as const,
-      expectedReceiptDays: parseInt(billingFormData.expectedReceiptDays) || 30,
-      notes: billingFormData.notes,
-      createdBy: user?.name || "Sistema",
-    });
+    setIsBillingSubmitting(true);
+    try {
+      // Criar chave de idempotência (sempre igual para o mesmo faturamento)
+      // Isso evita duplicar receivable quando há clique duplo, retry, refetch, etc.
+      const productionIdsArray = Array.from(selectedProductionIds).sort();
+      const idempotencyKey = [
+        "FATURAMENTO",
+        billingFormData.billingDate,
+        selectedGroup.competencia,
+        selectedGroup.unit,
+        selectedGroup.convenio,
+        billedAmount.toFixed(2),
+        productionIdsArray.join("|"),
+      ].join("::");
 
-    if (!newReceivable) {
-      toast.error("Erro ao criar faturamento");
-      return;
+      // Criar o Receivable (Faturamento a Receber)
+      const newReceivable = await addReceivable({
+        billingDate: billingFormData.billingDate,
+        competencia: selectedGroup.competencia,
+        unit: selectedGroup.unit,
+        source: selectedGroup.convenio,
+        description: billingFormData.description,
+        billedAmount,
+        status: "FATURADO" as const,
+        expectedReceiptDays: parseInt(billingFormData.expectedReceiptDays) || 30,
+        notes: billingFormData.notes,
+        createdBy: user?.name || "Sistema",
+        idempotencyKey,
+      });
+
+      if (!newReceivable) {
+        toast.error("Erro ao criar faturamento");
+        return;
+      }
+
+      // Vincular as produções selecionadas ao faturamento
+      await linkToReceivable(productionIdsArray, newReceivable.id, billedAmount, user?.name || "Sistema");
+
+      toast.success(`Faturamento criado! ${productionIdsArray.length} produção(ões) vinculada(s).`);
+
+      // Fechar modal e resetar estados
+      setIsConfirmDialogOpen(false);
+      setSelectedGroup(null);
+      setSelectedProductionIds(new Set());
+      setBillingFormData({
+        billingDate: format(new Date(), "yyyy-MM-dd"),
+        description: "",
+        billedAmount: "",
+        expectedReceiptDays: "30",
+        notes: "",
+      });
+    } finally {
+      setIsBillingSubmitting(false);
     }
-
-    // Vincular as produções selecionadas ao faturamento
-    const productionIdsArray = Array.from(selectedProductionIds);
-    await linkToReceivable(
-      productionIdsArray,
-      newReceivable.id,
-      billedAmount,
-      user?.name || "Sistema"
-    );
-
-    toast.success(
-      `Faturamento criado! ${productionIdsArray.length} produção(ões) vinculada(s).`
-    );
-
-    // Fechar modal e resetar estados
-    setIsConfirmDialogOpen(false);
-    setSelectedGroup(null);
-    setSelectedProductionIds(new Set());
-    setBillingFormData({
-      billingDate: format(new Date(), "yyyy-MM-dd"),
-      description: "",
-      billedAmount: "",
-      expectedReceiptDays: "30",
-      notes: "",
-    });
   };
 
   // Badge de tempo (linguagem gerencial)
@@ -515,7 +511,10 @@ export default function SuggestedBilling() {
     switch (status) {
       case "faturada":
         return (
-          <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400">
+          <Badge
+            variant="secondary"
+            className="text-xs bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400"
+          >
             Faturada
           </Badge>
         );
@@ -538,11 +537,11 @@ export default function SuggestedBilling() {
   const formatDateRange = (oldest: string, newest: string) => {
     const oldDate = parseISO(oldest);
     const newDate = parseISO(newest);
-    
+
     if (oldest === newest) {
       return format(oldDate, "dd/MM/yyyy");
     }
-    
+
     return `${format(oldDate, "dd/MM")} a ${format(newDate, "dd/MM/yyyy")}`;
   };
 
@@ -582,8 +581,8 @@ export default function SuggestedBilling() {
                       Produções sem faturamento há mais de {ALERT_DAYS_THRESHOLD} dias
                     </p>
                     <p className="mt-1 text-orange-600/80 dark:text-orange-400/80">
-                      Existem {oldUnbilledAlert.length} grupo(s) de produção aguardando faturamento. 
-                      Revise para evitar perda de faturamento.
+                      Existem {oldUnbilledAlert.length} grupo(s) de produção aguardando faturamento. Revise para evitar
+                      perda de faturamento.
                     </p>
                   </div>
                 </div>
@@ -597,13 +596,17 @@ export default function SuggestedBilling() {
               <div className="flex items-start gap-3">
                 <Info className="h-5 w-5 text-blue-500 mt-0.5" />
                 <div className="text-sm">
-                  <p className="font-medium text-blue-700 dark:text-blue-400">
-                    Regras de Governança
-                  </p>
+                  <p className="font-medium text-blue-700 dark:text-blue-400">Regras de Governança</p>
                   <ul className="mt-1 text-blue-600/80 dark:text-blue-400/80 space-y-0.5">
-                    <li>• Produção <strong>não impacta</strong> Caixa, DRE ou Score</li>
-                    <li>• Faturamento sugerido <strong>não impacta</strong> Caixa ou DRE</li>
-                    <li>• <strong>Somente</strong> ao marcar "Recebido" no Faturamento a Receber o valor entra no Caixa</li>
+                    <li>
+                      • Produção <strong>não impacta</strong> Caixa, DRE ou Score
+                    </li>
+                    <li>
+                      • Faturamento sugerido <strong>não impacta</strong> Caixa ou DRE
+                    </li>
+                    <li>
+                      • <strong>Somente</strong> ao marcar "Recebido" no Faturamento a Receber o valor entra no Caixa
+                    </li>
                   </ul>
                 </div>
               </div>
@@ -616,12 +619,8 @@ export default function SuggestedBilling() {
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">
-                      Grupos Pendentes
-                    </p>
-                    <p className="text-3xl font-bold text-foreground">
-                      {stats.totalGroups}
-                    </p>
+                    <p className="text-sm font-medium text-muted-foreground">Grupos Pendentes</p>
+                    <p className="text-3xl font-bold text-foreground">{stats.totalGroups}</p>
                   </div>
                   <FileText className="h-8 w-8 text-primary opacity-80" />
                 </div>
@@ -632,12 +631,8 @@ export default function SuggestedBilling() {
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">
-                      Quantidade Total
-                    </p>
-                    <p className="text-3xl font-bold text-foreground">
-                      {stats.totalQuantity.toLocaleString("pt-BR")}
-                    </p>
+                    <p className="text-sm font-medium text-muted-foreground">Quantidade Total</p>
+                    <p className="text-3xl font-bold text-foreground">{stats.totalQuantity.toLocaleString("pt-BR")}</p>
                     <p className="text-xs text-muted-foreground">procedimentos</p>
                   </div>
                   <Activity className="h-8 w-8 text-blue-500 opacity-80" />
@@ -649,12 +644,8 @@ export default function SuggestedBilling() {
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">
-                      Valor Estimado
-                    </p>
-                    <p className="text-2xl font-bold text-foreground">
-                      {formatCurrency(stats.totalValue)}
-                    </p>
+                    <p className="text-sm font-medium text-muted-foreground">Valor Estimado</p>
+                    <p className="text-2xl font-bold text-foreground">{formatCurrency(stats.totalValue)}</p>
                     <p className="text-xs text-muted-foreground">referência</p>
                   </div>
                   <Banknote className="h-8 w-8 text-green-500 opacity-80" />
@@ -662,20 +653,21 @@ export default function SuggestedBilling() {
               </CardContent>
             </Card>
 
-            <Card className={cn(
-              "border-l-4",
-              stats.criticalGroups > 0 ? "border-l-orange-500" : 
-              stats.attentionGroups > 0 ? "border-l-amber-500" : "border-l-muted"
-            )}>
+            <Card
+              className={cn(
+                "border-l-4",
+                stats.criticalGroups > 0
+                  ? "border-l-orange-500"
+                  : stats.attentionGroups > 0
+                    ? "border-l-amber-500"
+                    : "border-l-muted",
+              )}
+            >
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">
-                      Requer Atenção
-                    </p>
-                    <p className="text-3xl font-bold text-foreground">
-                      {stats.criticalGroups + stats.attentionGroups}
-                    </p>
+                    <p className="text-sm font-medium text-muted-foreground">Requer Atenção</p>
+                    <p className="text-3xl font-bold text-foreground">{stats.criticalGroups + stats.attentionGroups}</p>
                     <p className="text-xs text-muted-foreground">
                       {stats.criticalGroups > 0 && `${stats.criticalGroups} crítico(s)`}
                       {stats.criticalGroups > 0 && stats.attentionGroups > 0 && " • "}
@@ -683,11 +675,16 @@ export default function SuggestedBilling() {
                       {stats.criticalGroups === 0 && stats.attentionGroups === 0 && "nenhum"}
                     </p>
                   </div>
-                  <AlertTriangle className={cn(
-                    "h-8 w-8 opacity-80",
-                    stats.criticalGroups > 0 ? "text-orange-500" : 
-                    stats.attentionGroups > 0 ? "text-amber-500" : "text-muted"
-                  )} />
+                  <AlertTriangle
+                    className={cn(
+                      "h-8 w-8 opacity-80",
+                      stats.criticalGroups > 0
+                        ? "text-orange-500"
+                        : stats.attentionGroups > 0
+                          ? "text-amber-500"
+                          : "text-muted",
+                    )}
+                  />
                 </div>
               </CardContent>
             </Card>
@@ -778,14 +775,10 @@ export default function SuggestedBilling() {
                 <div className="space-y-3">
                   {suggestedGroups.map((group) => {
                     const isExpanded = expandedGroups.has(group.key);
-                    const freeProductions = group.productions.filter(p => !isLinkedToReceivable(p));
-                    
+                    const freeProductions = group.productions.filter((p) => !isLinkedToReceivable(p));
+
                     return (
-                      <Collapsible
-                        key={group.key}
-                        open={isExpanded}
-                        onOpenChange={() => toggleGroupExpand(group.key)}
-                      >
+                      <Collapsible key={group.key} open={isExpanded} onOpenChange={() => toggleGroupExpand(group.key)}>
                         <div className="border rounded-lg overflow-hidden">
                           {/* Header do grupo - MELHORADO */}
                           <CollapsibleTrigger asChild>
@@ -798,7 +791,7 @@ export default function SuggestedBilling() {
                                   ) : (
                                     <ChevronRight className="h-4 w-4 text-muted-foreground mt-1 flex-shrink-0" />
                                   )}
-                                  
+
                                   <div className="flex-1 min-w-0 space-y-2">
                                     {/* Linha 1: Tipo de Produção (destaque) */}
                                     <div className="flex items-center gap-2">
@@ -810,7 +803,7 @@ export default function SuggestedBilling() {
                                         ({group.totalQuantity} procedimentos)
                                       </span>
                                     </div>
-                                    
+
                                     {/* Linha 2: Unidade, Pagador/Convênio, Competência */}
                                     <div className="flex flex-wrap items-center gap-2">
                                       <div className="flex items-center gap-1.5">
@@ -826,11 +819,12 @@ export default function SuggestedBilling() {
                                         <span>{group.competencia}</span>
                                       </div>
                                     </div>
-                                    
+
                                     {/* Linha 3: Período coberto e valor estimado */}
                                     <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                                       <span>
-                                        Produções de {formatDateRange(group.oldestProductionDate, group.newestProductionDate)}
+                                        Produções de{" "}
+                                        {formatDateRange(group.oldestProductionDate, group.newestProductionDate)}
                                       </span>
                                       <span className="font-medium text-foreground/80">
                                         {formatCurrency(group.estimatedValue)} estimado
@@ -838,7 +832,7 @@ export default function SuggestedBilling() {
                                     </div>
                                   </div>
                                 </div>
-                                
+
                                 {/* Lado direito - Status e ações */}
                                 <div className="flex flex-col sm:flex-row items-end sm:items-center gap-3 flex-shrink-0">
                                   {/* Badges de status */}
@@ -846,7 +840,7 @@ export default function SuggestedBilling() {
                                     {getTimeBadge(group.daysOld)}
                                     {getBillingStatusBadge(group.billingStatus)}
                                   </div>
-                                  
+
                                   {/* Botões de ação */}
                                   <div className="flex gap-2">
                                     <Tooltip>
@@ -869,7 +863,7 @@ export default function SuggestedBilling() {
                                       </TooltipTrigger>
                                       <TooltipContent>Revisar produções</TooltipContent>
                                     </Tooltip>
-                                    
+
                                     <Button
                                       size="sm"
                                       disabled={freeProductions.length === 0}
@@ -886,7 +880,7 @@ export default function SuggestedBilling() {
                               </div>
                             </div>
                           </CollapsibleTrigger>
-                          
+
                           {/* Detalhes expandidos - MELHORADO */}
                           <CollapsibleContent>
                             <div className="p-4 border-t bg-background">
@@ -912,15 +906,9 @@ export default function SuggestedBilling() {
                                           {getProductionTypeLabel(p.productionType)}
                                         </Badge>
                                       </TableCell>
-                                      <TableCell className="text-sm max-w-[200px] truncate">
-                                        {p.description}
-                                      </TableCell>
-                                      <TableCell className="text-center">
-                                        {getProductionStatusBadge(p)}
-                                      </TableCell>
-                                      <TableCell className="text-right font-medium">
-                                        {p.quantity}
-                                      </TableCell>
+                                      <TableCell className="text-sm max-w-[200px] truncate">{p.description}</TableCell>
+                                      <TableCell className="text-center">{getProductionStatusBadge(p)}</TableCell>
+                                      <TableCell className="text-right font-medium">{p.quantity}</TableCell>
                                       <TableCell className="text-right text-sm">
                                         {formatCurrency(p.estimatedValue)}
                                       </TableCell>
@@ -928,7 +916,7 @@ export default function SuggestedBilling() {
                                   ))}
                                 </TableBody>
                               </Table>
-                              
+
                               {/* Legenda */}
                               <div className="mt-3 pt-3 border-t flex flex-wrap gap-4 text-xs text-muted-foreground">
                                 <span className="flex items-center gap-1">
@@ -985,7 +973,7 @@ export default function SuggestedBilling() {
                           </div>
                           <div className="pt-2 border-t">
                             <p className="text-lg font-bold text-primary">
-                              {selectedGroup.productions.filter(p => !isLinkedToReceivable(p)).length} procedimento(s)
+                              {selectedGroup.productions.filter((p) => !isLinkedToReceivable(p)).length} procedimento(s)
                             </p>
                             <p className="text-sm font-medium">
                               {formatCurrency(selectedGroup.estimatedValue)} valor estimado
@@ -1002,7 +990,8 @@ export default function SuggestedBilling() {
                                 Este faturamento NÃO altera o caixa.
                               </p>
                               <p className="text-amber-600/90 dark:text-amber-400/80 mt-1">
-                                O impacto no saldo ocorre <strong>somente</strong> ao marcar como "Recebido" em Faturamento a Receber.
+                                O impacto no saldo ocorre <strong>somente</strong> ao marcar como "Recebido" em
+                                Faturamento a Receber.
                               </p>
                             </div>
                           </div>
@@ -1015,9 +1004,7 @@ export default function SuggestedBilling() {
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <AlertDialogAction onClick={proceedToConfirmDialog}>
-                  Revisar e Faturar
-                </AlertDialogAction>
+                <AlertDialogAction onClick={proceedToConfirmDialog}>Revisar e Faturar</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
@@ -1116,18 +1103,17 @@ export default function SuggestedBilling() {
                                   <span className="font-medium">{getProductionTypeLabel(p.productionType)}</span>
                                   <span className="text-muted-foreground"> - {p.description}</span>
                                   {isLinked && (
-                                    <Badge variant="outline" className="ml-2 text-[9px] bg-amber-500/10 text-amber-600 border-amber-500/20">
+                                    <Badge
+                                      variant="outline"
+                                      className="ml-2 text-[9px] bg-amber-500/10 text-amber-600 border-amber-500/20"
+                                    >
                                       Já faturado
                                     </Badge>
                                   )}
                                 </TableCell>
-                                <TableCell className="text-center">
-                                  {getProductionStatusBadge(p)}
-                                </TableCell>
+                                <TableCell className="text-center">{getProductionStatusBadge(p)}</TableCell>
                                 <TableCell className="text-right">{p.quantity}</TableCell>
-                                <TableCell className="text-right text-sm">
-                                  {formatCurrency(p.estimatedValue)}
-                                </TableCell>
+                                <TableCell className="text-right text-sm">{formatCurrency(p.estimatedValue)}</TableCell>
                               </TableRow>
                             );
                           })}
@@ -1135,7 +1121,9 @@ export default function SuggestedBilling() {
                       </Table>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {selectedProductionIds.size} de {selectedGroup.productions.filter(p => !isLinkedToReceivable(p)).length} produções livres selecionadas
+                      {selectedProductionIds.size} de{" "}
+                      {selectedGroup.productions.filter((p) => !isLinkedToReceivable(p)).length} produções livres
+                      selecionadas
                     </p>
                   </div>
 
@@ -1240,9 +1228,12 @@ export default function SuggestedBilling() {
                 <Button variant="outline" onClick={() => setIsConfirmDialogOpen(false)}>
                   Cancelar
                 </Button>
-                <Button onClick={handleConfirmBilling} disabled={selectedProductionIds.size === 0}>
+                <Button
+                  onClick={handleConfirmBilling}
+                  disabled={selectedProductionIds.size === 0 || isBillingSubmitting}
+                >
                   <CheckCircle2 className="h-4 w-4 mr-2" />
-                  Confirmar Faturamento
+                  {isBillingSubmitting ? "Processando..." : "Confirmar Faturamento"}
                 </Button>
               </DialogFooter>
             </DialogContent>
