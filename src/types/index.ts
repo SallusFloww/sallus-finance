@@ -1,3 +1,4 @@
+// src/types/index.ts
 // ============= TIPOS SIMPLIFICADOS - VERSÃO FORENSE =============
 // Sistema trabalha APENAS com dinheiro que JÁ ENTROU e JÁ SAIU
 // Sem previsões, sem projeções, sem status pendente
@@ -218,21 +219,81 @@ export type AuditAction =
 
 export interface AuditLog {
   id: string;
+  userId: string;
   action: AuditAction;
   details: string;
   timestamp: string;
-  user: string;
+  metadata?: Record<string, unknown>;
 }
 
-// ============= FATURAMENTO (RECEBÍVEIS) =============
+// ============= DASHBOARD STATS - SIMPLIFICADO =============
+// Fórmula única: Saldo Atual = Saldo Inicial + Entradas - Saídas
+export interface DashboardStats {
+  // Base
+  initialBalance: number;
+  initialBalanceLastUpdate?: string;
 
-export type ReceivableStatus =
-  | "ABERTO" // Faturado e aguardando pagamento
-  | "RECEBIDO" // Totalmente recebido
-  | "GLOSADO" // Glosa total registrada
-  | "GLOSA_PARCIAL" // Glosa parcial registrada
-  | "EM_RECURSO" // Recurso em andamento
-  | "PERDA_DEFINITIVA"; // Glosa indeferida / perda confirmada
+  // Totais REALIZADOS (único tipo de movimentação)
+  totalIncome: number;
+  totalExpense: number;
+
+  // SALDO ATUAL = initialBalance + totalIncome - totalExpense
+  currentBalance: number;
+
+  // Contadores
+  transactionCount: number;
+
+  // ============= CONTROLE DE STATUS DE ENTRADAS =============
+  incomeByStatus: {
+    previsto: number; // PENDENTE
+    recebido: number; // REALIZADO
+    cancelado: number; // CANCELADO
+  };
+  incomeCountByStatus: {
+    previsto: number;
+    recebido: number;
+    cancelado: number;
+  };
+
+  incomeByReceiptType: {
+    particular: number;
+    convenio: number;
+  };
+
+  incomeByPaymentMethod: {
+    dinheiro: number;
+    pix: number;
+    debito: number;
+    creditoVista: number;
+    creditoParcelado: number;
+  };
+
+  incomeByOperadora: {
+    ipasgo: number;
+    unimed: number;
+    bradesco: number;
+    geap: number;
+  };
+
+  expenseByCategory: Record<string, number>;
+}
+
+export interface UnitStats {
+  unit: string;
+  income: number;
+  expense: number;
+  transactionCount: number;
+  netBalance: number;
+}
+
+// ============= FASE 2: FATURAMENTO A RECEBER (RECEBÍVEIS) =============
+
+export type ReceivableStatus = "FATURADO" | "RECEBIDO" | "RECEBIDO_COM_GLOSA" | "GLOSADO";
+
+export type GlossType = "PARCIAL" | "TOTAL";
+
+// ============= SUBSTATUS DE RECURSO DE GLOSA =============
+export type AppealStatus = "NAO_INICIADO" | "EM_RECURSO" | "DEFERIDO" | "INDEFERIDO";
 
 export interface ReceivableEditLog {
   field: string;
@@ -242,20 +303,22 @@ export interface ReceivableEditLog {
   editedBy: string;
 }
 
+// ============= HISTÓRICO DE EVENTOS DO RECEBÍVEL =============
 export interface ReceivableHistoryEntry {
   id: string;
   action:
     | "CRIADO"
     | "RECEBIDO"
-    | "GLOSADO_TOTAL"
-    | "GLOSADO_PARCIAL"
+    | "GLOSA_REGISTRADA"
     | "RECURSO_INICIADO"
-    | "RECURSO_RESOLVIDO"
+    | "RECURSO_DEFERIDO"
+    | "RECURSO_INDEFERIDO"
     | "EDITADO";
   description: string;
   timestamp: string;
   userName: string;
   amount?: number;
+  linkedTransactionId?: string;
 }
 
 export interface Receivable {
@@ -265,41 +328,36 @@ export interface Receivable {
   // Data do faturamento (data emitida)
   billingDate: string;
   // Competência (MM/YYYY)
-  competencia: string;
-  // Unidade de negócio (opcional; pode ser agregador)
-  unit?: string;
-  // Pagador (convênio/particular)
-  payerType: "CONVENIO" | "PARTICULAR";
-  // Convênio específico
-  convenio?: string;
+  competencia?: string;
+  // Unidade de negócio
+  unit: string;
+  // Convênio/Origem do faturamento
+  source: string;
+  // Descrição do serviço/procedimento
+  description: string;
 
   // ============= VALORES =============
-  // Valor bruto faturado
   billedAmount: number;
-  // Valor recebido total
-  receivedAmount?: number;
-  // Valor glosado total
-  glossedAmount?: number;
+  receivedAmount: number;
+  glossedAmount: number;
 
   // ============= STATUS =============
   status: ReceivableStatus;
 
+  // ============= GLOSA =============
+  glossType?: GlossType;
+  glossReason?: string;
+
   // ============= RECURSO (APELAÇÃO) =============
-  // Indica se houve recurso
-  hasAppeal?: boolean;
-  // Data de abertura do recurso
+  appealStatus?: AppealStatus;
+  appealAmount?: number;
   appealStartDate?: string;
-  // Data de resolução do recurso
   appealResolvedDate?: string;
-  // Valor recuperado via recurso (quando deferido)
   appealRecoveredAmount?: number;
-  // ID da transação gerada pelo recurso deferido
   appealTransactionId?: string;
 
   // ============= DATAS E PRAZOS =============
-  // Prazo estimado de recebimento (dias)
   expectedReceiptDays?: number;
-  // Data efetiva do recebimento (primeiro recebimento)
   actualReceiptDate?: string;
 
   // ============= OBSERVAÇÕES =============
@@ -309,8 +367,10 @@ export interface Receivable {
   createdBy: string;
   createdAt: string;
   updatedAt?: string;
+
   // ID da movimentação gerada (recebimento inicial)
   linkedTransactionId?: string;
+
   // Histórico de edições simples
   editLogs?: ReceivableEditLog[];
   // Histórico completo de eventos
@@ -342,8 +402,8 @@ export type ProductionStatus = "PRODUZIDO" | "FATURADO" | "GLOSADO" | "RECEBIDO"
 // ProductionType é string para permitir cadastro dinâmico de novos tipos
 export type ProductionType = string;
 
-// Tipos base de produção OFICIAIS (padrão do sistema)
-// Modelo definitivo IMEC Saúde
+// Tipos base de produção (padrão do sistema)
+// ✅ ALTERAÇÃO: adicionamos MAT_MED como tipo oficial
 export const BASE_PRODUCTION_TYPES = [
   "CONSULTA",
   "EXAME",
@@ -502,8 +562,10 @@ export interface ProductionStats {
 
   // Por tipo de produção (dinâmico)
   byProductionType: Record<string, { count: number; quantity: number; value: number }>;
+
   // Por pagador (por quantidade)
-  byPayerType: { convenio: number; particular: number };
+  byPayerTypeQuantity: { convenio: number; particular: number };
+
   // Consolidado por pacotes
   consolidatedConsultas: { value: number; quantity: number };
   // Box/Taxas: avulsos BOX_PS + pacotes.fee_amount
@@ -512,7 +574,6 @@ export interface ProductionStats {
   consolidatedMatMed: { value: number };
 
   // ============= AGRUPAMENTO POR MÉDICO(A) (opcional) =============
-  // chave = doctorId (uuid). Valores acumulados por produção
   byDoctor?: Record<string, { count: number; quantity: number; value: number }>;
 
   // ============= AGRUPAMENTO POR ESPECIALIDADE =============
