@@ -1,60 +1,68 @@
-import { 
-  UnitConfig, 
-  Category, 
-  PaymentMethod, 
-  Settings, 
-  BusinessUnit, 
-  Specialty, 
-  ReceiptType, 
-  PaymentMethodParticular, 
+import {
+  UnitConfig,
+  Category,
+  PaymentMethod,
+  Settings,
+  BusinessUnit,
+  Specialty,
+  ReceiptType,
+  PaymentMethodParticular,
   Operadora,
   FinancialCategory,
   NonOperationalSubtype,
   ApportionmentCriteria,
-  TransactionOrigin
+  TransactionOrigin,
 } from "@/types";
 
 // ============= CLASSIFICAÇÃO FINANCEIRA =============
 // 3 macro classificações obrigatórias
-export const FINANCIAL_CATEGORIES: { id: FinancialCategory; name: string; icon: string; description: string; sublabel?: string; examples?: string[] }[] = [
-  { 
-    id: "OPERACIONAL", 
-    name: "Operacional — Unidade", 
+export const FINANCIAL_CATEGORIES: {
+  id: FinancialCategory;
+  name: string;
+  icon: string;
+  description: string;
+  sublabel?: string;
+  examples?: string[];
+}[] = [
+  {
+    id: "OPERACIONAL",
+    name: "Operacional — Unidade",
     icon: "🟢",
     description: "Receitas e custos diretamente ligados à operação assistencial",
     sublabel: "Unidade OBRIGATÓRIA • Impacta Caixa, DRE Operacional, Score",
-    examples: ["Consulta", "Quimioterapia", "Medicamentos", "Material assistencial", "Exames"]
+    examples: ["Consulta", "Quimioterapia", "Medicamentos", "Material assistencial", "Exames"],
   },
-  { 
-    id: "COMPARTILHADO", 
-    name: "Operacional — Compartilhado", 
+  {
+    id: "COMPARTILHADO",
+    name: "Operacional — Compartilhado",
     icon: "🟣",
     description: "Custos operacionais gerais que sustentam a operação",
     sublabel: "Unidade DESABILITADA • Resultado Operacional Total • Não impacta Score",
-    examples: ["Energia", "Água", "Internet", "Limpeza", "Papelaria", "Manutenção predial"]
+    examples: ["Energia", "Água", "Internet", "Limpeza", "Papelaria", "Manutenção predial"],
   },
-  { 
-    id: "NAO_OPERACIONAL", 
-    name: "Não Operacional / Financeiro", 
+  {
+    id: "NAO_OPERACIONAL",
+    name: "Não Operacional / Financeiro",
     icon: "🔵",
     description: "Movimentações que NÃO representam desempenho operacional",
     sublabel: "Unidade DESABILITADA • Resultado Não Operacional • Não impacta Score",
-    examples: ["Aporte de Sócio", "Distribuição de Lucros", "Receita Financeira", "Ajuste Contábil"]
+    examples: ["Aporte de Sócio", "Distribuição de Lucros", "Receita Financeira", "Ajuste Contábil"],
   },
 ];
 
 // ============= LABELS PARA TIPOS DE PRODUÇÃO =============
 export const PRODUCTION_TYPE_LABELS: Record<string, string> = {
-  "CONSULTA": "Consulta",
-  "EXAME": "Exame",
-  "QUIMIOTERAPIA": "Quimioterapia",
-  "BOX_PS": "Box / Atendimento PS",
-  "SESSAO_TERAPEUTICA": "Sessão Terapêutica",
-  "INTERNACAO": "Internação",
-  "OUTRO": "Outro",
+  CONSULTA: "Consulta",
+  EXAME: "Exame",
+  QUIMIOTERAPIA: "Quimioterapia",
+  BOX_PS: "Box / Atendimento PS",
+  SESSAO_TERAPEUTICA: "Sessão Terapêutica",
+  INTERNACAO: "Internação",
+  OUTRO: "Outro",
+  MAT_MED: "Mat/Med",
   // Pacotes Convênio
-  "PACOTE_BOX": "Pacote Box (Convênio)",
-  "PACOTE_GTA": "Pacote GTA (Convênio)",
+  PACOTE_BOX: "Pacote Box (Convênio)",
+  PACOTE_GTA: "Pacote GTA (Convênio)",
 };
 
 // ============= TIPOS DE PACOTE CONVÊNIO =============
@@ -69,10 +77,20 @@ export const PACKAGE_TYPE_LABELS: Record<string, string> = {
 };
 
 // ============= CRITÉRIOS DE RATEIO (informativo) =============
-export const APPORTIONMENT_CRITERIA: { id: ApportionmentCriteria; name: string; description: string; auto?: boolean }[] = [
+export const APPORTIONMENT_CRITERIA: {
+  id: ApportionmentCriteria;
+  name: string;
+  description: string;
+  auto?: boolean;
+}[] = [
   { id: "IGUAL", name: "Igual entre unidades", description: "Divide igualmente entre todas as unidades", auto: true },
   { id: "MANUAL", name: "Manual", description: "Você define os percentuais para cada unidade", auto: false },
-  { id: "FATURAMENTO", name: "Por Faturamento", description: "Proporcional ao faturamento de cada unidade", auto: true },
+  {
+    id: "FATURAMENTO",
+    name: "Por Faturamento",
+    description: "Proporcional ao faturamento de cada unidade",
+    auto: true,
+  },
   { id: "PRODUCAO", name: "Por Produção", description: "Proporcional à produção de cada unidade", auto: true },
 ];
 
@@ -91,20 +109,92 @@ export const SHARED_EXPENSE_CATEGORIES: string[] = [
 ];
 
 // ============= SUBTIPOS NÃO OPERACIONAL / FINANCEIRO =============
-export const NON_OPERATIONAL_SUBTYPES: { id: NonOperationalSubtype; name: string; icon: string; type: "INCOME" | "EXPENSE"; description?: string }[] = [
+export const NON_OPERATIONAL_SUBTYPES: {
+  id: NonOperationalSubtype;
+  name: string;
+  icon: string;
+  type: "INCOME" | "EXPENSE";
+  description?: string;
+}[] = [
   // RECEITAS NÃO OPERACIONAIS
-  { id: "APORTE_SOCIO", name: "Aporte de Sócio", icon: "💰", type: "INCOME", description: "Entrada de capital dos sócios" },
-  { id: "ROYALTIES_ALUGUEL_MARCA", name: "Royalties / Aluguel de Marca", icon: "®️", type: "INCOME", description: "Receita por uso de marca ou licenciamento" },
-  { id: "RECEITA_ALUGUEL_ESPACOS", name: "Receita de Aluguel (Salas/Espaços)", icon: "🏢", type: "INCOME", description: "Locação de salas ou espaços físicos" },
-  { id: "RECEITA_FINANCEIRA", name: "Receita Financeira (juros, rendimentos)", icon: "📈", type: "INCOME", description: "Juros, rendimentos de aplicações" },
-  { id: "REEMBOLSO_RESSARCIMENTO", name: "Reembolso / Ressarcimento", icon: "↩️", type: "INCOME", description: "Valores devolvidos ou ressarcidos" },
-  { id: "AJUSTE_CONTABIL_POSITIVO", name: "Ajuste Contábil Positivo", icon: "📋", type: "INCOME", description: "Correção contábil a crédito" },
+  {
+    id: "APORTE_SOCIO",
+    name: "Aporte de Sócio",
+    icon: "💰",
+    type: "INCOME",
+    description: "Entrada de capital dos sócios",
+  },
+  {
+    id: "ROYALTIES_ALUGUEL_MARCA",
+    name: "Royalties / Aluguel de Marca",
+    icon: "®️",
+    type: "INCOME",
+    description: "Receita por uso de marca ou licenciamento",
+  },
+  {
+    id: "RECEITA_ALUGUEL_ESPACOS",
+    name: "Receita de Aluguel (Salas/Espaços)",
+    icon: "🏢",
+    type: "INCOME",
+    description: "Locação de salas ou espaços físicos",
+  },
+  {
+    id: "RECEITA_FINANCEIRA",
+    name: "Receita Financeira (juros, rendimentos)",
+    icon: "📈",
+    type: "INCOME",
+    description: "Juros, rendimentos de aplicações",
+  },
+  {
+    id: "REEMBOLSO_RESSARCIMENTO",
+    name: "Reembolso / Ressarcimento",
+    icon: "↩️",
+    type: "INCOME",
+    description: "Valores devolvidos ou ressarcidos",
+  },
+  {
+    id: "AJUSTE_CONTABIL_POSITIVO",
+    name: "Ajuste Contábil Positivo",
+    icon: "📋",
+    type: "INCOME",
+    description: "Correção contábil a crédito",
+  },
   // DESPESAS NÃO OPERACIONAIS
-  { id: "DISTRIBUICAO_LUCROS", name: "Distribuição de Lucros", icon: "💸", type: "EXPENSE", description: "Pagamento de dividendos aos sócios" },
-  { id: "AJUSTE_CONTABIL_NEGATIVO", name: "Ajuste Contábil Negativo", icon: "📋", type: "EXPENSE", description: "Correção contábil a débito" },
-  { id: "EVENTO_EXTRAORDINARIO", name: "Evento Extraordinário (não recorrente)", icon: "⚡", type: "EXPENSE", description: "Despesa única não prevista" },
-  { id: "DESPESA_FINANCEIRA", name: "Despesa Financeira (juros, tarifas)", icon: "📉", type: "EXPENSE", description: "Juros, tarifas bancárias, IOF" },
-  { id: "DESPESA_JURIDICA_NAO_RECORRENTE", name: "Despesa Jurídica Não Recorrente", icon: "⚖️", type: "EXPENSE", description: "Acordos, indenizações, honorários extraordinários" },
+  {
+    id: "DISTRIBUICAO_LUCROS",
+    name: "Distribuição de Lucros",
+    icon: "💸",
+    type: "EXPENSE",
+    description: "Pagamento de dividendos aos sócios",
+  },
+  {
+    id: "AJUSTE_CONTABIL_NEGATIVO",
+    name: "Ajuste Contábil Negativo",
+    icon: "📋",
+    type: "EXPENSE",
+    description: "Correção contábil a débito",
+  },
+  {
+    id: "EVENTO_EXTRAORDINARIO",
+    name: "Evento Extraordinário (não recorrente)",
+    icon: "⚡",
+    type: "EXPENSE",
+    description: "Despesa única não prevista",
+  },
+  {
+    id: "DESPESA_FINANCEIRA",
+    name: "Despesa Financeira (juros, tarifas)",
+    icon: "📉",
+    type: "EXPENSE",
+    description: "Juros, tarifas bancárias, IOF",
+  },
+  {
+    id: "DESPESA_JURIDICA_NAO_RECORRENTE",
+    name: "Despesa Jurídica Não Recorrente",
+    icon: "⚖️",
+    type: "EXPENSE",
+    description: "Acordos, indenizações, honorários extraordinários",
+  },
 ];
 
 export const FINANCIAL_CATEGORY_LABELS: Record<FinancialCategory, string> = {
