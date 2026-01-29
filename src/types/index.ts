@@ -218,93 +218,21 @@ export type AuditAction =
 
 export interface AuditLog {
   id: string;
-  userId: string;
   action: AuditAction;
   details: string;
   timestamp: string;
-  metadata?: Record<string, unknown>;
+  user: string;
 }
 
-// ============= DASHBOARD STATS - SIMPLIFICADO =============
-// Fórmula única: Saldo Atual = Saldo Inicial + Entradas - Saídas
-export interface DashboardStats {
-  // Base
-  initialBalance: number;
-  initialBalanceLastUpdate?: string;
+// ============= FATURAMENTO (RECEBÍVEIS) =============
 
-  // Totais REALIZADOS (único tipo de movimentação)
-  totalIncome: number;
-  totalExpense: number;
-
-  // SALDO ATUAL = initialBalance + totalIncome - totalExpense
-  currentBalance: number;
-
-  // Contadores
-  transactionCount: number;
-
-  // ============= CONTROLE DE STATUS DE ENTRADAS =============
-  // Total de entradas por status
-  incomeByStatus: {
-    previsto: number; // PENDENTE - não entrou no caixa
-    recebido: number; // REALIZADO - já entrou no caixa
-    cancelado: number; // CANCELADO - não será recebido
-  };
-  // Contagem de entradas por status
-  incomeCountByStatus: {
-    previsto: number;
-    recebido: number;
-    cancelado: number;
-  };
-
-  // Detalhamento por tipo de recebimento (para análise, não projeção)
-  incomeByReceiptType: {
-    particular: number;
-    convenio: number;
-  };
-
-  // Detalhamento por forma de pagamento
-  incomeByPaymentMethod: {
-    dinheiro: number;
-    pix: number;
-    debito: number;
-    creditoVista: number;
-    creditoParcelado: number;
-  };
-
-  // Detalhamento por operadora
-  incomeByOperadora: {
-    ipasgo: number;
-    unimed: number;
-    bradesco: number;
-    geap: number;
-  };
-
-  // Detalhamento de saídas por categoria
-  expenseByCategory: Record<string, number>;
-}
-
-export interface UnitStats {
-  unit: string;
-  income: number;
-  expense: number;
-  transactionCount: number;
-  netBalance: number;
-}
-
-// ============= FASE 2: FATURAMENTO A RECEBER (RECEBÍVEIS) =============
-// Valores faturados que ainda não entraram em caixa
-// ISOLADOS de: Caixa, DRE, Score até efetivo recebimento
-
-export type ReceivableStatus = "FATURADO" | "RECEBIDO" | "RECEBIDO_COM_GLOSA" | "GLOSADO";
-
-export type GlossType = "PARCIAL" | "TOTAL";
-
-// ============= SUBSTATUS DE RECURSO DE GLOSA =============
-export type AppealStatus =
-  | "NAO_INICIADO" // Recurso não iniciado
-  | "EM_RECURSO" // Em recurso
-  | "DEFERIDO" // Recurso deferido (valor recuperado)
-  | "INDEFERIDO"; // Recurso indeferido (perda definitiva)
+export type ReceivableStatus =
+  | "ABERTO" // Faturado e aguardando pagamento
+  | "RECEBIDO" // Totalmente recebido
+  | "GLOSADO" // Glosa total registrada
+  | "GLOSA_PARCIAL" // Glosa parcial registrada
+  | "EM_RECURSO" // Recurso em andamento
+  | "PERDA_DEFINITIVA"; // Glosa indeferida / perda confirmada
 
 export interface ReceivableEditLog {
   field: string;
@@ -314,60 +242,51 @@ export interface ReceivableEditLog {
   editedBy: string;
 }
 
-// ============= HISTÓRICO DE EVENTOS DO RECEBÍVEL =============
 export interface ReceivableHistoryEntry {
   id: string;
   action:
     | "CRIADO"
     | "RECEBIDO"
-    | "GLOSA_REGISTRADA"
+    | "GLOSADO_TOTAL"
+    | "GLOSADO_PARCIAL"
     | "RECURSO_INICIADO"
-    | "RECURSO_DEFERIDO"
-    | "RECURSO_INDEFERIDO"
+    | "RECURSO_RESOLVIDO"
     | "EDITADO";
   description: string;
   timestamp: string;
   userName: string;
-  // Valores envolvidos na ação
   amount?: number;
-  // Transação gerada (se houver)
-  linkedTransactionId?: string;
 }
 
 export interface Receivable {
   id: string;
-  // Data do faturamento
+
+  // ============= DADOS BÁSICOS =============
+  // Data do faturamento (data emitida)
   billingDate: string;
-  // Competência do faturamento (MM/YYYY) - período de prestação do serviço
-  competencia?: string;
-  // Unidade de negócio
-  unit: string;
-  // Convênio/Origem do faturamento
-  source: string;
-  // Descrição do serviço/procedimento
-  description: string;
+  // Competência (MM/YYYY)
+  competencia: string;
+  // Unidade de negócio (opcional; pode ser agregador)
+  unit?: string;
+  // Pagador (convênio/particular)
+  payerType: "CONVENIO" | "PARTICULAR";
+  // Convênio específico
+  convenio?: string;
 
-  // ============= TRÊS VALORES OBRIGATÓRIOS =============
-  // Valor original faturado (NUNCA muda após criação)
+  // ============= VALORES =============
+  // Valor bruto faturado
   billedAmount: number;
-  // Valor efetivamente recebido (acumulado de todos os recebimentos)
-  receivedAmount: number;
-  // Valor total glosado (acumulado de glosas)
-  glossedAmount: number;
-  // REGRA: billedAmount = receivedAmount + glossedAmount (quando finalizado)
+  // Valor recebido total
+  receivedAmount?: number;
+  // Valor glosado total
+  glossedAmount?: number;
 
-  // Status principal
+  // ============= STATUS =============
   status: ReceivableStatus;
 
-  // ============= CONTROLE DE GLOSA E RECURSO =============
-  // Tipo de glosa (quando houver)
-  glossType?: GlossType;
-  // Motivo da glosa (obrigatório quando glosado)
-  glossReason?: string;
-  // Substatus do recurso de glosa
-  appealStatus?: AppealStatus;
-  // Valor em recurso (pode ser diferente do glossedAmount se recurso parcial)
-  appealAmount?: number;
+  // ============= RECURSO (APELAÇÃO) =============
+  // Indica se houve recurso
+  hasAppeal?: boolean;
   // Data de abertura do recurso
   appealStartDate?: string;
   // Data de resolução do recurso
@@ -432,6 +351,7 @@ export const BASE_PRODUCTION_TYPES = [
   "BOX_PS",
   "SESSAO_TERAPEUTICA",
   "INTERNACAO",
+  "MAT_MED",
   "OUTRO",
 ] as const;
 
@@ -584,10 +504,7 @@ export interface ProductionStats {
   byProductionType: Record<string, { count: number; quantity: number; value: number }>;
   // Por pagador (por quantidade)
   byPayerType: { convenio: number; particular: number };
-  byPayerTypeQuantity: { convenio: number; particular: number };
-
-  // ============= CONSOLIDAÇÃO AVULSOS + PACOTES =============
-  // Consultas: avulsos CONSULTA + pacotes.consult_amount
+  // Consolidado por pacotes
   consolidatedConsultas: { value: number; quantity: number };
   // Box/Taxas: avulsos BOX_PS + pacotes.fee_amount
   consolidatedBoxTaxas: { value: number; quantity: number };
