@@ -563,6 +563,9 @@ export interface ProductionStats {
   // Por tipo de produção (dinâmico)
   byProductionType: Record<string, { count: number; quantity: number; value: number }>;
 
+  // Por pagador (por valor)
+  byPayerType: { convenio: number; particular: number };
+
   // Por pagador (por quantidade)
   byPayerTypeQuantity: { convenio: number; particular: number };
 
