@@ -1,14 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import {
-  Plus,
-  Pencil,
-  Check,
-  X,
-  AlertTriangle,
-  Info,
-  Package,
-  Search,
-} from "lucide-react";
+import { Plus, Pencil, Check, X, AlertTriangle, Info, Package, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -16,26 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { ProductionTypeConfig, Production } from "@/types";
 import { generateId } from "@/utils/formatters";
@@ -50,10 +24,39 @@ interface SettingsProductionTypesProps {
 const DEFAULT_PRODUCTION_TYPES: ProductionTypeConfig[] = [
   { id: "CONSULTA", name: "Consulta", active: true, allowBatchEntry: true, requiresDetail: false, valueModel: "TOTAL" },
   { id: "EXAME", name: "Exame", active: true, allowBatchEntry: true, requiresDetail: true, valueModel: "TOTAL" },
-  { id: "QUIMIOTERAPIA", name: "Quimioterapia", active: true, allowBatchEntry: true, requiresDetail: false, valueModel: "TOTAL" },
-  { id: "BOX_PS", name: "Box / Atendimento PS", active: true, allowBatchEntry: true, requiresDetail: false, valueModel: "TOTAL" },
-  { id: "SESSAO_TERAPEUTICA", name: "Sessão Terapêutica", active: true, allowBatchEntry: true, requiresDetail: false, valueModel: "TOTAL" },
-  { id: "INTERNACAO", name: "Internação", active: true, allowBatchEntry: false, requiresDetail: false, valueModel: "TOTAL" },
+  {
+    id: "QUIMIOTERAPIA",
+    name: "Quimioterapia",
+    active: true,
+    allowBatchEntry: true,
+    requiresDetail: false,
+    valueModel: "TOTAL",
+  },
+  {
+    id: "BOX_PS",
+    name: "Box / Atendimento PS",
+    active: true,
+    allowBatchEntry: true,
+    requiresDetail: false,
+    valueModel: "TOTAL",
+  },
+  {
+    id: "SESSAO_TERAPEUTICA",
+    name: "Sessão Terapêutica",
+    active: true,
+    allowBatchEntry: true,
+    requiresDetail: false,
+    valueModel: "TOTAL",
+  },
+  {
+    id: "INTERNACAO",
+    name: "Internação",
+    active: true,
+    allowBatchEntry: false,
+    requiresDetail: false,
+    valueModel: "TOTAL",
+  },
+  { id: "MAT_MED", name: "Mat/Med", active: true, allowBatchEntry: true, requiresDetail: false, valueModel: "TOTAL" },
   { id: "OUTRO", name: "Outro", active: true, allowBatchEntry: true, requiresDetail: false, valueModel: "TOTAL" },
 ];
 
@@ -66,15 +69,15 @@ export function SettingsProductionTypes({
   // CORREÇÃO: Se não há tipos salvos no banco, usar defaults e PERSISTIR
   // Isso garante que os defaults sejam salvos no banco imediatamente
   const [initialized, setInitialized] = useState(false);
-  
+
   // Combinar tipos do banco com defaults que ainda não existem
   const types = useMemo(() => {
     if (productionTypes.length === 0) {
       return DEFAULT_PRODUCTION_TYPES;
     }
     // Mesclar: manter os do banco e adicionar defaults que não existem
-    const byId = new Map(productionTypes.map(t => [t.id, t]));
-    DEFAULT_PRODUCTION_TYPES.forEach(def => {
+    const byId = new Map(productionTypes.map((t) => [t.id, t]));
+    DEFAULT_PRODUCTION_TYPES.forEach((def) => {
       if (!byId.has(def.id)) {
         byId.set(def.id, def);
       }
@@ -90,7 +93,7 @@ export function SettingsProductionTypes({
       setInitialized(true);
     }
   }, [initialized, productionTypes.length, onUpdate]);
-  
+
   const [searchTerm, setSearchTerm] = useState("");
   const [newType, setNewType] = useState("");
   const [newDescription, setNewDescription] = useState("");
@@ -112,9 +115,7 @@ export function SettingsProductionTypes({
     const trimmed = newType.trim();
     if (!trimmed) return;
 
-    const exists = types.some(
-      (t) => t.name.toLowerCase() === trimmed.toLowerCase()
-    );
+    const exists = types.some((t) => t.name.toLowerCase() === trimmed.toLowerCase());
     if (exists) {
       toast.error("Tipo de produção já existe!");
       return;
@@ -142,7 +143,7 @@ export function SettingsProductionTypes({
   const handleToggle = (id: string) => {
     const type = types.find((t) => t.id === id);
     const usageCount = getUsageCount(id);
-    
+
     if (type?.active && usageCount > 0) {
       if (!confirm(`Este tipo possui ${usageCount} produção(ões) vinculada(s). Deseja desativar mesmo assim?`)) {
         return;
@@ -150,7 +151,7 @@ export function SettingsProductionTypes({
     }
 
     const updated = types.map((t) =>
-      t.id === id ? { ...t, active: !t.active, updatedAt: new Date().toISOString() } : t
+      t.id === id ? { ...t, active: !t.active, updatedAt: new Date().toISOString() } : t,
     );
     onUpdate(updated);
     onAddLog("UPDATE_SETTINGS", `Tipo de produção "${type?.name}" ${type?.active ? "desativado" : "ativado"}`);
@@ -185,7 +186,7 @@ export function SettingsProductionTypes({
             valueModel: editingData.valueModel || "TOTAL",
             updatedAt: new Date().toISOString(),
           }
-        : t
+        : t,
     );
     onUpdate(updated);
     onAddLog("UPDATE_SETTINGS", `Tipo de produção "${editingData.name}" atualizado`);
@@ -274,10 +275,7 @@ export function SettingsProductionTypes({
 
                 if (isEditing) {
                   return (
-                    <div
-                      key={type.id}
-                      className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3"
-                    >
+                    <div key={type.id} className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
                       <div className="flex gap-2">
                         <Input
                           value={editingData.name || ""}
@@ -318,7 +316,9 @@ export function SettingsProductionTypes({
                         <Label className="text-xs">Modelo de valor:</Label>
                         <Select
                           value={editingData.valueModel || "TOTAL"}
-                          onValueChange={(v) => setEditingData({ ...editingData, valueModel: v as "TOTAL" | "QUANTITY_AVERAGE" })}
+                          onValueChange={(v) =>
+                            setEditingData({ ...editingData, valueModel: v as "TOTAL" | "QUANTITY_AVERAGE" })
+                          }
                         >
                           <SelectTrigger className="w-48 h-8">
                             <SelectValue />
@@ -357,7 +357,10 @@ export function SettingsProductionTypes({
                         <span className="font-medium">{type.name}</span>
                         {/* Status badges */}
                         {type.active ? (
-                          <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs">
+                          <Badge
+                            variant="outline"
+                            className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs"
+                          >
                             Ativo
                           </Badge>
                         ) : (
@@ -368,7 +371,10 @@ export function SettingsProductionTypes({
                         {isInUse && (
                           <Tooltip>
                             <TooltipTrigger>
-                              <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20 text-xs">
+                              <Badge
+                                variant="outline"
+                                className="bg-amber-500/10 text-amber-600 border-amber-500/20 text-xs"
+                              >
                                 Em uso ({usageCount})
                               </Badge>
                             </TooltipTrigger>
@@ -390,12 +396,7 @@ export function SettingsProductionTypes({
                     <div className="flex items-center gap-2 shrink-0">
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleStartEdit(type)}
-                            className="h-8 w-8"
-                          >
+                          <Button variant="ghost" size="icon" onClick={() => handleStartEdit(type)} className="h-8 w-8">
                             <Pencil className="h-4 w-4" />
                           </Button>
                         </TooltipTrigger>
@@ -414,10 +415,7 @@ export function SettingsProductionTypes({
                           </TooltipContent>
                         </Tooltip>
                       )}
-                      <Switch
-                        checked={type.active}
-                        onCheckedChange={() => handleToggle(type.id)}
-                      />
+                      <Switch checked={type.active} onCheckedChange={() => handleToggle(type.id)} />
                     </div>
                   </div>
                 );
