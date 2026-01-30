@@ -13,9 +13,10 @@ import {
   PayerConfig,
   SystemParameters,
   SpecialtyConfig,
+  PaymentMethodParticularConfig,
 } from "@/types";
 import type { Json } from "@/integrations/supabase/types";
-import { DEFAULT_UNITS } from "@/utils/constants";
+import { DEFAULT_UNITS, DEFAULT_PAYMENT_METHODS_PARTICULAR } from "@/utils/constants";
 
 interface CompanyFinancialSettings {
   id: string;
@@ -43,6 +44,7 @@ const DEFAULT_EXTENDED: ExpandedSettings = {
   payers: [],
   specialties: [],
   systemParameters: undefined,
+  paymentMethodsParticular: DEFAULT_PAYMENT_METHODS_PARTICULAR,
 };
 
 /**
@@ -188,6 +190,27 @@ export function useCompanySettings() {
           .filter((s: SpecialtyConfig | null): s is SpecialtyConfig => s !== null);
         const systemParameters = rawData.system_parameters || undefined;
 
+        // Normalizar paymentMethodsParticular: usar padrão se ausente/vazio
+        const rawPaymentMethods = Array.isArray(rawData.payment_methods_particular) 
+          ? rawData.payment_methods_particular 
+          : [];
+        
+        // Normalizar e filtrar items inválidos
+        const paymentMethodsParticular: PaymentMethodParticularConfig[] = rawPaymentMethods.length > 0
+          ? rawPaymentMethods
+              .map((m: any) => {
+                if (m && typeof m === "object" && m.id && m.name) {
+                  return {
+                    id: String(m.id),
+                    name: String(m.name),
+                    active: m.active !== false,
+                  };
+                }
+                return null;
+              })
+              .filter((m: PaymentMethodParticularConfig | null): m is PaymentMethodParticularConfig => m !== null)
+          : DEFAULT_PAYMENT_METHODS_PARTICULAR;
+
         const extended: ExpandedSettings = {
           ...baseSettings,
           productionTypes,
@@ -195,6 +218,7 @@ export function useCompanySettings() {
           payers,
           specialties,
           systemParameters,
+          paymentMethodsParticular,
         };
 
         setExtendedSettings(extended);
@@ -341,6 +365,9 @@ export function useCompanySettings() {
       }
       if (updates.systemParameters !== undefined) {
         dbUpdate.system_parameters = updates.systemParameters;
+      }
+      if (updates.paymentMethodsParticular !== undefined) {
+        dbUpdate.payment_methods_particular = updates.paymentMethodsParticular;
       }
 
       try {

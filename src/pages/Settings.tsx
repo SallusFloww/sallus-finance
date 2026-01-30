@@ -51,6 +51,7 @@ import {
   SettingsParameters,
   SettingsPackagePricing,
   SettingsSpecialties,
+  SettingsPaymentMethodsParticular,
 } from "@/components/settings";
 import { DemoSettings } from "@/components/settings/DemoSettings";
 import { useReceivablesDB } from "@/hooks/useReceivablesDB";
@@ -633,8 +634,8 @@ export default function Settings() {
         </div>
 
         <Tabs defaultValue="units" className="space-y-6">
-          {/* ✅ Ajuste de colunas pra caber Médicos */}
-          <TabsList className="grid h-auto w-full grid-cols-4 gap-1 lg:grid-cols-9">
+          {/* ✅ Ajuste de colunas pra caber todas as abas */}
+          <TabsList className="grid h-auto w-full grid-cols-4 gap-1 lg:grid-cols-10">
             <TabsTrigger value="units" className="gap-1 text-xs lg:text-sm">
               <Building2 className="h-4 w-4" />
               <span className="hidden sm:inline">Unidades</span>
@@ -669,6 +670,12 @@ export default function Settings() {
             <TabsTrigger value="payers" className="gap-1 text-xs lg:text-sm">
               <Users className="h-4 w-4" />
               <span className="hidden sm:inline">Pagadores</span>
+            </TabsTrigger>
+
+            {/* ✅ NOVA ABA: FORMAS DE PAGAMENTO */}
+            <TabsTrigger value="payment-methods" className="gap-1 text-xs lg:text-sm">
+              <Tag className="h-4 w-4" />
+              <span className="hidden sm:inline">Pagamentos</span>
             </TabsTrigger>
 
             <TabsTrigger value="packages" className="gap-1 text-xs lg:text-sm">
@@ -1075,6 +1082,17 @@ export default function Settings() {
               productions={productions ?? []}
               receivables={receivables ?? []}
               onUpdate={(payers) => setExtendedSettings((prev) => ({ ...prev, payers }) as ExpandedSettings)}
+              onAddLog={addAuditLog}
+            />
+          </TabsContent>
+
+          {/* ============= PAYMENT METHODS TAB ============= */}
+          <TabsContent value="payment-methods" className="space-y-4">
+            <SettingsPaymentMethodsParticular
+              paymentMethods={extendedSettings?.paymentMethodsParticular ?? []}
+              onUpdate={(methods) =>
+                setExtendedSettings((prev) => ({ ...(prev ?? {}), paymentMethodsParticular: methods }) as ExpandedSettings)
+              }
               onAddLog={addAuditLog}
             />
           </TabsContent>

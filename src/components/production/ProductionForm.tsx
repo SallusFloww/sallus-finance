@@ -18,7 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ProductionType, UnitConfig, BASE_PRODUCTION_TYPES } from "@/types";
 import { toast } from "sonner";
 import { Activity, Check, ChevronsUpDown, Plus, Calculator, Package, AlertCircle, Info } from "lucide-react";
-import { SPECIALTIES } from "@/utils/constants";
+import { SPECIALTIES, DEFAULT_PAYMENT_METHODS_PARTICULAR, PAYMENT_METHOD_PARTICULAR_LABELS } from "@/utils/constants";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -989,21 +989,47 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
             {formData.payerType === "PARTICULAR" && (
               <div className="space-y-2">
                 <Label>Forma de Pagamento *</Label>
-                <Select
-                  value={formData.paymentMethod}
-                  onValueChange={(v) => setFormData((prev) => ({ ...prev, paymentMethod: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="DINHEIRO">Dinheiro</SelectItem>
-                    <SelectItem value="PIX">Pix</SelectItem>
-                    <SelectItem value="CARTAO_DEBITO">Cartão de Débito</SelectItem>
-                    <SelectItem value="CREDITO_VISTA">Crédito à Vista</SelectItem>
-                    <SelectItem value="CREDITO_PARCELADO">Crédito Parcelado</SelectItem>
-                  </SelectContent>
-                </Select>
+                {(() => {
+                  // Use paymentMethodsParticular do extendedSettings, com fallback para defaults
+                  const allMethods = extendedSettings?.paymentMethodsParticular?.length
+                    ? extendedSettings.paymentMethodsParticular
+                    : DEFAULT_PAYMENT_METHODS_PARTICULAR;
+                  
+                  // Filtrar apenas ativos para novos lançamentos
+                  const activeMethods = allMethods.filter((m) => m.active);
+                  
+                  // Se o valor atual não está na lista ativa (produção antiga com método inativo)
+                  const currentMethodInactive = formData.paymentMethod && 
+                    !activeMethods.some((m) => m.id === formData.paymentMethod);
+                  const currentMethodData = currentMethodInactive
+                    ? allMethods.find((m) => m.id === formData.paymentMethod)
+                    : null;
+
+                  return (
+                    <Select
+                      value={formData.paymentMethod}
+                      onValueChange={(v) => setFormData((prev) => ({ ...prev, paymentMethod: v }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {/* Métodos ativos */}
+                        {activeMethods.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.name}
+                          </SelectItem>
+                        ))}
+                        {/* Se método atual é inativo, mostrar como opção (não selecionável para novos) */}
+                        {currentMethodData && (
+                          <SelectItem key={currentMethodData.id} value={currentMethodData.id} disabled>
+                            {currentMethodData.name} (Inativo)
+                          </SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  );
+                })()}
               </div>
             )}
 
