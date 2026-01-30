@@ -70,13 +70,29 @@ export type NonOperationalSubtype =
   | "DESPESA_JURIDICA_NAO_RECORRENTE";
 
 // Nível 4 - Formas de pagamento para Particular
-export type PaymentMethodParticular = "DINHEIRO" | "CARTAO_DEBITO" | "CREDITO_VISTA" | "CREDITO_PARCELADO" | "PIX" | "BOLETO";
+export type PaymentMethodParticular =
+  | "DINHEIRO"
+  | "CARTAO_DEBITO"
+  | "CREDITO_VISTA"
+  | "CREDITO_PARCELADO"
+  | "PIX"
+  | "BOLETO"
+  | (string & {});
+
+// Alias para IDs dinâmicos (o app permite criar novas formas via Settings)
+export type PaymentMethodParticularId = PaymentMethodParticular;
 
 // Configuração de forma de pagamento (gerenciável)
 export interface PaymentMethodParticularConfig {
-  id: string;
+  /** ID persistido em productions.payment_method e financial_entries.payment_method */
+  id: PaymentMethodParticularId;
+  /** Label humano exibido na UI e relatórios */
   name: string;
+  /** Se false: não aparece em novos selects, mas continua válido para histórico */
   active: boolean;
+  /** Campos opcionais para auditoria (não obrigatórios) */
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // Nível 4 - Operadoras para Convênios
