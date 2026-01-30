@@ -253,6 +253,17 @@ export const PAYMENT_METHODS_PARTICULAR: { id: PaymentMethodParticular; name: st
   { id: "CREDITO_VISTA", name: "Crédito à Vista" },
   { id: "CREDITO_PARCELADO", name: "Crédito Parcelado" },
   { id: "PIX", name: "Pix" },
+  { id: "BOLETO", name: "Boleto" },
+];
+
+// Default payment methods particular com active flag (para extendedSettings)
+export const DEFAULT_PAYMENT_METHODS_PARTICULAR: { id: string; name: string; active: boolean }[] = [
+  { id: "DINHEIRO", name: "Dinheiro", active: true },
+  { id: "PIX", name: "Pix", active: true },
+  { id: "CARTAO_DEBITO", name: "Cartão de Débito", active: true },
+  { id: "CREDITO_VISTA", name: "Crédito à Vista", active: true },
+  { id: "CREDITO_PARCELADO", name: "Crédito Parcelado", active: true },
+  { id: "BOLETO", name: "Boleto", active: true },
 ];
 
 // ============= NÍVEL 4B - OPERADORAS (Convênios) =============
@@ -359,6 +370,7 @@ export const PAYMENT_METHOD_PARTICULAR_LABELS: Record<string, string> = {
   CREDITO_VISTA: "Crédito à Vista",
   CREDITO_PARCELADO: "Crédito Parcelado",
   PIX: "Pix",
+  BOLETO: "Boleto",
 };
 
 export const OPERADORA_LABELS: Record<string, string> = {

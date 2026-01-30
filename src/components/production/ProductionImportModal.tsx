@@ -30,8 +30,8 @@ import { useCompanySettings } from "@/hooks/useCompanySettings";
 import { supabase } from "@/integrations/supabase/client";
 import { formatCurrency } from "@/utils/formatters";
 import { useGlobalRealtime } from "@/contexts/GlobalRealtimeProvider";
-import { PRODUCTION_TYPE_LABELS } from "@/utils/constants";
-import { BASE_PRODUCTION_TYPES } from "@/types";
+import { PRODUCTION_TYPE_LABELS, DEFAULT_PAYMENT_METHODS_PARTICULAR } from "@/utils/constants";
+import { BASE_PRODUCTION_TYPES, PaymentMethodParticularConfig } from "@/types";
 import { usePackagePricing, PackageType, PackageComponents } from "@/hooks/usePackagePricing";
 
 // ============= TYPES =============
@@ -82,16 +82,6 @@ type SortDirection = "asc" | "desc";
 const PACKAGE_PRODUCTION_TYPES = ["PACOTE_BOX", "PACOTE_GTA"];
 
 // ============= CONSTANTS =============
-
-// Modos de pagamento para PARTICULAR (idêntico ao lançamento manual)
-const PAYMENT_METHODS = [
-  { id: "PIX", name: "PIX" },
-  { id: "DINHEIRO", name: "Dinheiro" },
-  { id: "CARTAO", name: "Cartão" },
-  { id: "TRANSFERENCIA", name: "Transferência" },
-  { id: "BOLETO", name: "Boleto" },
-  { id: "OUTRO", name: "Outro" },
-] as const;
 
 // Fallback de convênios
 const DEFAULT_PAYERS = [
@@ -953,21 +943,31 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
               {context.payer_type === "PARTICULAR" && (
                 <div className="space-y-2 col-span-2">
                   <Label>Modo de Pagamento *</Label>
-                  <Select
-                    value={context.payment_method}
-                    onValueChange={(v) => setContext((c) => ({ ...c, payment_method: v }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PAYMENT_METHODS.map((pm) => (
-                        <SelectItem key={pm.id} value={pm.id}>
-                          {pm.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {(() => {
+                    // Use paymentMethodsParticular do extendedSettings, com fallback para defaults
+                    const allMethods = extendedSettings?.paymentMethodsParticular?.length
+                      ? extendedSettings.paymentMethodsParticular
+                      : DEFAULT_PAYMENT_METHODS_PARTICULAR;
+                    const activeMethods = allMethods.filter((m) => m.active);
+
+                    return (
+                      <Select
+                        value={context.payment_method}
+                        onValueChange={(v) => setContext((c) => ({ ...c, payment_method: v }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {activeMethods.map((pm) => (
+                            <SelectItem key={pm.id} value={pm.id}>
+                              {pm.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    );
+                  })()}
                 </div>
               )}
             </div>
@@ -1017,7 +1017,7 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
                 </span>
                 {context.payer_type === "PARTICULAR" && context.payment_method && (
                   <span>
-                    Pagamento: <strong>{PAYMENT_METHODS.find((p) => p.id === context.payment_method)?.name}</strong>
+                    Pagamento: <strong>{(extendedSettings?.paymentMethodsParticular ?? DEFAULT_PAYMENT_METHODS_PARTICULAR).find((p) => p.id === context.payment_method)?.name || context.payment_method}</strong>
                   </span>
                 )}
               </div>

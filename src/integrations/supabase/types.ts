@@ -150,6 +150,24 @@ export type Database = {
           },
         ]
       }
+      company_financial_settings_categories_backup: {
+        Row: {
+          backed_up_at: string | null
+          categories: Json | null
+          company_id: string | null
+        }
+        Insert: {
+          backed_up_at?: string | null
+          categories?: Json | null
+          company_id?: string | null
+        }
+        Update: {
+          backed_up_at?: string | null
+          categories?: Json | null
+          company_id?: string | null
+        }
+        Relationships: []
+      }
       company_settings: {
         Row: {
           company_id: string
@@ -299,6 +317,13 @@ export type Database = {
             columns: ["financial_entry_id"]
             isOneToOne: false
             referencedRelation: "financial_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conciliation_status_financial_entry_id_fkey"
+            columns: ["financial_entry_id"]
+            isOneToOne: false
+            referencedRelation: "v_invalid_categories"
             referencedColumns: ["id"]
           },
           {
@@ -472,6 +497,38 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "package_pricing_rules_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_methods: {
+        Row: {
+          active: boolean
+          company_id: string
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          active?: boolean
+          company_id: string
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          active?: boolean
+          company_id?: string
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_methods_company_id_fkey"
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "companies"
@@ -750,6 +807,7 @@ export type Database = {
           glossed_amount: number
           history: Json | null
           id: string
+          idempotency_key: string | null
           linked_transaction_id: string | null
           notes: string | null
           received_amount: number
@@ -781,6 +839,7 @@ export type Database = {
           glossed_amount?: number
           history?: Json | null
           id?: string
+          idempotency_key?: string | null
           linked_transaction_id?: string | null
           notes?: string | null
           received_amount?: number
@@ -812,6 +871,7 @@ export type Database = {
           glossed_amount?: number
           history?: Json | null
           id?: string
+          idempotency_key?: string | null
           linked_transaction_id?: string | null
           notes?: string | null
           received_amount?: number
@@ -830,6 +890,102 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      receivables_dupes_20260108: {
+        Row: {
+          actual_receipt_date: string | null
+          appeal_amount: number | null
+          appeal_recovered_amount: number | null
+          appeal_resolved_date: string | null
+          appeal_start_date: string | null
+          appeal_status: string | null
+          appeal_transaction_id: string | null
+          billed_amount: number | null
+          billing_date: string | null
+          company_id: string | null
+          competencia: string | null
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          edit_logs: Json | null
+          expected_receipt_days: number | null
+          gloss_reason: string | null
+          gloss_type: string | null
+          glossed_amount: number | null
+          history: Json | null
+          id: string | null
+          linked_transaction_id: string | null
+          notes: string | null
+          received_amount: number | null
+          source: string | null
+          status: string | null
+          unit: string | null
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          actual_receipt_date?: string | null
+          appeal_amount?: number | null
+          appeal_recovered_amount?: number | null
+          appeal_resolved_date?: string | null
+          appeal_start_date?: string | null
+          appeal_status?: string | null
+          appeal_transaction_id?: string | null
+          billed_amount?: number | null
+          billing_date?: string | null
+          company_id?: string | null
+          competencia?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          edit_logs?: Json | null
+          expected_receipt_days?: number | null
+          gloss_reason?: string | null
+          gloss_type?: string | null
+          glossed_amount?: number | null
+          history?: Json | null
+          id?: string | null
+          linked_transaction_id?: string | null
+          notes?: string | null
+          received_amount?: number | null
+          source?: string | null
+          status?: string | null
+          unit?: string | null
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          actual_receipt_date?: string | null
+          appeal_amount?: number | null
+          appeal_recovered_amount?: number | null
+          appeal_resolved_date?: string | null
+          appeal_start_date?: string | null
+          appeal_status?: string | null
+          appeal_transaction_id?: string | null
+          billed_amount?: number | null
+          billing_date?: string | null
+          company_id?: string | null
+          competencia?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          edit_logs?: Json | null
+          expected_receipt_days?: number | null
+          gloss_reason?: string | null
+          gloss_type?: string | null
+          glossed_amount?: number | null
+          history?: Json | null
+          id?: string | null
+          linked_transaction_id?: string | null
+          notes?: string | null
+          received_amount?: number | null
+          source?: string | null
+          status?: string | null
+          unit?: string | null
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Relationships: []
       }
       role_permissions: {
         Row: {
@@ -1012,7 +1168,32 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      v_invalid_categories: {
+        Row: {
+          categoria: string | null
+          company_id: string | null
+          id: string | null
+        }
+        Insert: {
+          categoria?: string | null
+          company_id?: string | null
+          id?: string | null
+        }
+        Update: {
+          categoria?: string | null
+          company_id?: string | null
+          id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_entries_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       cleanup_company_data_by_window: {
@@ -1046,6 +1227,14 @@ export type Database = {
         Returns: Json
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      is_valid_financial_category: {
+        Args: { p_category: string; p_company_id: string }
+        Returns: boolean
+      }
+      is_valid_financial_category_code: {
+        Args: { p_code: string; p_company_id: string }
+        Returns: boolean
+      }
       link_receivable_to_existing_entry: {
         Args: { _financial_entry_id: string; _receivable_id: string }
         Returns: boolean

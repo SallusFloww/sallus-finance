@@ -70,7 +70,14 @@ export type NonOperationalSubtype =
   | "DESPESA_JURIDICA_NAO_RECORRENTE";
 
 // Nível 4 - Formas de pagamento para Particular
-export type PaymentMethodParticular = "DINHEIRO" | "CARTAO_DEBITO" | "CREDITO_VISTA" | "CREDITO_PARCELADO" | "PIX";
+export type PaymentMethodParticular = "DINHEIRO" | "CARTAO_DEBITO" | "CREDITO_VISTA" | "CREDITO_PARCELADO" | "PIX" | "BOLETO";
+
+// Configuração de forma de pagamento (gerenciável)
+export interface PaymentMethodParticularConfig {
+  id: string;
+  name: string;
+  active: boolean;
+}
 
 // Nível 4 - Operadoras para Convênios
 export type Operadora = "IPASGO" | "UNIMED" | "BRADESCO" | "GEAP";
@@ -656,4 +663,6 @@ export interface ExpandedSettings extends Settings {
   specialties?: SpecialtyConfig[];
   systemParameters?: SystemParameters;
   settingsChangeLogs?: SettingsChangeLog[];
+  // Formas de pagamento Particular (gerenciável)
+  paymentMethodsParticular?: PaymentMethodParticularConfig[];
 }
