@@ -115,7 +115,7 @@ export interface SpecialtyConfig {
 export type BusinessUnit = "ONCOLOGIA" | "PRONTO_SOCORRO" | "CENTRO_CLINICO";
 
 // Legacy - manter compatibilidade
-export type PaymentMethod = "PIX" | "TRANSFER" | "CASH" | "CARD";
+export type PaymentMethod = "PIX" | "TRANSFER" | "CASH" | "CARD" | "BOLETO";
 
 export interface Transaction {
   id: string;
