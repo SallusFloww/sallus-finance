@@ -5,49 +5,40 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
-import { 
-  FinancialEntry, 
-  FinancialEntryInsert, 
-  FinancialEntryType, 
+import {
+  FinancialEntry,
+  FinancialEntryInsert,
+  FinancialEntryType,
   FinancialEntryStatus,
-  useFinancialEntries 
+  useFinancialEntries,
 } from "@/hooks/useFinancialEntries";
 import { useCompanySettings } from "@/hooks/useCompanySettings";
-import { BUSINESS_UNITS, RECEIPT_TYPES, PAYMENT_METHODS_PARTICULAR, OPERADORAS, DEFAULT_CATEGORIES } from "@/utils/constants";
+import {
+  BUSINESS_UNITS,
+  RECEIPT_TYPES,
+  PAYMENT_METHODS_PARTICULAR,
+  OPERADORAS,
+  DEFAULT_CATEGORIES,
+  PAYMENT_METHOD_LABELS,
+} from "@/utils/constants";
 import { parseMoneyBR, parseLocalDate } from "@/utils/formatters";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
 
 // Payment method keywords to filter out from categories (lowercase, no accents)
-const PAYMENT_METHOD_KEYWORDS = [
-  "pix", "dinheiro", "debito", "credito", "cartao", "transferencia", "ted", "boleto"
-];
+const PAYMENT_METHOD_KEYWORDS = ["pix", "dinheiro", "debito", "credito", "cartao", "transferencia", "ted", "boleto"];
 
 // Helper: normalize string removing accents for comparison
 const normalizeAccents = (s: string): string =>
-  s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 
 interface FinancialEntryFormProps {
   editingEntry?: FinancialEntry;
@@ -57,14 +48,14 @@ interface FinancialEntryFormProps {
 export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryFormProps) {
   const { addEntry, updateEntry } = useFinancialEntries();
   const { settings, extendedSettings } = useCompanySettings();
-  
+
   // CORREÇÃO: Usar especialidades do cadastro mestre (extendedSettings)
-  const specialtiesFromSettings = extendedSettings.specialties?.filter(s => s.active) || [];
+  const specialtiesFromSettings = extendedSettings.specialties?.filter((s) => s.active) || [];
 
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
-  
+
   // Form fields
   const [type, setType] = useState<FinancialEntryType>(editingEntry?.type || "entrada");
   const [status, setStatus] = useState<FinancialEntryStatus>(editingEntry?.status || "recebido");
@@ -73,10 +64,10 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
   const [valor, setValor] = useState(editingEntry?.valor?.toString() || "");
   // HOTFIX P0: usa parseLocalDate para evitar UTC shift em datas YYYY-MM-DD
   const [dataPrevista, setDataPrevista] = useState<Date>(
-    editingEntry?.data_prevista ? parseLocalDate(editingEntry.data_prevista) : new Date()
+    editingEntry?.data_prevista ? parseLocalDate(editingEntry.data_prevista) : new Date(),
   );
   const [dataRecebimento, setDataRecebimento] = useState<Date | undefined>(
-    editingEntry?.data_recebimento ? parseLocalDate(editingEntry.data_recebimento) : undefined
+    editingEntry?.data_recebimento ? parseLocalDate(editingEntry.data_recebimento) : undefined,
   );
   const [observacao, setObservacao] = useState(editingEntry?.observacao || "");
   const [unitId, setUnitId] = useState(editingEntry?.unit_id || "");
@@ -87,13 +78,15 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
 
   // Helper: tokenize string for exact keyword matching (with accent normalization)
   const tokenize = (str: string): string[] => {
-    return normalizeAccents(str).split(/[\s\-_\/\\.,;:]+/).filter(Boolean);
+    return normalizeAccents(str)
+      .split(/[\s\-_\/\\.,;:]+/)
+      .filter(Boolean);
   };
 
   // Helper: check if any token matches a payment keyword exactly
   const isPaymentMethodCategory = (name: string): boolean => {
     const tokens = tokenize(name);
-    return tokens.some(token => PAYMENT_METHOD_KEYWORDS.includes(token));
+    return tokens.some((token) => PAYMENT_METHOD_KEYWORDS.includes(token));
   };
 
   // Normalize categories to always return { value: string, label: string }[]
@@ -104,19 +97,21 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
     let options: Array<{ value: string; label: string }> = [];
 
     // Case B: Object format { entrada: [...], saida: [...] }
-    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
       const key = type === "entrada" ? "entrada" : "saida";
       const list = (raw as Record<string, unknown>)[key];
       if (Array.isArray(list)) {
-        options = list.map((item: unknown) => {
-          if (typeof item === 'string') {
-            return { value: item, label: item };
-          }
-          if (item && typeof item === 'object' && 'name' in item) {
-            return { value: String((item as any).name), label: String((item as any).name) };
-          }
-          return null;
-        }).filter(Boolean) as Array<{ value: string; label: string }>;
+        options = list
+          .map((item: unknown) => {
+            if (typeof item === "string") {
+              return { value: item, label: item };
+            }
+            if (item && typeof item === "object" && "name" in item) {
+              return { value: String((item as any).name), label: String((item as any).name) };
+            }
+            return null;
+          })
+          .filter(Boolean) as Array<{ value: string; label: string }>;
       }
     }
     // Case A: Array legacy [{id, name, type}]
@@ -130,17 +125,18 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
     // Case C: Fallback to DEFAULT_CATEGORIES
     if (options.length === 0) {
       const targetType = type === "entrada" ? "INCOME" : "EXPENSE";
-      options = DEFAULT_CATEGORIES
-        .filter(cat => cat.type === targetType)
-        .map(cat => ({ value: cat.name, label: cat.name }));
+      options = DEFAULT_CATEGORIES.filter((cat) => cat.type === targetType).map((cat) => ({
+        value: cat.name,
+        label: cat.name,
+      }));
     }
 
     // Filter out payment method keywords using tokenization (exact match only)
-    options = options.filter(opt => !isPaymentMethodCategory(opt.value));
+    options = options.filter((opt) => !isPaymentMethodCategory(opt.value));
 
     // Dedupe (case-insensitive + accent-insensitive) and sort alphabetically
     const seen = new Set<string>();
-    const unique = options.filter(opt => {
+    const unique = options.filter((opt) => {
       const key = normalizeAccents(opt.value);
       if (seen.has(key)) return false;
       seen.add(key);
@@ -148,11 +144,11 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
     });
 
     // Sort alphabetically
-    const sorted = unique.sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
+    const sorted = unique.sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
 
     // Ensure current categoria from editingEntry is always included (even if not in settings)
     const currentCat = editingEntry?.categoria;
-    if (currentCat && !sorted.some(opt => opt.value.toLowerCase() === currentCat.toLowerCase())) {
+    if (currentCat && !sorted.some((opt) => opt.value.toLowerCase() === currentCat.toLowerCase())) {
       // Add current category at the top with "(atual)" suffix
       sorted.unshift({ value: currentCat, label: `${currentCat} (atual)` });
     }
@@ -165,29 +161,31 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
     const raw = settings?.units;
 
     if (Array.isArray(raw) && raw.length > 0) {
-      return raw.map((u: any) => {
-        if (typeof u === 'string') {
-          return { value: u, label: u };
-        }
-        if (u && typeof u === 'object') {
-          return { value: String(u.id || u.name), label: String(u.name || u.id) };
-        }
-        return null;
-      }).filter(Boolean) as Array<{ value: string; label: string }>;
+      return raw
+        .map((u: any) => {
+          if (typeof u === "string") {
+            return { value: u, label: u };
+          }
+          if (u && typeof u === "object") {
+            return { value: String(u.id || u.name), label: String(u.name || u.id) };
+          }
+          return null;
+        })
+        .filter(Boolean) as Array<{ value: string; label: string }>;
     }
 
     // Fallback to BUSINESS_UNITS
-    return BUSINESS_UNITS.map(unit => ({ value: unit.id, label: unit.name }));
+    return BUSINESS_UNITS.map((unit) => ({ value: unit.id, label: unit.name }));
   }, [settings?.units]);
 
   // Reset dependents when type changes (skip in edit mode to preserve loaded data)
   useEffect(() => {
     if (editingEntry) return;
-    
+
     // Reset category when type changes
     setCategoria("");
     setValidationError(null);
-    
+
     if (type === "saida") {
       // Force status to "recebido" for saida (no "previsto" for expenses)
       setStatus("recebido");
@@ -214,9 +212,12 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
 
   // Clear specialty when unit changes (and unit doesn't support specialty)
   useEffect(() => {
-    const normalizedUnit = unitId?.toUpperCase().replace(/[^A-Z]/g, '_');
-    const supportsSpecialty = normalizedUnit === "CENTRO_CLINICO" || normalizedUnit === "CENTROCLÍNICO" || 
-                              normalizedUnit === "CENTRO_CLÍNICO" || normalizedUnit === "ONCOLOGIA";
+    const normalizedUnit = unitId?.toUpperCase().replace(/[^A-Z]/g, "_");
+    const supportsSpecialty =
+      normalizedUnit === "CENTRO_CLINICO" ||
+      normalizedUnit === "CENTROCLÍNICO" ||
+      normalizedUnit === "CENTRO_CLÍNICO" ||
+      normalizedUnit === "ONCOLOGIA";
     if (!supportsSpecialty) {
       setSpecialty("");
     }
@@ -265,7 +266,7 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setValidationError(null);
-    
+
     const parsedValor = parseMoneyBR(valor);
     if (!parsedValor || parsedValor <= 0) {
       setValidationError("Informe um valor válido maior que zero.");
@@ -307,16 +308,15 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
         categoria: categoria || undefined,
         valor: parsedValor,
         data_prevista: format(dataPrevista, "yyyy-MM-dd"),
-        data_recebimento: type === "entrada" && status === "recebido" && dataRecebimento 
-          ? format(dataRecebimento, "yyyy-MM-dd") 
-          : undefined,
+        data_recebimento:
+          type === "entrada" && status === "recebido" && dataRecebimento
+            ? format(dataRecebimento, "yyyy-MM-dd")
+            : undefined,
         observacao: observacao || undefined,
         unit_id: unitId || undefined,
         specialty: specialty || undefined,
         receipt_type: type === "entrada" && receiptType ? receiptType : undefined,
-        payment_method: type === "entrada" && receiptType === "PARTICULAR" && paymentMethod
-          ? paymentMethod
-          : undefined,
+        payment_method: type === "entrada" && receiptType === "PARTICULAR" && paymentMethod ? paymentMethod : undefined,
         operadora: type === "entrada" && receiptType === "CONVENIO" && operadora ? operadora : undefined,
       };
 
@@ -355,9 +355,13 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
 
   // Helper: check if unit supports specialty selection
   const unitSupportsSpecialty = useMemo(() => {
-    const normalizedUnit = unitId?.toUpperCase().replace(/[^A-Z]/g, '_');
-    return normalizedUnit === "CENTRO_CLINICO" || normalizedUnit === "CENTROCLÍNICO" || 
-           normalizedUnit === "CENTRO_CLÍNICO" || normalizedUnit === "ONCOLOGIA";
+    const normalizedUnit = unitId?.toUpperCase().replace(/[^A-Z]/g, "_");
+    return (
+      normalizedUnit === "CENTRO_CLINICO" ||
+      normalizedUnit === "CENTROCLÍNICO" ||
+      normalizedUnit === "CENTRO_CLÍNICO" ||
+      normalizedUnit === "ONCOLOGIA"
+    );
   }, [unitId]);
 
   const FormFields = (
@@ -376,9 +380,7 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
           disabled={!!editingEntry}
           variant={type === "entrada" ? "default" : "outline"}
           onClick={() => setType("entrada")}
-          className={cn(
-            type === "entrada" && "bg-success hover:bg-success/90"
-          )}
+          className={cn(type === "entrada" && "bg-success hover:bg-success/90")}
         >
           Entrada
         </Button>
@@ -387,9 +389,7 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
           disabled={!!editingEntry}
           variant={type === "saida" ? "default" : "outline"}
           onClick={() => setType("saida")}
-          className={cn(
-            type === "saida" && "bg-destructive hover:bg-destructive/90"
-          )}
+          className={cn(type === "saida" && "bg-destructive hover:bg-destructive/90")}
         >
           Saída
         </Button>
@@ -405,10 +405,7 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
               variant={status === "previsto" ? "default" : "outline"}
               size="sm"
               onClick={() => setStatus("previsto")}
-              className={cn(
-                "gap-2",
-                status === "previsto" && "bg-amber-500 hover:bg-amber-500/90"
-              )}
+              className={cn("gap-2", status === "previsto" && "bg-amber-500 hover:bg-amber-500/90")}
             >
               <Clock className="h-4 w-4" />
               Previsto
@@ -418,10 +415,7 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
               variant={status === "recebido" ? "default" : "outline"}
               size="sm"
               onClick={() => setStatus("recebido")}
-              className={cn(
-                "gap-2",
-                status === "recebido" && "bg-success hover:bg-success/90"
-              )}
+              className={cn("gap-2", status === "recebido" && "bg-success hover:bg-success/90")}
             >
               <CheckCircle2 className="h-4 w-4" />
               Recebido
@@ -440,13 +434,7 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
       {/* Valor */}
       <div className="space-y-2">
         <Label htmlFor="valor">Valor *</Label>
-        <Input
-          id="valor"
-          placeholder="0,00"
-          value={valor}
-          onChange={(e) => setValor(e.target.value)}
-          required
-        />
+        <Input id="valor" placeholder="0,00" value={valor} onChange={(e) => setValor(e.target.value)} required />
       </div>
 
       {/* Descrição */}
@@ -477,10 +465,9 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
           </SelectContent>
         </Select>
         <p className="text-xs text-muted-foreground">
-          {type === "entrada" 
+          {type === "entrada"
             ? "Mostrando apenas categorias de entrada (receitas)."
-            : "Mostrando apenas categorias de saída. Métodos de pagamento (PIX, Cartão) não são categorias."
-          }
+            : "Mostrando apenas categorias de saída. Métodos de pagamento (PIX, Cartão) não são categorias."}
         </p>
       </div>
 
@@ -491,10 +478,7 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
           <PopoverTrigger asChild>
             <Button
               variant="outline"
-              className={cn(
-                "w-full justify-start text-left font-normal",
-                !dataPrevista && "text-muted-foreground"
-              )}
+              className={cn("w-full justify-start text-left font-normal", !dataPrevista && "text-muted-foreground")}
             >
               <CalendarIcon className="mr-2 h-4 w-4" />
               {dataPrevista ? format(dataPrevista, "dd/MM/yyyy") : "Selecionar data"}
@@ -528,7 +512,7 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
                 variant="outline"
                 className={cn(
                   "w-full justify-start text-left font-normal",
-                  !dataRecebimento && "text-muted-foreground"
+                  !dataRecebimento && "text-muted-foreground",
                 )}
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
@@ -613,8 +597,8 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
         </div>
       )}
 
-      {/* Forma de Pagamento (Particular) */}
-      {type === "entrada" && receiptType === "PARTICULAR" && (
+      {/* Forma de Pagamento */}
+      {((type === "entrada" && receiptType === "PARTICULAR") || type === "saida") && (
         <div className="space-y-2">
           <Label>Forma de Pagamento</Label>
           <Select value={paymentMethod} onValueChange={setPaymentMethod}>
@@ -622,11 +606,17 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
               <SelectValue placeholder="Selecione" />
             </SelectTrigger>
             <SelectContent>
-              {PAYMENT_METHODS_PARTICULAR.map((pm) => (
-                <SelectItem key={pm.id} value={pm.id}>
-                  {pm.name}
-                </SelectItem>
-              ))}
+              {type === "saida"
+                ? (settings.paymentMethods?.length ? settings.paymentMethods : []).map((pm) => (
+                    <SelectItem key={pm} value={pm}>
+                      {PAYMENT_METHOD_LABELS[pm] ?? pm}
+                    </SelectItem>
+                  ))
+                : PAYMENT_METHODS_PARTICULAR.map((pm) => (
+                    <SelectItem key={pm.id} value={pm.id}>
+                      {pm.name}
+                    </SelectItem>
+                  ))}
             </SelectContent>
           </Select>
         </div>
@@ -692,14 +682,15 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
           <DialogTitle>Registrar Movimentação</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
-          <div className="flex-1 overflow-y-auto px-6 py-2">
-            {FormFields}
-          </div>
+          <div className="flex-1 overflow-y-auto px-6 py-2">{FormFields}</div>
           <DialogFooter className="sticky bottom-0 border-t bg-background px-6 py-4 mt-auto">
-            <Button 
-              type="button" 
-              variant="outline" 
-              onClick={() => { resetForm(); setOpen(false); }}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                resetForm();
+                setOpen(false);
+              }}
             >
               Cancelar
             </Button>
