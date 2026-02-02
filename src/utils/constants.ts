@@ -326,7 +326,7 @@ export const DEFAULT_CATEGORIES: Category[] = [
   { id: "teste_ergometrico", name: "Teste Ergométrico", type: "INCOME", active: true },
 ];
 
-export const DEFAULT_PAYMENT_METHODS: PaymentMethod[] = ["PIX", "TRANSFER", "CASH", "CARD"];
+export const DEFAULT_PAYMENT_METHODS: PaymentMethod[] = ["PIX", "TRANSFER", "CASH", "CARD", "BOLETO"];
 
 export const DEFAULT_SETTINGS: Settings = {
   units: DEFAULT_UNITS,
@@ -392,6 +392,7 @@ export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   TRANSFER: "Transferência",
   CASH: "Dinheiro",
   CARD: "Cartão",
+  BOLETO: "Boleto",
 };
 
 // ============= ORIGEM DA TRANSAÇÃO (RASTREABILIDADE) =============
