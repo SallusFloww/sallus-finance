@@ -33,7 +33,7 @@ interface CompanyFinancialSettings {
 const DEFAULT_SETTINGS: Settings = {
   units: DEFAULT_UNITS,
   categories: [],
-  paymentMethods: ["PIX", "TRANSFER", "CASH", "CARD"],
+  paymentMethods: ["PIX", "TRANSFER", "CASH", "CARD", "BOLETO"],
   initialBalance: 0,
 };
 
@@ -84,9 +84,7 @@ export function useCompanySettings() {
         setSettingsId(data.id);
 
         // Parse units (guardrail: never allow empty / missing defaults)
-        const rawUnits = Array.isArray(data.units)
-          ? (data.units as unknown as any[])
-          : [];
+        const rawUnits = Array.isArray(data.units) ? (data.units as unknown as any[]) : [];
 
         const normalizedUnits: UnitConfig[] = rawUnits
           .map((u) => {
@@ -126,14 +124,12 @@ export function useCompanySettings() {
 
         const units: UnitConfig[] = Array.from(byId.values());
         // Parse categories
-        const categories: Category[] = Array.isArray(data.categories)
-          ? (data.categories as unknown as Category[])
-          : [];
+        const categories: Category[] = Array.isArray(data.categories) ? (data.categories as unknown as Category[]) : [];
 
         // Parse payment methods
         const paymentMethods: PaymentMethod[] = Array.isArray(data.payment_methods)
           ? (data.payment_methods as unknown as PaymentMethod[])
-          : ["PIX", "TRANSFER", "CASH", "CARD"];
+          : ["PIX", "TRANSFER", "CASH", "CARD", "BOLETO"];
 
         // Parse initial balance adjustments
         const initialBalanceAdjustments = Array.isArray(data.initial_balance_adjustments)
@@ -153,15 +149,11 @@ export function useCompanySettings() {
 
         // Parse extended settings from dedicated columns
         const rawData = data as any;
-        const productionTypes = Array.isArray(rawData.production_types) 
-          ? (rawData.production_types as ProductionTypeConfig[]) 
+        const productionTypes = Array.isArray(rawData.production_types)
+          ? (rawData.production_types as ProductionTypeConfig[])
           : [];
-        const examTypes = Array.isArray(rawData.exam_types) 
-          ? (rawData.exam_types as ExamTypeConfig[]) 
-          : [];
-        const payers = Array.isArray(rawData.payers) 
-          ? (rawData.payers as PayerConfig[]) 
-          : [];
+        const examTypes = Array.isArray(rawData.exam_types) ? (rawData.exam_types as ExamTypeConfig[]) : [];
+        const payers = Array.isArray(rawData.payers) ? (rawData.payers as PayerConfig[]) : [];
         // Normalizar specialties: converter string[] legado para SpecialtyConfig[]
         const rawSpecialties = Array.isArray(rawData.specialties) ? rawData.specialties : [];
         const specialties: SpecialtyConfig[] = rawSpecialties
@@ -191,25 +183,26 @@ export function useCompanySettings() {
         const systemParameters = rawData.system_parameters || undefined;
 
         // Normalizar paymentMethodsParticular: usar padrão se ausente/vazio
-        const rawPaymentMethods = Array.isArray(rawData.payment_methods_particular) 
-          ? rawData.payment_methods_particular 
+        const rawPaymentMethods = Array.isArray(rawData.payment_methods_particular)
+          ? rawData.payment_methods_particular
           : [];
-        
+
         // Normalizar e filtrar items inválidos
-        const paymentMethodsParticular: PaymentMethodParticularConfig[] = rawPaymentMethods.length > 0
-          ? rawPaymentMethods
-              .map((m: any) => {
-                if (m && typeof m === "object" && m.id && m.name) {
-                  return {
-                    id: String(m.id),
-                    name: String(m.name),
-                    active: m.active !== false,
-                  };
-                }
-                return null;
-              })
-              .filter((m: PaymentMethodParticularConfig | null): m is PaymentMethodParticularConfig => m !== null)
-          : DEFAULT_PAYMENT_METHODS_PARTICULAR;
+        const paymentMethodsParticular: PaymentMethodParticularConfig[] =
+          rawPaymentMethods.length > 0
+            ? rawPaymentMethods
+                .map((m: any) => {
+                  if (m && typeof m === "object" && m.id && m.name) {
+                    return {
+                      id: String(m.id),
+                      name: String(m.name),
+                      active: m.active !== false,
+                    };
+                  }
+                  return null;
+                })
+                .filter((m: PaymentMethodParticularConfig | null): m is PaymentMethodParticularConfig => m !== null)
+            : DEFAULT_PAYMENT_METHODS_PARTICULAR;
 
         const extended: ExpandedSettings = {
           ...baseSettings,
@@ -293,10 +286,7 @@ export function useCompanySettings() {
       }
 
       try {
-        const { error } = await supabase
-          .from("company_financial_settings")
-          .update(dbUpdate)
-          .eq("id", settingsId);
+        const { error } = await supabase.from("company_financial_settings").update(dbUpdate).eq("id", settingsId);
 
         if (error) {
           toast.error("Erro ao salvar configurações");
@@ -309,7 +299,7 @@ export function useCompanySettings() {
         return false;
       }
     },
-    [currentCompany?.id, settingsId, settings]
+    [currentCompany?.id, settingsId, settings],
   );
 
   // Update extended settings (production types, exam types, etc.)
@@ -387,7 +377,7 @@ export function useCompanySettings() {
         return false;
       }
     },
-    [currentCompany?.id, settingsId, extendedSettings]
+    [currentCompany?.id, settingsId, extendedSettings],
   );
 
   // Get saved suggestions (exam types, therapy types, production types)
@@ -398,9 +388,7 @@ export function useCompanySettings() {
 
   const getSavedTherapyTypes = useCallback((): string[] => {
     // Filter exam types that are therapy-related
-    return extendedSettings.examTypes
-      ?.filter((e) => e.category === "TERAPIA")
-      .map((e) => e.name) || [];
+    return extendedSettings.examTypes?.filter((e) => e.category === "TERAPIA").map((e) => e.name) || [];
   }, [extendedSettings.examTypes]);
 
   const getSavedProductionTypes = useCallback((): string[] => {
@@ -428,7 +416,7 @@ export function useCompanySettings() {
         examTypes: [...existing, newExam],
       });
     },
-    [extendedSettings.examTypes, updateExtendedSettings]
+    [extendedSettings.examTypes, updateExtendedSettings],
   );
 
   const addTherapyType = useCallback(
@@ -451,7 +439,7 @@ export function useCompanySettings() {
         examTypes: [...existing, newTherapy],
       });
     },
-    [extendedSettings.examTypes, updateExtendedSettings]
+    [extendedSettings.examTypes, updateExtendedSettings],
   );
 
   const addProductionType = useCallback(
@@ -475,7 +463,7 @@ export function useCompanySettings() {
         productionTypes: [...existing, newType],
       });
     },
-    [extendedSettings.productionTypes, updateExtendedSettings]
+    [extendedSettings.productionTypes, updateExtendedSettings],
   );
 
   return {
