@@ -385,12 +385,21 @@ export default function Settings() {
       return;
     }
 
+    // Generate uppercase code (what the DB trigger validates against)
+    const code = trimmed
+      .toUpperCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\s+/g, "_")
+      .replace(/[^A-Z0-9_]/g, "");
+
     const newCat = {
       id: trimmed
         .toLowerCase()
         .replace(/\s+/g, "_")
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, ""),
+      code,
       name: trimmed,
       type: newCategoryType,
       active: true,

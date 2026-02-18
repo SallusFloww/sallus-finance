@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 
 interface SettingsCategoriesProps {
   categories: Category[];
-  onAdd: (name: string, type: CategoryType) => void;
+  onAdd: (name: string, type: CategoryType, code: string) => void;
   onUpdate: (id: string, updates: Partial<Category>) => void;
   getUsageCount: (categoryId: string) => number;
 }
@@ -68,9 +68,25 @@ export function SettingsCategories({
     setDialogOpen(true);
   };
 
+  // Generate the DB-compatible code from a display name (uppercase slug)
+  const generateCode = (name: string): string =>
+    name
+      .trim()
+      .toUpperCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, '_')
+      .replace(/[^A-Z0-9_]/g, '');
+
   const handleSave = () => {
     if (!formData.name.trim()) {
       toast.error('Nome é obrigatório');
+      return;
+    }
+
+    const code = generateCode(formData.name);
+    if (!code) {
+      toast.error('Nome inválido: use letras ou números');
       return;
     }
 
@@ -84,7 +100,7 @@ export function SettingsCategories({
       });
       toast.success('Categoria atualizada');
     } else {
-      onAdd(formData.name, formData.type);
+      onAdd(formData.name, formData.type, code);
       toast.success('Categoria criada');
     }
 
@@ -285,6 +301,17 @@ export function SettingsCategories({
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="Ex: Consultas, Folha de Pagamento"
               />
+              {formData.name.trim() && !editingCategory && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Info className="h-3 w-3 shrink-0" />
+                  <span>
+                    Código interno gerado:{' '}
+                    <code className="font-mono font-semibold text-foreground bg-muted px-1 py-0.5 rounded">
+                      {generateCode(formData.name)}
+                    </code>
+                  </span>
+                </div>
+              )}
             </div>
 
             {!editingCategory && (
