@@ -1,84 +1,140 @@
 
-## Problem
+## Root Cause: Double Source of Truth for Production Types
 
-In the "Movimentações" screen, entries created from billing receipts display the raw internal code `RECEBIMENTO_FATURAMENTO` as the transaction title (the `category` field shown at line 225 of `TransactionList.tsx`). When `MAT_MED` is not a registered category, the system correctly falls back to `RECEBIMENTO_FATURAMENTO` as the `categoria` code to pass DB validation — but that same code leaks through to the display.
+### What is happening
 
-## Root Cause
+The production type dropdown in "Nova Produção" shows every type twice. For example:
+- `CONSULTA` (raw ID from `BASE_PRODUCTION_TYPES`) AND `Consulta` (display name from `savedProductionTypes`)
+- `MAT_MED` AND `Mat/Med`
+- etc.
 
-The data flow is:
+### Why it happens
+
+In `ProductionForm.tsx` lines 207–214, the `productionTypes` array is built by merging three sources:
+
 ```
-useReceivablesDB.markAsReceived
-  → inserts financial_entry with:
-      descricao = "Recebimento faturamento • source • description"
-      categoria = "RECEBIMENTO_FATURAMENTO"  ← raw code (needed for DB trigger)
+BASE_PRODUCTION_TYPES  →  ["CONSULTA", "EXAME", "QUIMIOTERAPIA", "BOX_PS",
+                           "SESSAO_TERAPEUTICA", "INTERNACAO", "MAT_MED", "OUTRO"]
 
-useTransactionsDB.entryToTransaction
-  → maps: category = entry.categoria  ← uses raw code directly
+MATMED_PRODUCTION_TYPE →  "MAT_MED"   ← redundant, already in BASE_PRODUCTION_TYPES
 
-TransactionList
-  → renders: {transaction.category}   ← shows "RECEBIMENTO_FATURAMENTO"
+savedProductionTypes   →  ["Consulta", "Exame", "Quimioterapia", "Box / Atendimento PS",
+                           "Sessão Terapêutica", "Internação", "Mat/Med", "Outro"]
+                           (display names from the DB via useCompanySettings)
 ```
 
-## Fix Strategy
+The `Set` deduplication only removes exact string duplicates. Since `"CONSULTA" !== "Consulta"`, every type survives deduplication and appears **twice** in the list.
 
-Two changes across two files:
+The underlying issue: `BASE_PRODUCTION_TYPES` holds raw IDs, while `getSavedProductionTypes()` returns human-readable names from `extendedSettings.productionTypes`. These are two incompatible representations of the same data being merged without normalization.
 
-### 1. `src/hooks/useReceivablesDB.ts` — Improve `descricao` with human-readable production type name
+### Fix Strategy
 
-In `markAsReceived`, when building the `descricao` field for the `financial_entries` insert, include the human-readable production type name (from `PRODUCTION_TYPE_LABELS`) instead of just the generic phrase. This way `descricao` carries the meaningful label ("Mat/Med") even when `categoria` must be `RECEBIMENTO_FATURAMENTO` for DB validation.
+The fix is entirely in `src/components/production/ProductionForm.tsx` — one file, one logical change.
 
-Import `PRODUCTION_TYPE_LABELS` from constants and build a readable label:
+**The correct approach:** Since the DB (`extendedSettings.productionTypes` via `getSavedProductionTypes`) is the **source of truth** (it has names, active/inactive status, and includes all defaults already merged by `SettingsProductionTypes`), `savedProductionTypes` should be used as the primary list. `BASE_PRODUCTION_TYPES` should only serve as a fallback when no DB types are available.
+
+**New logic:**
 
 ```typescript
-// When uniqueTypes.length === 1 but not a valid category (e.g. MAT_MED):
-const readableType = PRODUCTION_TYPE_LABELS[uniqueTypes[0]] || uniqueTypes[0];
-// descricao will be: "Mat/Med • Recebimento faturamento • ..."
+// If the company has production types saved in DB, use them as the single source.
+// Otherwise, fall back to BASE_PRODUCTION_TYPES (for companies not yet configured).
+const productionTypes = savedProductionTypes.length > 0
+  ? [
+      ...new Set([
+        ...savedProductionTypes,         // DB names: "Consulta", "Mat/Med", etc.
+        ...PACKAGE_PRODUCTION_TYPES,     // "PACOTE_BOX", "PACOTE_GTA" (package types always included)
+      ])
+    ]
+  : [
+      ...new Set([
+        ...BASE_PRODUCTION_TYPES,        // fallback IDs
+        MATMED_PRODUCTION_TYPE,
+        ...PACKAGE_PRODUCTION_TYPES,
+      ])
+    ];
 ```
 
-### 2. `src/hooks/useTransactionsDB.ts` — Map `categoria` code to display label
-
-In `entryToTransaction`, instead of using the raw `categoria` code as-is, resolve it to a human-readable label. The approach:
-
-- Check if `entry.categoria` is a known production type code → use `PRODUCTION_TYPE_LABELS[entry.categoria]`
-- Otherwise try to match against `DEFAULT_CATEGORIES` by `id` → use `cat.name`
-- As final fallback, use `entry.categoria` itself (for custom categories already stored with their names/codes)
-
-A concise lookup map:
+However, this introduces a secondary concern: the rest of the form uses `formData.productionType` as a raw ID (`"CONSULTA"`, `"MAT_MED"`) for comparisons like:
 
 ```typescript
-import { PRODUCTION_TYPE_LABELS, DEFAULT_CATEGORIES } from "@/utils/constants";
-
-function resolveCategoryLabel(categoria: string | null): string {
-  if (!categoria) return "";
-  // Try production type labels first (e.g. MAT_MED → "Mat/Med")
-  if (PRODUCTION_TYPE_LABELS[categoria]) return PRODUCTION_TYPE_LABELS[categoria];
-  // Try default categories by id (e.g. "salario" → "Salário")
-  const defaultCat = DEFAULT_CATEGORIES.find(c => c.id === categoria || c.id.toUpperCase() === categoria.toUpperCase());
-  if (defaultCat) return defaultCat.name;
-  // Return as-is (custom categories or display names stored directly)
-  return categoria;
-}
+const isPackage = PACKAGE_PRODUCTION_TYPES.includes(formData.productionType); // "PACOTE_BOX"
+const isCentroClinico = unit.includes("CENTRO_CLINICO");
 ```
 
-This function is called in `entryToTransaction` replacing `entry.categoria || ""`.
+The `PACKAGE_PRODUCTION_TYPES` are IDs (`"PACOTE_BOX"`, `"PACOTE_GTA"`), not display names, so they must stay as IDs in the list — which they already do since `PACKAGE_PRODUCTION_TYPES` is separate. No conflict there.
 
-## What does NOT change
+For the base types, the form comparisons like `formData.productionType === "EXAME"` must still work. Since `savedProductionTypes` returns **names** (e.g., `"Exame"`), not IDs, this could break those comparisons.
 
-- The `categoria` field stored in the DB remains `"RECEBIMENTO_FATURAMENTO"` — the DB trigger continues to validate correctly
-- No schema or database changes
-- No changes to filtering logic (filters still use the raw `categoria` code)
-- All other components that use `transaction.category` (DRE, BI, charts) benefit from the readable label automatically
-- Existing entries in DB with `categoria = "CONSULTA"` or `"EXAME"` (already stored as production type codes) will resolve correctly via `PRODUCTION_TYPE_LABELS`
+**Better fix — deduplicate by normalizing to ID:**
 
-## Files to Change
+Instead of switching the entire list to names, keep the existing ID-based system but **remove the `savedProductionTypes` merge** (which adds names) and replace it with a check that only adds truly custom types (types in DB that are NOT already in `BASE_PRODUCTION_TYPES`):
+
+```typescript
+// Custom types added by the company (not in the base set)
+const baseIds = new Set([...BASE_PRODUCTION_TYPES, ...PACKAGE_PRODUCTION_TYPES]);
+const customProductionTypes = savedProductionTypes.filter(
+  (name) => !baseIds.has(name as any) && 
+            !Object.values(PRODUCTION_TYPE_LABELS).some(
+              label => label.toLowerCase() === name.toLowerCase()
+            )
+);
+
+const productionTypes = [
+  ...new Set([
+    ...BASE_PRODUCTION_TYPES,
+    MATMED_PRODUCTION_TYPE,      // Remove this — already in BASE_PRODUCTION_TYPES
+    ...PACKAGE_PRODUCTION_TYPES,
+    ...customProductionTypes,    // Only genuinely custom types
+  ]),
+];
+```
+
+Wait — this still has the flaw that `MATMED_PRODUCTION_TYPE` is already in `BASE_PRODUCTION_TYPES` since `src/types/index.ts` line 438 confirms `"MAT_MED"` is in `BASE_PRODUCTION_TYPES`.
+
+**Simplest correct fix:** Remove `MATMED_PRODUCTION_TYPE` from the spread (it's redundant), and filter `savedProductionTypes` to exclude anything that matches a base ID or its label:
+
+```typescript
+// Only include custom DB types that are NOT already represented in BASE_PRODUCTION_TYPES
+const customProductionTypes = savedProductionTypes.filter((name) => {
+  const nameUpper = name.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+  const isBaseId = BASE_PRODUCTION_TYPES.includes(name as any);
+  const isBaseLabel = Object.entries(PRODUCTION_TYPE_LABELS).some(
+    ([, label]) => label.toLowerCase() === name.toLowerCase()
+  );
+  return !isBaseId && !isBaseLabel;
+});
+
+const productionTypes = [
+  ...new Set([
+    ...BASE_PRODUCTION_TYPES,
+    ...PACKAGE_PRODUCTION_TYPES,
+    ...customProductionTypes,
+  ]),
+];
+```
+
+This guarantees:
+- Base types appear exactly once (as IDs, compatible with all existing comparisons)
+- Package types appear exactly once
+- Genuinely custom types (added by company in Settings) are appended
+- `MAT_MED` no longer duplicated (removed redundant `MATMED_PRODUCTION_TYPE` spread)
+
+### What does NOT change
+
+- All existing form logic that compares `formData.productionType` to raw IDs (e.g., `"EXAME"`, `"CONSULTA"`, `"PACOTE_BOX"`) continues to work unchanged
+- The display label rendering at line 847 uses `getProductionTypeLabel(type)` which maps IDs to names — this is unaffected
+- No database changes
+- No changes to `useCompanySettings`, `BASE_PRODUCTION_TYPES`, or any other file
+
+### File to Change
 
 | File | Change |
 |---|---|
-| `src/hooks/useReceivablesDB.ts` | Import `PRODUCTION_TYPE_LABELS`; build human-readable label for `descricao` field using the production type name when falling back to `RECEBIMENTO_FATURAMENTO` |
-| `src/hooks/useTransactionsDB.ts` | Import `PRODUCTION_TYPE_LABELS` and `DEFAULT_CATEGORIES`; add `resolveCategoryLabel()` helper; use it in `entryToTransaction` for the `category` field |
+| `src/components/production/ProductionForm.tsx` | Remove redundant `MATMED_PRODUCTION_TYPE` from the merge; filter `savedProductionTypes` to exclude types already represented by `BASE_PRODUCTION_TYPES` or their display labels |
 
-## Safety
+### Safety
 
-- No breaking changes to filters, stats calculations, or DB writes
-- Purely a display-layer fix in `entryToTransaction` + an informational improvement to `descricao`
-- Fully backward-compatible with existing entries already in the database
+- Single-file change
+- The dropdown renders `getProductionTypeLabel(type)` for each entry — IDs resolve correctly to human names
+- No risk to form submission, validation, or database writes
+- Existing productions in the DB are unaffected
