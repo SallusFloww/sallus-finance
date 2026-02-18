@@ -203,13 +203,22 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
 
   const therapyTypes = [...new Set([...DEFAULT_THERAPY_TYPES, ...savedTherapyTypes])].sort();
 
-  // ✅ Incluir pacotes convênio e MAT/MED na lista de tipos (manual)
+  // ✅ BASE_PRODUCTION_TYPES já contém MAT_MED — não duplicar.
+  // savedProductionTypes retorna nomes legíveis (ex: "Consulta", "Mat/Med") que já representam os base types.
+  // Filtrar apenas tipos genuinamente customizados (não presentes nos base IDs nem nos seus labels).
+  const customProductionTypes = savedProductionTypes.filter((name) => {
+    const isBaseId = (BASE_PRODUCTION_TYPES as readonly string[]).includes(name);
+    const isBaseLabel = Object.values(PRODUCTION_TYPE_LABELS).some(
+      (label) => label.toLowerCase() === name.toLowerCase()
+    );
+    return !isBaseId && !isBaseLabel;
+  });
+
   const productionTypes = [
     ...new Set([
       ...BASE_PRODUCTION_TYPES,
-      MATMED_PRODUCTION_TYPE, // ⭐ aqui está o pulo do gato
       ...PACKAGE_PRODUCTION_TYPES,
-      ...savedProductionTypes,
+      ...customProductionTypes,
     ]),
   ];
 
