@@ -1,98 +1,84 @@
 
-## Root Cause: Invalid Category in `markAsReceived`
+## Problem
 
-### What is happening
+In the "Movimentações" screen, entries created from billing receipts display the raw internal code `RECEBIMENTO_FATURAMENTO` as the transaction title (the `category` field shown at line 225 of `TransactionList.tsx`). When `MAT_MED` is not a registered category, the system correctly falls back to `RECEBIMENTO_FATURAMENTO` as the `categoria` code to pass DB validation — but that same code leaks through to the display.
 
-When the user clicks "Receber" on a billing entry, the `markAsReceived` function in `src/hooks/useReceivablesDB.ts` (lines 449–471) automatically infers the `categoria` for the new `financial_entries` record from the `production_type` of linked productions.
+## Root Cause
 
-For the failing receivable (`MAT_MED – PRONTO_SO...`), the linked production has `production_type = "MAT_MED"`. The code then tries to insert a `financial_entries` record with `categoria: "MAT_MED"`.
+The data flow is:
+```
+useReceivablesDB.markAsReceived
+  → inserts financial_entry with:
+      descricao = "Recebimento faturamento • source • description"
+      categoria = "RECEBIMENTO_FATURAMENTO"  ← raw code (needed for DB trigger)
 
-The database has a **trigger on `financial_entries`** (not visible in migrations because it lives in the live database, added via Supabase Studio) that validates `categoria` against the company's stored category list in `company_financial_settings.categories`. Since `"MAT_MED"` is not a registered category code for this company, the insert is rejected with a 400 error, and the frontend shows **"Erro ao criar movimentação no caixa"**.
+useTransactionsDB.entryToTransaction
+  → maps: category = entry.categoria  ← uses raw code directly
 
-### Evidence
+TransactionList
+  → renders: {transaction.category}   ← shows "RECEBIMENTO_FATURAMENTO"
+```
 
-1. In `useReceivablesDB.ts` line 499–503:
+## Fix Strategy
+
+Two changes across two files:
+
+### 1. `src/hooks/useReceivablesDB.ts` — Improve `descricao` with human-readable production type name
+
+In `markAsReceived`, when building the `descricao` field for the `financial_entries` insert, include the human-readable production type name (from `PRODUCTION_TYPE_LABELS`) instead of just the generic phrase. This way `descricao` carries the meaningful label ("Mat/Med") even when `categoria` must be `RECEBIMENTO_FATURAMENTO` for DB validation.
+
+Import `PRODUCTION_TYPE_LABELS` from constants and build a readable label:
+
 ```typescript
-if (insertError) {
-  console.error("Erro ao criar movimentação:", insertError);
-  toast.error("Erro ao criar movimentação no caixa"); // ← this is the toast in the screenshot
-  return null;
+// When uniqueTypes.length === 1 but not a valid category (e.g. MAT_MED):
+const readableType = PRODUCTION_TYPE_LABELS[uniqueTypes[0]] || uniqueTypes[0];
+// descricao will be: "Mat/Med • Recebimento faturamento • ..."
+```
+
+### 2. `src/hooks/useTransactionsDB.ts` — Map `categoria` code to display label
+
+In `entryToTransaction`, instead of using the raw `categoria` code as-is, resolve it to a human-readable label. The approach:
+
+- Check if `entry.categoria` is a known production type code → use `PRODUCTION_TYPE_LABELS[entry.categoria]`
+- Otherwise try to match against `DEFAULT_CATEGORIES` by `id` → use `cat.name`
+- As final fallback, use `entry.categoria` itself (for custom categories already stored with their names/codes)
+
+A concise lookup map:
+
+```typescript
+import { PRODUCTION_TYPE_LABELS, DEFAULT_CATEGORIES } from "@/utils/constants";
+
+function resolveCategoryLabel(categoria: string | null): string {
+  if (!categoria) return "";
+  // Try production type labels first (e.g. MAT_MED → "Mat/Med")
+  if (PRODUCTION_TYPE_LABELS[categoria]) return PRODUCTION_TYPE_LABELS[categoria];
+  // Try default categories by id (e.g. "salario" → "Salário")
+  const defaultCat = DEFAULT_CATEGORIES.find(c => c.id === categoria || c.id.toUpperCase() === categoria.toUpperCase());
+  if (defaultCat) return defaultCat.name;
+  // Return as-is (custom categories or display names stored directly)
+  return categoria;
 }
 ```
 
-2. The `inferredCategory` logic at lines 459–471 blindly uses `production_type` as the category code:
-```typescript
-if (uniqueTypes.length === 1) {
-  inferredCategory = uniqueTypes[0]; // "MAT_MED" — may not exist as category
-}
-```
+This function is called in `entryToTransaction` replacing `entry.categoria || ""`.
 
-3. Previous successful cases used `"EXAME"` and `"CONSULTA"` — those happen to exist as registered categories. `"MAT_MED"` does not.
+## What does NOT change
 
-### Fix Strategy
+- The `categoria` field stored in the DB remains `"RECEBIMENTO_FATURAMENTO"` — the DB trigger continues to validate correctly
+- No schema or database changes
+- No changes to filtering logic (filters still use the raw `categoria` code)
+- All other components that use `transaction.category` (DRE, BI, charts) benefit from the readable label automatically
+- Existing entries in DB with `categoria = "CONSULTA"` or `"EXAME"` (already stored as production type codes) will resolve correctly via `PRODUCTION_TYPE_LABELS`
 
-The fix must be applied inside `src/hooks/useReceivablesDB.ts`, in the `markAsReceived` function. The category inference must **validate** the inferred production_type against the company's actual registered category codes before using it. If no match is found, it must fall back to `"RECEBIMENTO_FATURAMENTO"` (the safe universal default).
-
-This requires loading the company's categories at the time of inference and checking against them. The simplest and most robust approach is to **fetch the company's categories directly from the database** inside `markAsReceived` (same pattern already used by the other Supabase queries in this function), so no additional hook dependency is needed.
-
-### Exact Change — `src/hooks/useReceivablesDB.ts`
-
-**Where:** Lines 449–471 (the `inferredCategory` block)
-
-**Current code logic:**
-```typescript
-// Inferir CATEGORIA a partir dos production_type vinculados ao receivable
-let inferredCategory: string = "RECEBIMENTO_FATURAMENTO";
-...
-if (uniqueTypes.length === 1) {
-  inferredCategory = uniqueTypes[0]; // ← blindly uses production_type as category
-}
-```
-
-**New logic (3-step approach):**
-
-1. After fetching `uniqueTypes`, do a quick lookup to fetch the company's registered categories from `company_financial_settings`:
-```typescript
-const { data: settingsData } = await supabase
-  .from("company_financial_settings")
-  .select("categories")
-  .eq("company_id", currentCompany.id)
-  .maybeSingle();
-
-const validCategoryCodes = new Set(
-  (Array.isArray(settingsData?.categories) ? settingsData.categories as any[] : [])
-    .map((c: any) => String(c.code || c.id || c.name || "").toUpperCase())
-    .filter(Boolean)
-);
-```
-
-2. Only use `uniqueTypes[0]` as `inferredCategory` if it exists in `validCategoryCodes`:
-```typescript
-if (uniqueTypes.length === 1 && validCategoryCodes.has(uniqueTypes[0].toUpperCase())) {
-  inferredCategory = uniqueTypes[0];
-} else if (uniqueTypes.length === 1) {
-  // production_type not registered as category — log it but fall back
-  typeNote = ` | Tipo produção: ${uniqueTypes[0]} (não mapeado como categoria)`;
-  inferredCategory = "RECEBIMENTO_FATURAMENTO";
-}
-```
-
-3. This way:
-   - `CONSULTA` → exists as category → used as-is ✅
-   - `EXAME` → exists as category → used as-is ✅
-   - `MAT_MED` → NOT a registered category → safely falls back to `RECEBIMENTO_FATURAMENTO` ✅
-   - Historical entries with `RECEBIMENTO_FATURAMENTO` → unaffected ✅
-
-### Safety Guarantees
-
-- **No schema changes** — purely frontend/hook logic change
-- **No breaking changes** — successful cases continue to work identically
-- **Backward compatible** — `typeNote` preserves the original `production_type` in `observacao` for audit trail
-- **Single file changed:** `src/hooks/useReceivablesDB.ts`
-- **No regression risk** to any other feature
-
-### Technical Summary
+## Files to Change
 
 | File | Change |
 |---|---|
-| `src/hooks/useReceivablesDB.ts` | Add category validation before using `inferredCategory`. Fetch valid codes from DB and fall back to `"RECEBIMENTO_FATURAMENTO"` if `production_type` is not a registered category. |
+| `src/hooks/useReceivablesDB.ts` | Import `PRODUCTION_TYPE_LABELS`; build human-readable label for `descricao` field using the production type name when falling back to `RECEBIMENTO_FATURAMENTO` |
+| `src/hooks/useTransactionsDB.ts` | Import `PRODUCTION_TYPE_LABELS` and `DEFAULT_CATEGORIES`; add `resolveCategoryLabel()` helper; use it in `entryToTransaction` for the `category` field |
+
+## Safety
+
+- No breaking changes to filters, stats calculations, or DB writes
+- Purely a display-layer fix in `entryToTransaction` + an informational improvement to `descricao`
+- Fully backward-compatible with existing entries already in the database
