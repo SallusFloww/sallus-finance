@@ -15,6 +15,21 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { isCancelled, isRealized } from "@/utils/statusHelpers";
+import { PRODUCTION_TYPE_LABELS, DEFAULT_CATEGORIES } from "@/utils/constants";
+
+// Resolve raw DB category codes to human-readable display labels
+function resolveCategoryLabel(categoria: string | null): string {
+  if (!categoria) return "";
+  // Try production type labels first (e.g. MAT_MED → "Mat/Med", CONSULTA → "Consulta")
+  if (PRODUCTION_TYPE_LABELS[categoria]) return PRODUCTION_TYPE_LABELS[categoria];
+  // Try default categories by id (e.g. "salario" → "Salário")
+  const defaultCat = DEFAULT_CATEGORIES.find(
+    (c) => c.id === categoria || c.id.toUpperCase() === categoria.toUpperCase()
+  );
+  if (defaultCat) return defaultCat.name;
+  // Return as-is (custom categories or display names stored directly)
+  return categoria;
+}
 
 interface TransactionFilters {
   startDate?: Date;
@@ -37,7 +52,7 @@ function entryToTransaction(entry: FinancialEntry): Transaction {
     financialCategory: "OPERACIONAL" as FinancialCategory,
     unit: entry.unit_id || "",
     specialty: entry.specialty || undefined,
-    category: entry.categoria || "",
+    category: resolveCategoryLabel(entry.categoria),
     paymentMethod: (entry.payment_method as any) || "PIX",
     status: entry.status === "recebido" 
       ? "REALIZADO" 
