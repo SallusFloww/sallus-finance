@@ -201,6 +201,7 @@ export type CategoryType = "INCOME" | "EXPENSE";
 
 export interface Category {
   id: string;
+  code?: string; // Uppercase slug validated by DB trigger (e.g. "SALARIO")
   name: string;
   type: CategoryType;
   active: boolean;
