@@ -393,6 +393,19 @@ export default function Settings() {
       .replace(/\s+/g, "_")
       .replace(/[^A-Z0-9_]/g, "");
 
+    if (!code) {
+      toast.error("Nome inválido: use ao menos uma letra ou número.");
+      return;
+    }
+
+    const codeExists = settings.categories.some(
+      (c) => (c.code || c.id)?.toUpperCase() === code,
+    );
+    if (codeExists) {
+      toast.error(`O código interno "${code}" já está em uso. Escolha um nome diferente.`);
+      return;
+    }
+
     const newCat = {
       id: trimmed
         .toLowerCase()

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Edit2, GripVertical, AlertCircle, Info, TrendingUp, TrendingDown, Star } from 'lucide-react';
+import { Plus, Edit2, AlertCircle, Info, TrendingUp, TrendingDown, Star, CheckCircle2, XCircle } from 'lucide-react';
 import { Category, CategoryType } from '@/types';
 import { toast } from 'sonner';
 
@@ -78,17 +78,49 @@ export function SettingsCategories({
       .replace(/\s+/g, '_')
       .replace(/[^A-Z0-9_]/g, '');
 
+  // Inline validation state derived from current form input
+  const codeValidation = useMemo(() => {
+    if (editingCategory || !formData.name.trim()) return null;
+
+    const code = generateCode(formData.name);
+
+    if (!code) {
+      return {
+        status: 'error' as const,
+        code: '',
+        message: 'O nome precisa conter ao menos uma letra ou número.',
+      };
+    }
+
+    const duplicate = categories.some(
+      (c) => c.id !== editingCategory?.id && (c.code || c.id)?.toUpperCase() === code,
+    );
+
+    if (duplicate) {
+      return {
+        status: 'error' as const,
+        code,
+        message: `O código "${code}" já está em uso por outra categoria. Escolha um nome diferente.`,
+      };
+    }
+
+    return { status: 'ok' as const, code, message: '' };
+  }, [formData.name, categories, editingCategory]);
+
   const handleSave = () => {
     if (!formData.name.trim()) {
       toast.error('Nome é obrigatório');
       return;
     }
 
-    const code = generateCode(formData.name);
-    if (!code) {
-      toast.error('Nome inválido: use letras ou números');
-      return;
+    if (!editingCategory) {
+      if (!codeValidation || codeValidation.status === 'error') {
+        toast.error(codeValidation?.message || 'Nome inválido: use letras ou números');
+        return;
+      }
     }
+
+    const code = generateCode(formData.name);
 
     if (editingCategory) {
       onUpdate(editingCategory.id, {
@@ -300,15 +332,36 @@ export function SettingsCategories({
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="Ex: Consultas, Folha de Pagamento"
+                className={
+                  codeValidation?.status === 'error'
+                    ? 'border-destructive focus-visible:ring-destructive'
+                    : ''
+                }
               />
-              {formData.name.trim() && !editingCategory && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Info className="h-3 w-3 shrink-0" />
+
+              {/* Inline code validation feedback */}
+              {formData.name.trim() && !editingCategory && codeValidation && (
+                <div className={`flex items-start gap-2 text-xs rounded-md px-2 py-1.5 ${
+                  codeValidation.status === 'error'
+                    ? 'bg-destructive/10 text-destructive'
+                    : 'bg-muted text-muted-foreground'
+                }`}>
+                  {codeValidation.status === 'error' ? (
+                    <XCircle className="h-3 w-3 mt-0.5 shrink-0" />
+                  ) : (
+                    <CheckCircle2 className="h-3 w-3 mt-0.5 shrink-0 text-emerald-600" />
+                  )}
                   <span>
-                    Código interno gerado:{' '}
-                    <code className="font-mono font-semibold text-foreground bg-muted px-1 py-0.5 rounded">
-                      {generateCode(formData.name)}
-                    </code>
+                    {codeValidation.status === 'error' ? (
+                      codeValidation.message
+                    ) : (
+                      <>
+                        Código interno:{' '}
+                        <code className="font-mono font-semibold text-foreground bg-background/70 px-1 py-0.5 rounded">
+                          {codeValidation.code}
+                        </code>
+                      </>
+                    )}
                   </span>
                 </div>
               )}
@@ -374,7 +427,10 @@ export function SettingsCategories({
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleSave}>
+            <Button
+              onClick={handleSave}
+              disabled={!editingCategory && codeValidation?.status === 'error'}
+            >
               {editingCategory ? 'Salvar Alterações' : 'Criar Categoria'}
             </Button>
           </DialogFooter>
