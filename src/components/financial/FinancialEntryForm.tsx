@@ -107,7 +107,10 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
               return { value: item, label: item };
             }
             if (item && typeof item === "object" && "name" in item) {
-              return { value: String((item as any).name), label: String((item as any).name) };
+              return {
+                value: String((item as any).code || (item as any).id || (item as any).name),
+                label: String((item as any).name),
+              };
             }
             return null;
           })
@@ -119,7 +122,10 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
       const targetType = type === "entrada" ? "INCOME" : "EXPENSE";
       options = raw
         .filter((cat: any) => cat.type === targetType)
-        .map((cat: any) => ({ value: String(cat.name), label: String(cat.name) }));
+        .map((cat: any) => ({
+          value: String(cat.code || cat.id || cat.name),
+          label: String(cat.name),
+        }));
     }
 
     // Case C: Fallback to DEFAULT_CATEGORIES
