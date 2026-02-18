@@ -458,8 +458,10 @@ export default function ProductionReport() {
 
   // Cálculo do período anterior (mesmo número de dias)
   const periodDays = useMemo(() => {
+    if (!startDate || !endDate) return 1;
     const start = parseISO(startDate);
     const end = parseISO(endDate);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return 1;
     return differenceInDays(end, start) + 1;
   }, [startDate, endDate]);
 
@@ -783,8 +785,10 @@ export default function ProductionReport() {
 
   // Evolução no tempo (time series)
   const evolutionData: TimeSeriesData[] = useMemo(() => {
+    if (!startDate || !endDate) return [];
     const start = parseISO(startDate);
     const end = parseISO(endDate);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return [];
     const useWeekly = evolutionGranularity === "weekly" || periodDays > 60;
 
     if (useWeekly) {
@@ -1006,7 +1010,13 @@ export default function ProductionReport() {
   }, [productions]);
 
   // Período formatado
-  const formattedPeriod = `${format(parseISO(startDate), "dd/MM/yyyy", { locale: ptBR })} a ${format(parseISO(endDate), "dd/MM/yyyy", { locale: ptBR })}`;
+  const formattedPeriod = (() => {
+    if (!startDate || !endDate) return "—";
+    const s = parseISO(startDate);
+    const e = parseISO(endDate);
+    if (isNaN(s.getTime()) || isNaN(e.getTime())) return "—";
+    return `${format(s, "dd/MM/yyyy", { locale: ptBR })} a ${format(e, "dd/MM/yyyy", { locale: ptBR })}`;
+  })();
   const previousFormattedPeriod = useMemo(() => {
     const start = parseISO(startDate);
     const previousEnd = subDays(start, 1);
