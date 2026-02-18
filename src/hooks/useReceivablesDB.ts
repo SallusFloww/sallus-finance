@@ -463,8 +463,25 @@ export function useReceivablesDB() {
 
           const uniqueTypes = Array.from(new Set(cleanedTypes));
 
-          if (uniqueTypes.length === 1) {
-            inferredCategory = uniqueTypes[0]; // ex: "CONSULTA"
+          // Buscar categorias válidas da empresa para validar o production_type
+          const { data: settingsData } = await supabase
+            .from("company_financial_settings")
+            .select("categories")
+            .eq("company_id", currentCompany.id)
+            .maybeSingle();
+
+          const validCategoryCodes = new Set(
+            (Array.isArray(settingsData?.categories) ? settingsData.categories as any[] : [])
+              .map((c: any) => String(c.code || c.id || c.name || "").toUpperCase())
+              .filter(Boolean)
+          );
+
+          if (uniqueTypes.length === 1 && validCategoryCodes.has(uniqueTypes[0].toUpperCase())) {
+            inferredCategory = uniqueTypes[0]; // ex: "CONSULTA" — código registrado como categoria
+          } else if (uniqueTypes.length === 1) {
+            // production_type não mapeado como categoria — fallback seguro
+            typeNote = ` | Tipo produção: ${uniqueTypes[0]} (não mapeado como categoria)`;
+            inferredCategory = "RECEBIMENTO_FATURAMENTO";
           } else if (uniqueTypes.length > 1) {
             inferredCategory = "RECEBIMENTO_FATURAMENTO";
             typeNote = ` | Tipos: múltiplos (${uniqueTypes.join(", ").substring(0, 120)})`;
