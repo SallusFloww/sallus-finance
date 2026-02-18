@@ -1,77 +1,98 @@
 
-## Root Cause Identified
+## Root Cause: Invalid Category in `markAsReceived`
 
-The error `"Categoria inválida: \"SALÁRIO\" não existe nas configurações."` is triggered by a database-side trigger on `financial_entries` that validates the `categoria` field against the company's stored category codes (e.g., `"SAL_RIO"` or `"SALARIO"`). 
+### What is happening
 
-The bug is in `src/components/financial/FinancialEntryForm.tsx` inside the `categoryOptions` computed value. In **Case A** (the path currently active for this company, since `settings.categories` is an array with `{id, code, name, type, ...}` objects), the form uses `cat.name` ("Salário") as the `value` of each `<SelectItem>`, when it should use `cat.code` ("SAL_RIO" or "SALARIO"). The `value` is what gets stored in the DB via `categoria: categoria || undefined`.
+When the user clicks "Receber" on a billing entry, the `markAsReceived` function in `src/hooks/useReceivablesDB.ts` (lines 449–471) automatically infers the `categoria` for the new `financial_entries` record from the `production_type` of linked productions.
+
+For the failing receivable (`MAT_MED – PRONTO_SO...`), the linked production has `production_type = "MAT_MED"`. The code then tries to insert a `financial_entries` record with `categoria: "MAT_MED"`.
+
+The database has a **trigger on `financial_entries`** (not visible in migrations because it lives in the live database, added via Supabase Studio) that validates `categoria` against the company's stored category list in `company_financial_settings.categories`. Since `"MAT_MED"` is not a registered category code for this company, the insert is rejected with a 400 error, and the frontend shows **"Erro ao criar movimentação no caixa"**.
 
 ### Evidence
-From the network request body:
-```json
-{"categoria":"Salário", ...}
-```
-The DB trigger expects a code like `"SAL_RIO"` (the `code` field of the category object). Sending the display name causes the 400 error.
 
-### What needs fixing
-
-Only one file needs to change: **`src/components/financial/FinancialEntryForm.tsx`**
-
-#### Fix in `categoryOptions` (lines ~118-123):
-
-**Case A** currently maps:
+1. In `useReceivablesDB.ts` line 499–503:
 ```typescript
-.map((cat: any) => ({ value: String(cat.name), label: String(cat.name) }));
+if (insertError) {
+  console.error("Erro ao criar movimentação:", insertError);
+  toast.error("Erro ao criar movimentação no caixa"); // ← this is the toast in the screenshot
+  return null;
+}
 ```
-Must become:
+
+2. The `inferredCategory` logic at lines 459–471 blindly uses `production_type` as the category code:
 ```typescript
-.map((cat: any) => ({ value: String(cat.code || cat.id || cat.name), label: String(cat.name) }));
+if (uniqueTypes.length === 1) {
+  inferredCategory = uniqueTypes[0]; // "MAT_MED" — may not exist as category
+}
 ```
-This uses `cat.code` as the stored value (what the DB validates against) while keeping `cat.name` as the human-readable label. The fallback chain `cat.code || cat.id || cat.name` ensures backward compatibility if any category is missing a `code`.
 
-#### Fix in `categoryOptions` — editingEntry inclusion guard (lines ~150-153):
+3. Previous successful cases used `"EXAME"` and `"CONSULTA"` — those happen to exist as registered categories. `"MAT_MED"` does not.
 
-The current guard checks:
+### Fix Strategy
+
+The fix must be applied inside `src/hooks/useReceivablesDB.ts`, in the `markAsReceived` function. The category inference must **validate** the inferred production_type against the company's actual registered category codes before using it. If no match is found, it must fall back to `"RECEBIMENTO_FATURAMENTO"` (the safe universal default).
+
+This requires loading the company's categories at the time of inference and checking against them. The simplest and most robust approach is to **fetch the company's categories directly from the database** inside `markAsReceived` (same pattern already used by the other Supabase queries in this function), so no additional hook dependency is needed.
+
+### Exact Change — `src/hooks/useReceivablesDB.ts`
+
+**Where:** Lines 449–471 (the `inferredCategory` block)
+
+**Current code logic:**
 ```typescript
-if (currentCat && !sorted.some((opt) => opt.value.toLowerCase() === currentCat.toLowerCase()))
+// Inferir CATEGORIA a partir dos production_type vinculados ao receivable
+let inferredCategory: string = "RECEBIMENTO_FATURAMENTO";
+...
+if (uniqueTypes.length === 1) {
+  inferredCategory = uniqueTypes[0]; // ← blindly uses production_type as category
+}
 ```
-This works correctly once `value` is changed to `cat.code`, because existing entries already store codes, not names. No change needed there.
 
-#### Fix in the "editing entry" load — `setCategoria` (line ~241):
+**New logic (3-step approach):**
 
-Currently:
+1. After fetching `uniqueTypes`, do a quick lookup to fetch the company's registered categories from `company_financial_settings`:
 ```typescript
-setCategoria(editingEntry.categoria || "");
+const { data: settingsData } = await supabase
+  .from("company_financial_settings")
+  .select("categories")
+  .eq("company_id", currentCompany.id)
+  .maybeSingle();
+
+const validCategoryCodes = new Set(
+  (Array.isArray(settingsData?.categories) ? settingsData.categories as any[] : [])
+    .map((c: any) => String(c.code || c.id || c.name || "").toUpperCase())
+    .filter(Boolean)
+);
 ```
-This correctly loads the stored value (which is already the code). No change needed.
 
-### Side note on Case B
-
-**Case B** (object format `{entrada: [...], saida: [...]}`) also has the same bug:
+2. Only use `uniqueTypes[0]` as `inferredCategory` if it exists in `validCategoryCodes`:
 ```typescript
-return { value: String((item as any).name), label: String((item as any).name) };
+if (uniqueTypes.length === 1 && validCategoryCodes.has(uniqueTypes[0].toUpperCase())) {
+  inferredCategory = uniqueTypes[0];
+} else if (uniqueTypes.length === 1) {
+  // production_type not registered as category — log it but fall back
+  typeNote = ` | Tipo produção: ${uniqueTypes[0]} (não mapeado como categoria)`;
+  inferredCategory = "RECEBIMENTO_FATURAMENTO";
+}
 ```
-This must also be fixed to:
-```typescript
-return { value: String((item as any).code || (item as any).id || (item as any).name), label: String((item as any).name) };
-```
 
-### Technical Implementation
+3. This way:
+   - `CONSULTA` → exists as category → used as-is ✅
+   - `EXAME` → exists as category → used as-is ✅
+   - `MAT_MED` → NOT a registered category → safely falls back to `RECEBIMENTO_FATURAMENTO` ✅
+   - Historical entries with `RECEBIMENTO_FATURAMENTO` → unaffected ✅
 
-**File to edit:** `src/components/financial/FinancialEntryForm.tsx`  
-**Lines affected:** ~103-131 (the `categoryOptions` useMemo)
+### Safety Guarantees
 
-- Case B (object format): change `value` from `item.name` to `item.code || item.id || item.name`
-- Case A (array format): change `value` from `cat.name` to `cat.code || cat.id || cat.name`
-- Case C (DEFAULT_CATEGORIES fallback): `DEFAULT_CATEGORIES` likely already stores proper codes. Let me verify it uses code or name:
+- **No schema changes** — purely frontend/hook logic change
+- **No breaking changes** — successful cases continue to work identically
+- **Backward compatible** — `typeNote` preserves the original `production_type` in `observacao` for audit trail
+- **Single file changed:** `src/hooks/useReceivablesDB.ts`
+- **No regression risk** to any other feature
 
-From `src/utils/constants.ts`, DEFAULT_CATEGORIES uses `{ name, type }` — no `code`. In the fallback case (Case C), there's no code field so `cat.name` is correct as value since these are internal defaults not validated by the DB trigger. But since DEFAULT_CATEGORIES is only a fallback when no settings exist, this scenario shouldn't hit the DB trigger validation anyway.
+### Technical Summary
 
-### No database migration needed
-
-This is a pure frontend fix. The database trigger, RLS, and schema remain completely untouched.
-
-### Safety
-
-- Existing records in the DB already have `categoria` stored as codes (e.g., `"EXAME"`, `"CONSULTA"`) — the edit flow will correctly match these codes to the dropdown options.
-- Historical entries are unaffected.
-- No breaking changes to any other component.
+| File | Change |
+|---|---|
+| `src/hooks/useReceivablesDB.ts` | Add category validation before using `inferredCategory`. Fetch valid codes from DB and fall back to `"RECEBIMENTO_FATURAMENTO"` if `production_type` is not a registered category. |
