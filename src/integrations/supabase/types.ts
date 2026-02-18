@@ -100,6 +100,7 @@ export type Database = {
           initial_balance_last_update: string | null
           payers: Json | null
           payment_methods: Json | null
+          payment_methods_particular: Json | null
           production_types: Json | null
           specialties: Json | null
           system_parameters: Json | null
@@ -117,6 +118,7 @@ export type Database = {
           initial_balance_last_update?: string | null
           payers?: Json | null
           payment_methods?: Json | null
+          payment_methods_particular?: Json | null
           production_types?: Json | null
           specialties?: Json | null
           system_parameters?: Json | null
@@ -134,6 +136,7 @@ export type Database = {
           initial_balance_last_update?: string | null
           payers?: Json | null
           payment_methods?: Json | null
+          payment_methods_particular?: Json | null
           production_types?: Json | null
           specialties?: Json | null
           system_parameters?: Json | null
