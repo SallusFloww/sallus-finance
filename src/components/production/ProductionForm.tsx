@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -292,6 +292,28 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
     : isSinglePackage
     ? selectedTypes[0]
     : "";
+
+  // ===================================================================
+  // REAL-TIME TOTALS (pre-check display)
+  // ===================================================================
+  const totals = useMemo(() => {
+    const toNum = (s?: string) =>
+      parseFloat(String(s || "0").replace(/\./g, "").replace(",", ".").replace(/[^\d.-]/g, "")) || 0;
+    const totalValue = selectedTypes.reduce(
+      (acc, t) => acc + toNum(perTypeValues[t]?.totalValue),
+      0
+    );
+    const totalQty = selectedTypes.reduce(
+      (acc, t) => acc + (toNum(perTypeValues[t]?.quantity) || 1),
+      0
+    );
+    return { totalValue, totalQty };
+  }, [selectedTypes, perTypeValues]);
+
+  const formattedTotal = new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(totals.totalValue);
 
   // CORREÇÃO #1: Garantir unidades ativas - usar settings.units se units prop estiver vazia
   const effectiveUnits = units && units.length > 0 ? units : settings?.units || [];
@@ -1191,20 +1213,33 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
               )}
             </div>
 
+            {/* Total Geral pré-conferência — visível quando ≥1 tipo tem valor */}
+            {totals.totalValue > 0 && (
+              <div className="flex items-center justify-between bg-violet-500/5 border border-violet-500/15 rounded-md px-3 py-1.5">
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Calculator className="h-3 w-3" />
+                  {isMultiType
+                    ? `${totals.totalQty} itens`
+                    : `${perTypeValues[selectedTypes[0]]?.quantity || 1} unid.`}
+                </span>
+                <span className="text-sm font-semibold text-violet-700">{formattedTotal}</span>
+              </div>
+            )}
+
             {/* Non-package types: checkboxes */}
             <div className="space-y-2">
               {nonPackageProductionTypes.map((type) => {
                 const isChecked = selectedTypes.includes(type);
                 const typeValues = perTypeValues[type];
                 return (
-                  <div key={type} className="space-y-2">
-                    {/* Checkbox row */}
+                  <div key={type} className="space-y-1">
+                    {/* Compact single-row: checkbox + label + inline inputs */}
                     <div
                       className={cn(
-                        "flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer transition-colors",
+                        "flex items-center gap-2 rounded-md cursor-pointer transition-colors px-2 py-1.5",
                         isChecked
-                          ? "bg-violet-500/15 border border-violet-500/30"
-                          : "hover:bg-muted/50 border border-transparent"
+                          ? "bg-violet-500/10 border border-violet-500/25"
+                          : "hover:bg-muted/40 border border-transparent"
                       )}
                       onClick={() => toggleType(type)}
                     >
@@ -1212,43 +1247,40 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
                         checked={isChecked}
                         onCheckedChange={() => toggleType(type)}
                         onClick={(e) => e.stopPropagation()}
-                        className="data-[state=checked]:bg-violet-600 data-[state=checked]:border-violet-600"
+                        className="data-[state=checked]:bg-violet-600 data-[state=checked]:border-violet-600 shrink-0"
                       />
-                      <span className={cn("text-sm font-medium", isChecked ? "text-violet-700" : "text-foreground")}>
+                      <span className={cn("text-sm flex-1 min-w-0 truncate", isChecked ? "text-violet-700 font-medium" : "text-foreground")}>
                         {getProductionTypeLabel(type)}
                       </span>
+
+                      {/* Inline qty + value — only when checked */}
+                      {isChecked && (
+                        <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={typeValues?.quantity || "1"}
+                            onChange={(e) => updatePerTypeValue(type, "quantity", e.target.value)}
+                            className="h-7 w-14 text-xs text-center px-1"
+                            title="Qtde"
+                          />
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="R$"
+                            value={typeValues?.totalValue || ""}
+                            onChange={(e) => updatePerTypeValue(type, "totalValue", e.target.value)}
+                            className="h-7 w-24 text-xs text-center px-1"
+                            title="Valor Total (R$)"
+                          />
+                        </div>
+                      )}
                     </div>
 
-                    {/* Inline qty + value row (shown only when checked) */}
+                    {/* Sub-field for EXAME / SESSAO_TERAPEUTICA (indented, compact) */}
                     {isChecked && (
-                      <div className="ml-8 space-y-2 pb-1">
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">Qtde *</Label>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={typeValues?.quantity || "1"}
-                              onChange={(e) => updatePerTypeValue(type, "quantity", e.target.value)}
-                              className="h-8 text-sm text-center"
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">Valor Total (R$)</Label>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              placeholder="0,00"
-                              value={typeValues?.totalValue || ""}
-                              onChange={(e) => updatePerTypeValue(type, "totalValue", e.target.value)}
-                              className="h-8 text-sm text-center"
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          </div>
-                        </div>
-                        {/* Inline sub-field for EXAME / SESSAO_TERAPEUTICA */}
+                      <div className="ml-6">
                         {renderInlineSubField(type)}
                       </div>
                     )}
@@ -1297,13 +1329,14 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
                 const isSelected = selectedTypes.includes(pkgType);
                 const pkgValues = perTypeValues[pkgType];
                 return (
-                  <div key={pkgType} className="space-y-2">
+                  <div key={pkgType} className="space-y-1">
+                    {/* Compact single-row: radio indicator + label + inline inputs */}
                     <div
                       className={cn(
-                        "flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer transition-colors",
+                        "flex items-center gap-2 rounded-md cursor-pointer transition-colors px-2 py-1.5",
                         isSelected
-                          ? "bg-primary/10 border border-primary/30"
-                          : "hover:bg-muted/50 border border-transparent"
+                          ? "bg-primary/10 border border-primary/25"
+                          : "hover:bg-muted/40 border border-transparent"
                       )}
                       onClick={() => toggleType(pkgType)}
                     >
@@ -1314,42 +1347,36 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
                           isSelected ? "border-primary bg-primary" : "border-muted-foreground"
                         )}
                       >
-                        {isSelected && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
+                        {isSelected && <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />}
                       </div>
-                      <span className={cn("text-sm font-medium", isSelected ? "text-primary" : "text-foreground")}>
+                      <span className={cn("text-sm flex-1 min-w-0 truncate", isSelected ? "text-primary font-medium" : "text-foreground")}>
                         {getProductionTypeLabel(pkgType)}
                       </span>
-                    </div>
-                    {isSelected && (
-                      <div className="ml-8 space-y-2 pb-1">
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">Qtde *</Label>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={pkgValues?.quantity || "1"}
-                              onChange={(e) => updatePerTypeValue(pkgType, "quantity", e.target.value)}
-                              className="h-8 text-sm text-center"
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">Valor Total (R$)</Label>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              placeholder="0,00"
-                              value={pkgValues?.totalValue || ""}
-                              onChange={(e) => updatePerTypeValue(pkgType, "totalValue", e.target.value)}
-                              className="h-8 text-sm text-center"
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          </div>
+
+                      {/* Inline qty + value — only when selected */}
+                      {isSelected && (
+                        <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={pkgValues?.quantity || "1"}
+                            onChange={(e) => updatePerTypeValue(pkgType, "quantity", e.target.value)}
+                            className="h-7 w-14 text-xs text-center px-1"
+                            title="Qtde"
+                          />
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="R$"
+                            value={pkgValues?.totalValue || ""}
+                            onChange={(e) => updatePerTypeValue(pkgType, "totalValue", e.target.value)}
+                            className="h-7 w-24 text-xs text-center px-1"
+                            title="Valor Total (R$)"
+                          />
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 );
               })}
