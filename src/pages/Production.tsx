@@ -115,6 +115,7 @@ export default function Production() {
     getStats: getProductionStats,
     uniqueConvenios,
     loading: productionsLoading,
+    refetch: refetchProductions,
   } = useProductionDB();
 
   // Modal de produção
@@ -483,6 +484,7 @@ export default function Production() {
         onSubmit={handleAddProduction}
         units={settings.units}
         userName={user?.name || "Sistema"}
+        onBulkInsertSuccess={refetchProductions}
       />
 
       {/* Modal de Importação CSV */}
