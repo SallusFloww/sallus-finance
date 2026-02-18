@@ -465,8 +465,14 @@ export default function Production() {
         {/* Link secundário para relatório gerencial */}
         <div className="flex items-center justify-between text-xs text-muted-foreground px-1 pt-2">
           <span>
-            Período: {format(parseISO(startDate), "dd/MM/yyyy", { locale: ptBR })} a{" "}
-            {format(parseISO(endDate), "dd/MM/yyyy", { locale: ptBR })}
+            {(() => {
+              const s = startDate ? parseISO(startDate) : null;
+              const e = endDate ? parseISO(endDate) : null;
+              const sValid = s && !isNaN(s.getTime());
+              const eValid = e && !isNaN(e.getTime());
+              if (!sValid || !eValid) return "Período: —";
+              return `Período: ${format(s, "dd/MM/yyyy", { locale: ptBR })} a ${format(e, "dd/MM/yyyy", { locale: ptBR })}`;
+            })()}
           </span>
           <Button variant="ghost" size="sm" asChild className="text-xs h-7">
             <Link to="/production-report">
