@@ -488,6 +488,35 @@ export function useReceivablesDB() {
           }
         }
 
+        // Importar labels legíveis para o descricao
+        const { PRODUCTION_TYPE_LABELS: PROD_LABELS } = await import("@/utils/constants");
+
+        // Construir descricao com nome legível do tipo de produção
+        let readableTypePrefix = "";
+        if (inferredCategory === "RECEBIMENTO_FATURAMENTO") {
+          // Tentar obter label legível do production_type original
+          const { data: prodTypesForLabel } = await supabase
+            .from("productions")
+            .select("production_type")
+            .eq("company_id", currentCompany.id)
+            .eq("linked_receivable_id", id);
+          if (Array.isArray(prodTypesForLabel) && prodTypesForLabel.length > 0) {
+            const types = Array.from(new Set(prodTypesForLabel.map((p: any) => p.production_type).filter(Boolean)));
+            if (types.length === 1) {
+              const label = PROD_LABELS[types[0] as string] || types[0];
+              readableTypePrefix = `${label} • `;
+            } else if (types.length > 1) {
+              readableTypePrefix = "Recebimento Faturamento • ";
+            }
+          }
+        } else {
+          // Categoria válida — usar label legível do tipo
+          const label = PROD_LABELS[inferredCategory] || inferredCategory;
+          readableTypePrefix = `${label} • `;
+        }
+
+        const descricao = `${readableTypePrefix}${receivable.source} • ${receivable.description}`.substring(0, 200);
+
         // STEP 1: Criar entrada no financial_entries (Caixa/Movimentações)
         const { data: insertedEntry, error: insertError } = await supabase
           .from("financial_entries")
@@ -500,7 +529,7 @@ export function useReceivablesDB() {
               valor: receivedAmount,
               data_prevista: actualReceiptDate,
               data_recebimento: actualReceiptDate,
-              descricao: `Recebimento faturamento • ${receivable.source} • ${receivable.description}`.substring(0, 200),
+              descricao,
               categoria: inferredCategory,
               unit_id: receivable.unit || null,
               receipt_type: receivable.source === "PARTICULAR" ? "PARTICULAR" : "CONVENIO",
