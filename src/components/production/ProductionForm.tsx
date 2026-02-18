@@ -297,8 +297,19 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
   // REAL-TIME TOTALS (pre-check display)
   // ===================================================================
   const totals = useMemo(() => {
-    const toNum = (s?: string) =>
-      parseFloat(String(s || "0").replace(/\./g, "").replace(",", ".").replace(/[^\d.-]/g, "")) || 0;
+    const toNum = (s?: string): number => {
+      if (!s || s === "") return 0;
+      let str = String(s).trim().replace(/[¤$\u20AC£¥\s]/g, "");
+      const lastComma = str.lastIndexOf(",");
+      const lastDot = str.lastIndexOf(".");
+      if (lastComma > lastDot) {
+        str = str.replace(/\./g, "").replace(",", ".");
+      } else {
+        str = str.replace(/,/g, "");
+      }
+      const parsed = parseFloat(str);
+      return isNaN(parsed) ? 0 : parsed;
+    };
     const totalValue = selectedTypes.reduce(
       (acc, t) => acc + toNum(perTypeValues[t]?.totalValue),
       0
@@ -1265,10 +1276,9 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
                             title="Qtde"
                           />
                           <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="R$"
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="0,00"
                             value={typeValues?.totalValue || ""}
                             onChange={(e) => updatePerTypeValue(type, "totalValue", e.target.value)}
                             className="h-7 w-24 text-xs text-center px-1"
@@ -1365,10 +1375,9 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
                             title="Qtde"
                           />
                           <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="R$"
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="0,00"
                             value={pkgValues?.totalValue || ""}
                             onChange={(e) => updatePerTypeValue(pkgType, "totalValue", e.target.value)}
                             className="h-7 w-24 text-xs text-center px-1"
