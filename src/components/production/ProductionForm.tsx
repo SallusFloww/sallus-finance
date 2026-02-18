@@ -80,6 +80,8 @@ interface ProductionFormProps {
   onSubmit: (data: ProductionFormData) => void;
   units: UnitConfig[];
   userName: string;
+  /** P3-FIX: callback chamado após bulk insert bem-sucedido para forçar refetch mesmo se WebSocket estiver degradado */
+  onBulkInsertSuccess?: () => void;
 }
 
 export interface ProductionFormData {
@@ -114,7 +116,7 @@ export interface ProductionFormData {
   matmedQty?: number;
 }
 
-export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }: ProductionFormProps) {
+export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, onBulkInsertSuccess }: ProductionFormProps) {
   const currentMonth = format(new Date(), "MM/yyyy");
 
   // Use database-backed settings for suggestions
@@ -1023,9 +1025,13 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
 
       const unitValue = quantity > 0 ? totalValue / quantity : 0;
 
+      // P2-FIX: Converter competencia MM/YYYY → YYYY-MM antes de enviar ao banco
+      const [smm, syyyy] = formData.competencia.split("/");
+      const competenciaForDB = syyyy ? `${syyyy}-${smm}` : formData.competencia;
+
       onSubmit({
         productionDate: formData.productionDate,
-        competencia: formData.competencia,
+        competencia: competenciaForDB,
         unit: formData.unit,
         specialty: formData.specialty || undefined,
         doctorId: formData.doctorId || undefined,
@@ -1143,6 +1149,8 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName }
       }
 
       toast.success(`${selectedTypes.length} produções registradas com sucesso`);
+      // P3-FIX: forçar refetch explícito caso WebSocket esteja degradado
+      onBulkInsertSuccess?.();
       onOpenChange(false);
     } catch (err) {
       console.error("Unexpected error:", err);
