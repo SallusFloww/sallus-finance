@@ -1243,6 +1243,15 @@ export type Database = {
         Returns: boolean
       }
       reset_demo_company: { Args: { _company_id: string }; Returns: boolean }
+      upsert_production_type_with_category: {
+        Args: {
+          _company_id: string
+          _description?: string
+          _desired_entry_type?: string
+          _name: string
+        }
+        Returns: Json
+      }
       user_belongs_to_company: {
         Args: { _company_id: string; _user_id: string }
         Returns: boolean
