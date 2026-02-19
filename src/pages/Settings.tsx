@@ -64,7 +64,7 @@ export default function Settings() {
   const { transactions } = useApp();
   const { transactions: allTransactions } = transactions;
 
-  const { profile, isAdmin } = useAuth();
+  const { profile, isAdmin, currentCompany } = useAuth();
 
   // Use database-backed settings instead of localStorage
   const { settings, extendedSettings, updateSettings, updateExtendedSettings } = useCompanySettings();
@@ -1063,7 +1063,12 @@ export default function Settings() {
             <SettingsProductionTypes
               productionTypes={extendedSettings?.productionTypes ?? []}
               productions={productions ?? []}
+              companyId={currentCompany?.id || ""}
               onUpdate={(types) => setExtendedSettings((prev) => ({ ...prev, productionTypes: types }))}
+              onSyncComplete={({ productionTypes, categories }) => {
+                setExtendedSettings((prev) => ({ ...prev, productionTypes }));
+                updateSettings({ categories });
+              }}
               onAddLog={addAuditLog}
             />
           </TabsContent>
