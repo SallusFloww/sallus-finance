@@ -259,14 +259,16 @@ export default function Billing() {
     setReconciling(true);
     try {
       const result = await reconcileOrphanedReceivables();
-      // Aguarda um momento para o banco propagar as inserções antes de buscar o novo total
-      await new Promise((resolve) => setTimeout(resolve, 800));
-      // Força refetch do total do caixa diretamente (não depende de tick/realtime)
-      await fetchCaixaTotal();
-      // Também atualiza os recebíveis locais
-      await refetchReceivables();
+      if (result.fixed > 0 || result.skipped > 0) {
+        // Aguarda propagação no banco antes de buscar novos totais
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        // Sequência explícita: recebíveis primeiro, depois caixa
+        await refetchReceivables();
+        await fetchCaixaTotal();
+      }
     } catch (err) {
       console.error("Erro inesperado na reconciliação:", err);
+      toast.error("Erro inesperado na reconciliação");
     } finally {
       setReconciling(false);
     }
@@ -656,7 +658,7 @@ export default function Billing() {
           </div>
 
           {/* Alerta de divergência Faturamento vs Caixa */}
-          {caixaLoading && caixaTotal === null ? null : hasDivergence ? (
+          {caixaLoading ? null : hasDivergence ? (
             <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-950/20 p-4">
               <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
               <div className="flex-1 min-w-0">
@@ -678,8 +680,7 @@ export default function Billing() {
               <div className="flex flex-col gap-2 shrink-0">
                 <Button
                   size="sm"
-                  variant="warning"
-                  className="gap-2"
+                  className="gap-2 bg-amber-500 hover:bg-amber-600 text-white border-0"
                   onClick={handleReconcile}
                   disabled={reconciling || caixaLoading}
                 >
