@@ -226,16 +226,21 @@ export default function Billing() {
     if (!currentCompany?.id) return;
     setCaixaLoading(true);
 
-    // Usa os mesmos recebíveis do período que compõem totals.recebido
-    // (filtrados por billingDate, não por data_prevista — elimina divergência de data)
-    const receivedInPeriod = filterReceivables({
-      startDate: dateRange.start,
-      endDate: dateRange.end,
-    }).filter(
-      (r) =>
+    // CRÍTICO: usar `receivables` diretamente (não via filterReceivables memoizado)
+    // para evitar stale closure após refetchReceivables() na reconciliação.
+    // Filtrar pelo mesmo critério de billingDate que totals.recebido usa.
+    const start = dateRange.start;
+    const end = dateRange.end;
+
+    const receivedInPeriod = receivables.filter((r) => {
+      const d = parseISO(r.billingDate);
+      return (
+        d >= start &&
+        d <= end &&
         (r.status === "RECEBIDO" || r.status === "RECEBIDO_COM_GLOSA") &&
-        r.linkedTransactionId,
-    );
+        r.linkedTransactionId
+      );
+    });
 
     if (receivedInPeriod.length === 0) {
       setCaixaTotal(0);
@@ -260,7 +265,7 @@ export default function Billing() {
       setCaixaTotal(null);
     }
     setCaixaLoading(false);
-  }, [currentCompany?.id, dateRange.start, dateRange.end, filterReceivables]);
+  }, [currentCompany?.id, dateRange.start, dateRange.end, receivables]);
 
   useEffect(() => {
     fetchCaixaTotal();
@@ -690,7 +695,7 @@ export default function Billing() {
                   Diferença: <strong className="text-amber-800 dark:text-amber-300">{formatCurrency(divergence ?? 0)}</strong>
                 </p>
                 <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">
-                  Recebíveis marcados como recebidos sem lançamento correspondente no Caixa.
+                  Recebíveis sem lançamento ativo no Caixa (entradas ausentes ou canceladas).
                   Clique em <strong>Reconciliar</strong> para criar automaticamente as entradas faltantes.
                 </p>
               </div>
