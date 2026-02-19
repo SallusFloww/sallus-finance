@@ -1010,6 +1010,7 @@ export function useReceivablesDB() {
 
         // Não tem entry — criar a entry faltante
         const receiptDate = receivable.actualReceiptDate || receivable.billingDate;
+        // data_prevista usa billingDate para alinhar com o filtro de período do Faturamento
         const descricao = `Recebimento Faturamento • ${receivable.source} • ${receivable.description}`.substring(0, 200);
 
         const { data: insertedEntry, error: insertError } = await supabase
@@ -1021,7 +1022,7 @@ export function useReceivablesDB() {
               type: "entrada",
               status: "recebido",
               valor: receivable.receivedAmount,
-              data_prevista: receiptDate,
+              data_prevista: receivable.billingDate,
               data_recebimento: receiptDate,
               descricao,
               categoria: defaultCategory,
@@ -1061,8 +1062,6 @@ export function useReceivablesDB() {
 
     if (fixed > 0) {
       toast.success(`Reconciliação concluída: ${fixed} entrada(s) criada(s) no Caixa.${skipped > 0 ? ` ${skipped} já estavam corretos.` : ""}`);
-      refreshAll();
-      await fetchReceivables();
     } else if (errors === 0) {
       toast.success(`Caixa consistente. ${skipped} recebimento(s) já possuíam lançamento.`);
     }
@@ -1072,7 +1071,7 @@ export function useReceivablesDB() {
     }
 
     return { fixed, errors, skipped };
-  }, [currentCompany?.id, profile, receivables, fetchReceivables, refreshAll]);
+  }, [currentCompany?.id, profile, receivables]);
 
   return {
     receivables,
