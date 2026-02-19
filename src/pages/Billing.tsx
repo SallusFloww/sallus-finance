@@ -259,12 +259,19 @@ export default function Billing() {
     setReconciling(true);
     try {
       const result = await reconcileOrphanedReceivables();
-      if (result.fixed > 0 || result.skipped > 0) {
-        // Aguarda propagação no banco antes de buscar novos totais
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        // Sequência explícita: recebíveis primeiro, depois caixa
+
+      if (result.fixed > 0) {
+        // 1ª passagem: aguarda propagação inicial do banco (inserção assíncrona)
+        await new Promise((resolve) => setTimeout(resolve, 800));
         await refetchReceivables();
         await fetchCaixaTotal();
+
+        // 2ª passagem: garante que entradas criadas com latência também apareçam
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+        await fetchCaixaTotal();
+      } else if (result.skipped > 0) {
+        // Nada foi criado, mas links foram atualizados — refresh leve dos recebíveis
+        await refetchReceivables();
       }
     } catch (err) {
       console.error("Erro inesperado na reconciliação:", err);
