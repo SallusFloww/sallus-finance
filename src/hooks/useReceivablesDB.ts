@@ -960,14 +960,17 @@ export function useReceivablesDB() {
     // Normalizar para uppercase (como o trigger espera)
     defaultCategory = String(defaultCategory).toUpperCase().replace(/\s+/g, "_");
 
+    // Somente recebíveis sem linkedTransactionId são verdadeiros órfãos
+    // (os que já têm link estão corretos por definição — não geram N+1 queries)
     const orphans = receivables.filter(
       (r) =>
         (r.status === "RECEBIDO" || r.status === "RECEBIDO_COM_GLOSA") &&
-        r.receivedAmount > 0,
+        r.receivedAmount > 0 &&
+        !r.linkedTransactionId,
     );
 
     if (orphans.length === 0) {
-      toast.info("Nenhum recebível para verificar.");
+      toast.success("Caixa consistente. Todos os recebimentos já possuem lançamento vinculado.");
       return { fixed: 0, errors: 0, skipped: 0 };
     }
 
@@ -977,7 +980,8 @@ export function useReceivablesDB() {
 
     for (const receivable of orphans) {
       try {
-        // Verificar se já existe financial_entry para este receivable
+        // Verificar se já existe financial_entry para este receivable (por observacao)
+        // Caso exista, o link simplesmente não foi salvo — reparar o link sem criar duplicata
         const { data: existing, error: existingErr } = await supabase
           .from("financial_entries")
           .select("id")
@@ -992,18 +996,16 @@ export function useReceivablesDB() {
           continue;
         }
 
-        // Já tem entry correspondente — apenas garante que o link está atualizado
+        // Entry existe mas link não foi salvo — reparar o link
         if (existing && existing.length > 0) {
-          if (!receivable.linkedTransactionId) {
-            await (supabase as any)
-              .from("receivables")
-              .update({
-                linked_transaction_id: existing[0].id,
-                updated_at: new Date().toISOString(),
-                updated_by: profile.id,
-              })
-              .eq("id", receivable.id);
-          }
+          await (supabase as any)
+            .from("receivables")
+            .update({
+              linked_transaction_id: existing[0].id,
+              updated_at: new Date().toISOString(),
+              updated_by: profile.id,
+            })
+            .eq("id", receivable.id);
           skipped++;
           continue;
         }

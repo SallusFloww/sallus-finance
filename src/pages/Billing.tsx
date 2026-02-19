@@ -225,24 +225,42 @@ export default function Billing() {
   const fetchCaixaTotal = useCallback(async () => {
     if (!currentCompany?.id) return;
     setCaixaLoading(true);
-    const startStr = format(dateRange.start, "yyyy-MM-dd");
-    const endStr = format(dateRange.end, "yyyy-MM-dd");
+
+    // Usa os mesmos recebíveis do período que compõem totals.recebido
+    // (filtrados por billingDate, não por data_prevista — elimina divergência de data)
+    const receivedInPeriod = filterReceivables({
+      startDate: dateRange.start,
+      endDate: dateRange.end,
+    }).filter(
+      (r) =>
+        (r.status === "RECEBIDO" || r.status === "RECEBIDO_COM_GLOSA") &&
+        r.linkedTransactionId,
+    );
+
+    if (receivedInPeriod.length === 0) {
+      setCaixaTotal(0);
+      setCaixaLoading(false);
+      return;
+    }
+
+    const entryIds = receivedInPeriod
+      .map((r) => r.linkedTransactionId)
+      .filter(Boolean) as string[];
 
     const { data, error } = await supabase
       .from("financial_entries")
       .select("valor")
-      .eq("company_id", currentCompany.id)
-      .eq("type", "entrada")
-      .eq("status", "recebido")
-      .gte("data_prevista", startStr)
-      .lte("data_prevista", endStr);
+      .in("id", entryIds)
+      .neq("status", "cancelado");
 
     if (!error && data) {
       const total = data.reduce((sum: number, e: { valor: number }) => sum + Number(e.valor), 0);
       setCaixaTotal(total);
+    } else {
+      setCaixaTotal(null);
     }
     setCaixaLoading(false);
-  }, [currentCompany?.id, dateRange.start, dateRange.end]);
+  }, [currentCompany?.id, dateRange.start, dateRange.end, filterReceivables]);
 
   useEffect(() => {
     fetchCaixaTotal();
@@ -260,19 +278,11 @@ export default function Billing() {
     try {
       const result = await reconcileOrphanedReceivables();
 
-      if (result.fixed > 0) {
-        // 1ª passagem: aguarda propagação inicial do banco (inserção assíncrona)
-        await new Promise((resolve) => setTimeout(resolve, 800));
-        await refetchReceivables();
-        await fetchCaixaTotal();
-
-        // 2ª passagem: garante que entradas criadas com latência também apareçam
-        await new Promise((resolve) => setTimeout(resolve, 1200));
-        await fetchCaixaTotal();
-      } else if (result.skipped > 0) {
-        // Nada foi criado, mas links foram atualizados — refresh leve dos recebíveis
-        await refetchReceivables();
-      }
+      // Sempre atualiza após reconciliação, independente de fixed/skipped
+      // (links podem ter sido reparados em qualquer caso)
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      await refetchReceivables();
+      await fetchCaixaTotal();
     } catch (err) {
       console.error("Erro inesperado na reconciliação:", err);
       toast.error("Erro inesperado na reconciliação");
