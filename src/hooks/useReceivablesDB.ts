@@ -960,17 +960,44 @@ export function useReceivablesDB() {
     // Normalizar para uppercase (como o trigger espera)
     defaultCategory = String(defaultCategory).toUpperCase().replace(/\s+/g, "_");
 
-    // Somente recebíveis sem linkedTransactionId são verdadeiros órfãos
-    // (os que já têm link estão corretos por definição — não geram N+1 queries)
-    const orphans = receivables.filter(
+    // 1. Órfãos verdadeiros: RECEBIDO/RECEBIDO_COM_GLOSA sem nenhum linkedTransactionId
+    const trueOrphans = receivables.filter(
       (r) =>
         (r.status === "RECEBIDO" || r.status === "RECEBIDO_COM_GLOSA") &&
         r.receivedAmount > 0 &&
         !r.linkedTransactionId,
     );
 
+    // 2. Links quebrados: têm linkedTransactionId mas a entry está CANCELADA
+    // Isso faz o reconciler dizer "consistente" enquanto há divergência real
+    const candidatesWithLink = receivables.filter(
+      (r) =>
+        (r.status === "RECEBIDO" || r.status === "RECEBIDO_COM_GLOSA") &&
+        r.receivedAmount > 0 &&
+        r.linkedTransactionId,
+    );
+
+    let cancelledEntryIds = new Set<string>();
+    if (candidatesWithLink.length > 0) {
+      const linkedIds = candidatesWithLink.map((r) => r.linkedTransactionId as string);
+      const { data: cancelledEntries } = await supabase
+        .from("financial_entries")
+        .select("id")
+        .in("id", linkedIds)
+        .eq("status", "cancelado");
+      if (cancelledEntries) {
+        cancelledEntries.forEach((e: { id: string }) => cancelledEntryIds.add(e.id));
+      }
+    }
+
+    const brokenLinks = candidatesWithLink.filter(
+      (r) => r.linkedTransactionId && cancelledEntryIds.has(r.linkedTransactionId),
+    );
+
+    const orphans = [...trueOrphans, ...brokenLinks];
+
     if (orphans.length === 0) {
-      toast.success("Caixa consistente. Todos os recebimentos já possuem lançamento vinculado.");
+      toast.success("Caixa consistente. Todos os recebimentos já possuem lançamento vinculado e ativo.");
       return { fixed: 0, errors: 0, skipped: 0 };
     }
 
@@ -980,8 +1007,22 @@ export function useReceivablesDB() {
 
     for (const receivable of orphans) {
       try {
-        // Verificar se já existe financial_entry para este receivable (por observacao)
-        // Caso exista, o link simplesmente não foi salvo — reparar o link sem criar duplicata
+        const isBrokenLink = !!(receivable.linkedTransactionId && cancelledEntryIds.has(receivable.linkedTransactionId));
+
+        // Para links quebrados: limpar o linked_transaction_id antigo ANTES da busca
+        // (evita que o ilike encontre a entry cancelada e ache que já está OK)
+        if (isBrokenLink) {
+          await (supabase as any)
+            .from("receivables")
+            .update({
+              linked_transaction_id: null,
+              updated_at: new Date().toISOString(),
+              updated_by: profile.id,
+            })
+            .eq("id", receivable.id);
+        }
+
+        // Verificar se já existe financial_entry ativa para este receivable (por observacao)
         const { data: existing, error: existingErr } = await supabase
           .from("financial_entries")
           .select("id")
@@ -996,7 +1037,7 @@ export function useReceivablesDB() {
           continue;
         }
 
-        // Entry existe mas link não foi salvo — reparar o link
+        // Entry ativa encontrada — reparar o link
         if (existing && existing.length > 0) {
           await (supabase as any)
             .from("receivables")
