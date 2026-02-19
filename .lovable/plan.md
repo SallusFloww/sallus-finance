@@ -1,80 +1,163 @@
 
-# Fix: Reconciliation Flow — Root Cause Diagnosis & Repair
+# Fix: Caixa vs Faturamento Divergence — Definitive Root Cause & Repair
 
-## Root Causes Found
+## What's Actually Happening (From the Screenshots)
 
-### Bug 1 — `variant="warning"` does not exist on the Button component
-The "Reconciliar" button uses `variant="warning"` which is not defined in `src/components/ui/button.tsx` (confirmed — no match found). This causes the button to silently render without the correct styling, and in some React/Tailwind setups can cause a rendering warning or suppress the click handler. This must be changed to a valid variant (`default` or a styled `className`).
+- Faturamento shows **R$ 13.892,37** recebido (56 receivables marked as RECEBIDO)
+- Caixa shows **R$ 12.992,37** in "Total de Entradas"
+- Difference: **R$ 900,00**
+- Clicking "Reconciliar" shows: "Caixa consistente. 56 recebimento(s) já possuíam lançamento"
 
-### Bug 2 — Orphan filter skips receivables that already have `linked_transaction_id` set
-The current orphan detection loop iterates all RECEBIDO/RECEBIDO_COM_GLOSA receivables and then queries Supabase to check if a `financial_entry` exists with `observacao ILIKE '%receivable_id={id}%'`. However, it **does not first skip** records that have `linkedTransactionId` set. So every RECEBIDO receivable is queried, but if the entry was created via the normal `markAsReceived` flow (which sets `linked_transaction_id`), it will be found in the DB via the `ilike` check and skipped correctly. The actual orphans are those with NO `linked_transaction_id` — but the DB check is still correct. However this causes unnecessary N+1 queries.
+This is the key contradiction: **the reconciler thinks everything is fine, but there's still a R$900 gap.** This is NOT a missing entry problem — it's a **date mismatch problem**.
 
-More critically: The filter at line 963 reads from `receivables` which is the **in-memory state at the time the hook was called**. If `dateRange` in Billing restricts what's displayed (e.g. only Feb 2026), but `useReceivablesDB` fetches ALL receivables for the company, the reconciliation operates on ALL receivables — this is actually correct behavior. However the **caixa total fetch** at line 228-238 filters by `data_prevista` in the dateRange, but the entries created during reconciliation use `receiptDate = actual_receipt_date || billing_date` which could be outside the current month filter. So reconciled entries from January won't be counted in the February caixa total — creating a false impression that reconciliation did nothing.
+## Root Cause (Confirmed by Code Reading)
 
-### Bug 3 — `fetchCaixaTotal` filter is period-scoped, reconciliation inserts entries outside period
-When reconciling ALL orphaned receivables (not just the current period), entries from previous months are created with their original `billing_date` as `data_prevista`. The `fetchCaixaTotal` query filters `gte data_prevista >= startStr` and `lte data_prevista <= endStr`. So entries from other months won't appear in the caixa total for the current period, even though the Faturamento total (`totals.recebido`) also filters by `billingDate` within the current `dateRange`. This creates a permanent "false divergence" for entries from different months.
+### The Two Filters Don't Match
 
-**Key realization**: The `totals.recebido` in Billing sums `receivedAmount` of ALL receivables filtered by `billingDate` in the current dateRange. But `caixaTotal` sums `financial_entries.valor` filtered by `data_prevista` in the same dateRange. The divergence calculation is: `|totals.recebido - caixaTotal|`. If some receivables in the period have their corresponding entries with `data_prevista` outside the period, both sides are inconsistent.
-
-**The fix**: After reconciliation, `fetchCaixaTotal` should NOT be period-scoped — OR the reconciliation should create entries with `data_prevista` matching `billing_date` of the receivable (which is within the period). Currently `receiptDate = actual_receipt_date || billing_date`. The `actual_receipt_date` might be in a different month than `billing_date`. To match Faturamento's filter (which uses `billingDate`), the entries should use `billing_date` as `data_prevista`.
-
-## Fix Plan
-
-### Fix 1 — Remove invalid `variant="warning"` from the Reconciliar button
-**File**: `src/pages/Billing.tsx` line ~682
-
-Change:
-```tsx
-variant="warning"
+**`totals.recebido`** (Faturamento side) — calculated in `Billing.tsx` line 215:
 ```
-To:
-```tsx
-className="gap-2 bg-amber-500 hover:bg-amber-600 text-white border-0"
+allFiltered.reduce((sum, r) => sum + r.receivedAmount, 0)
 ```
-(keeping `size="sm"` and `onClick={handleReconcile}`)
+`allFiltered` is filtered by **`billingDate`** (the date the invoice was issued). The current period is `01/01–28/02/2026`.
 
-### Fix 2 — Use `billing_date` as `data_prevista` in reconciled entries
-**File**: `src/hooks/useReceivablesDB.ts` line ~1012
+**`fetchCaixaTotal`** (Caixa side) — queries `financial_entries` filtered by **`data_prevista`** (lines 237–238):
+```sql
+WHERE data_prevista >= '2026-01-01' AND data_prevista <= '2026-02-28'
+```
 
-Change:
+**`markAsReceived`** (line 530 in `useReceivablesDB.ts`) saves entries with:
+```
+data_prevista: actualReceiptDate  ← the date the user typed when clicking "Receber"
+```
+
+So if a receivable was **invoiced (billingDate)** in February but the user registered the **receipt date** on a date outside the `01/01–28/02` window (e.g., a typo like `2025-02-XX`, or a future date like `2026-03-01`), the receivable IS counted in `totals.recebido` (because billingDate is in range), but its financial_entry IS NOT counted in `caixaTotal` (because data_prevista is out of range).
+
+The orphan reconciler confirms the entry exists (via `ilike observacao %receivable_id=X%`) so it counts it as "skipped" — but `fetchCaixaTotal` still doesn't find it because of the date filter mismatch.
+
+### Why This Is Hard to See
+
+The reconciler says "everything is fine" (56 entries found) while the UI shows a gap — because the orphan check and the caixa total check use completely different query logic.
+
+## The Fix
+
+### Fix 1 — Change `fetchCaixaTotal` to use receivable IDs from the period
+
+Instead of filtering `financial_entries` by `data_prevista` (which can be outside the period due to receipt dates varying), compute the caixa total by:
+
+1. Taking the receivables already filtered for the period (`allFiltered` — which uses `billingDate`)
+2. Extracting their `linkedTransactionId` values (IDs of their linked financial entries)
+3. Summing those specific entries from the DB
+
+This makes both sides of the comparison use **the same set of receivables** as the source of truth. No more date mismatch.
+
+**File: `src/pages/Billing.tsx`**
+
+Replace `fetchCaixaTotal` (lines 225–245) with a version that queries financial entries linked to the current period's receivables:
+
 ```typescript
-const receiptDate = receivable.actualReceiptDate || receivable.billingDate;
-// ...
-data_prevista: receiptDate,
-data_recebimento: receiptDate,
+const fetchCaixaTotal = useCallback(async () => {
+  if (!currentCompany?.id) return;
+  setCaixaLoading(true);
+
+  // Get IDs of receivables in the current period (same set as totals.recebido)
+  const receivedInPeriod = filterReceivables({
+    startDate: dateRange.start,
+    endDate: dateRange.end,
+  }).filter(
+    (r) => (r.status === "RECEBIDO" || r.status === "RECEBIDO_COM_GLOSA") && r.linkedTransactionId
+  );
+
+  if (receivedInPeriod.length === 0) {
+    setCaixaTotal(0);
+    setCaixaLoading(false);
+    return;
+  }
+
+  const entryIds = receivedInPeriod
+    .map((r) => r.linkedTransactionId)
+    .filter(Boolean) as string[];
+
+  const { data, error } = await supabase
+    .from("financial_entries")
+    .select("valor")
+    .in("id", entryIds)
+    .neq("status", "cancelado");
+
+  if (!error && data) {
+    const total = data.reduce((sum, e) => sum + Number(e.valor), 0);
+    setCaixaTotal(total);
+  } else {
+    setCaixaTotal(null);
+  }
+  setCaixaLoading(false);
+}, [currentCompany?.id, dateRange.start, dateRange.end, filterReceivables]);
 ```
 
-To:
+This query is now perfectly aligned with `totals.recebido`: same receivables, their actual linked entries.
+
+### Fix 2 — Handle receivables with no `linkedTransactionId` (orphans)
+
+After Fix 1, receivables that have `receivedAmount > 0` but NO `linkedTransactionId` will show up as a gap (their amount is in `totals.recebido` but NOT in `caixaTotal` — correctly!). The reconciler button then becomes meaningful: it truly creates missing entries for those cases.
+
+Update `reconcileOrphanedReceivables` to skip the expensive `ilike` DB check for receivables that already have `linkedTransactionId` set — just go straight to creating entries for those with `receivedAmount > 0` AND `linkedTransactionId === null/undefined`.
+
+**File: `src/hooks/useReceivablesDB.ts`**
+
+Replace the orphan filter and detection loop (lines 963–1008) with a simpler, more reliable version:
+
 ```typescript
-const receiptDate = receivable.actualReceiptDate || receivable.billingDate;
-// data_prevista must match billingDate so it appears in the same period filter as the receivable
-data_prevista: receivable.billingDate,
-data_recebimento: receiptDate,
+// Only process receivables that actually have no link
+const orphans = receivables.filter(
+  (r) =>
+    (r.status === "RECEBIDO" || r.status === "RECEBIDO_COM_GLOSA") &&
+    r.receivedAmount > 0 &&
+    !r.linkedTransactionId  // No link = confirmed orphan, no DB roundtrip needed
+);
+
+// For each orphan, do a final DB check to avoid inserting if entry exists by observacao
+for (const receivable of orphans) {
+  const { data: existing } = await supabase
+    .from("financial_entries")
+    .select("id")
+    .eq("company_id", currentCompany.id)
+    .ilike("observacao", `%receivable_id=${receivable.id}%`)
+    .neq("status", "cancelado")
+    .limit(1);
+
+  if (existing && existing.length > 0) {
+    // Entry exists but link wasn't saved — fix the link
+    await supabase.from("receivables").update({
+      linked_transaction_id: existing[0].id,
+      updated_at: new Date().toISOString(),
+      updated_by: profile.id,
+    }).eq("id", receivable.id);
+    skipped++;
+    continue;
+  }
+  // ... create new entry
+}
 ```
 
-This ensures the `financial_entry` sits in the same month as its parent receivable — matching how `filterReceivables` works.
+This eliminates N+1 DB queries for receivables that already have a `linkedTransactionId` (the vast majority).
 
-### Fix 3 — Add explicit `refreshAll()` + `fetchReceivables()` + `fetchCaixaTotal()` in the right order with proper await in `handleReconcile`
-**File**: `src/pages/Billing.tsx` lines 258-273
+### Fix 3 — Toast message when "Caixa consistente" is actually inconsistent
 
-The current `handleReconcile` already awaits `reconcileOrphanedReceivables()` and then calls `fetchCaixaTotal()` and `refetchReceivables()`. However `reconcileOrphanedReceivables` itself calls `refreshAll()` and `fetchReceivables()` at the end. This means there are two parallel refresh paths that can race.
+When `skipped === orphans.length` and `fixed === 0`, but there's still a divergence, the current code shows "Caixa consistente. 56 recebimento(s) já possuíam lançamento" — which is misleading. After Fix 1, this situation won't arise because the caixa total will now correctly reflect entries linked to period receivables.
 
-**Fix**: Remove the internal `refreshAll()` and `fetchReceivables()` calls from inside `reconcileOrphanedReceivables` in the hook (so the hook is a pure data function), and do all refresh logic in `handleReconcile` in Billing.tsx, with explicit sequencing:
+### Fix 4 — `handleReconcile` cleanup
+
+After Fix 2 (which eliminates N+1 queries for non-orphans), the `handleReconcile` flow in `Billing.tsx` also needs to trigger a `refetchReceivables()` even in the `skipped > 0` case (to update `linkedTransactionId` on the receivable objects in memory), then call `fetchCaixaTotal()`:
 
 ```typescript
 const handleReconcile = async () => {
   setReconciling(true);
   try {
     const result = await reconcileOrphanedReceivables();
-    if (result.fixed > 0 || result.skipped > 0) {
-      // Wait for DB propagation
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      // Refresh in sequence: receivables first, then caixa total
-      await refetchReceivables();
-      await fetchCaixaTotal();
-    }
+    // Always refresh after reconcile, regardless of fixed/skipped
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    await refetchReceivables();
+    await fetchCaixaTotal();
   } catch (err) {
-    console.error("Erro inesperado na reconciliação:", err);
     toast.error("Erro inesperado na reconciliação");
   } finally {
     setReconciling(false);
@@ -82,30 +165,20 @@ const handleReconcile = async () => {
 };
 ```
 
-And in `useReceivablesDB.ts`, remove the `refreshAll()` + `fetchReceivables()` calls at lines 1064-1065 (inside `reconcileOrphanedReceivables`), since those now happen in the caller.
+## Summary of Changes
 
-### Fix 4 — Guard the divergence display while caixaTotal is loading
-**File**: `src/pages/Billing.tsx` line 659
+| File | What Changes |
+|---|---|
+| `src/pages/Billing.tsx` | `fetchCaixaTotal` — rewritten to query entries by `linkedTransactionId` of in-period receivables (not by `data_prevista` date range) |
+| `src/pages/Billing.tsx` | `handleReconcile` — always refreshes both receivables and caixa total after reconciliation |
+| `src/hooks/useReceivablesDB.ts` | `reconcileOrphanedReceivables` — skips DB roundtrip for receivables that already have `linkedTransactionId`; only queries DB for those with no link |
 
-Change:
-```tsx
-{caixaLoading && caixaTotal === null ? null : hasDivergence ? (
-```
-To:
-```tsx
-{caixaLoading ? null : hasDivergence ? (
-```
+## What Will Happen After the Fix
 
-This prevents the alert from flickering in/out during refetch.
+1. `totals.recebido` = sum of `receivedAmount` for receivables with `billingDate` in period
+2. `caixaTotal` = sum of `valor` for financial entries linked to those same receivables
+3. Both sides use exactly the same set of receivables → comparison is apples-to-apples
+4. If a receivable is RECEBIDO but has no `linkedTransactionId` → gap appears → "Reconciliar" creates the entry and updates the link → next `fetchCaixaTotal` picks it up
+5. No more "Caixa consistente" false positive when there's an actual gap
 
-## Summary of File Changes
-
-| File | Lines | Change |
-|---|---|---|
-| `src/pages/Billing.tsx` | ~258-273 | `handleReconcile` — explicit await chain, remove duplicate refresh paths |
-| `src/pages/Billing.tsx` | ~682 | `variant="warning"` → valid `className` with amber styling |
-| `src/pages/Billing.tsx` | ~659 | Guard `caixaLoading` to prevent flicker |
-| `src/hooks/useReceivablesDB.ts` | ~1012 | Use `billingDate` as `data_prevista` in reconciled entries |
-| `src/hooks/useReceivablesDB.ts` | ~1062-1065 | Remove internal `refreshAll()` + `fetchReceivables()` — delegated to caller |
-
-No schema changes, no RLS changes, no auth changes. All changes are UI/hook logic only.
+No schema changes. No RLS changes. No auth changes. Purely UI and hook logic.
