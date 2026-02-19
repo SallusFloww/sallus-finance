@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { isWithinInterval, parseISO, startOfDay, endOfDay } from "date-fns";
+import { parseISO, format } from "date-fns";
 import { Production, ProductionStatus, ProductionType, ProductionStats, ProductionHistoryEntry } from "@/types";
 import { toast } from "sonner";
 import { useGlobalRealtime } from "@/contexts/GlobalRealtimeProvider";
@@ -553,14 +553,13 @@ export function useProductionDB() {
   const filterProductions = useCallback(
     (filters: ProductionFilters): Production[] => {
       return productions.filter((p) => {
+        // UTC-safe date comparison: compare 'yyyy-MM-dd' strings directly
+        // to avoid timezone shifts causing off-by-one-day errors in Brazil (UTC-3)
         if (filters.startDate && filters.endDate) {
-          const productionDate = parseISO(p.productionDate);
-          if (
-            !isWithinInterval(productionDate, {
-              start: startOfDay(filters.startDate),
-              end: endOfDay(filters.endDate),
-            })
-          ) {
+          const productionDateStr = format(parseISO(p.productionDate), "yyyy-MM-dd");
+          const startDateStr = format(filters.startDate, "yyyy-MM-dd");
+          const endDateStr = format(filters.endDate, "yyyy-MM-dd");
+          if (productionDateStr < startDateStr || productionDateStr > endDateStr) {
             return false;
           }
         }
@@ -577,7 +576,8 @@ export function useProductionDB() {
           const matchesDescription = p.description.toLowerCase().includes(searchLower);
           const matchesConvenio = p.convenio?.toLowerCase().includes(searchLower);
           const matchesCode = p.procedureCode?.toLowerCase().includes(searchLower);
-          if (!matchesDescription && !matchesConvenio && !matchesCode) return false;
+          const matchesPatient = p.patientName?.toLowerCase().includes(searchLower);
+          if (!matchesDescription && !matchesConvenio && !matchesCode && !matchesPatient) return false;
         }
 
         return true;
