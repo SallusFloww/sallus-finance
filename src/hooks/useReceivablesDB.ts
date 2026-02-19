@@ -920,11 +920,45 @@ export function useReceivablesDB() {
    * e cria as entradas faltantes no Caixa, resolvendo a divergência entre
    * "Total Recebido" do Faturamento e "Total de Entradas" do Caixa.
    */
-  const reconcileOrphanedReceivables = useCallback(async (): Promise<{ fixed: number; errors: number }> => {
+  const reconcileOrphanedReceivables = useCallback(async (): Promise<{ fixed: number; errors: number; skipped: number }> => {
     if (!currentCompany?.id || !profile?.id) {
       toast.error("Usuário não autenticado");
-      return { fixed: 0, errors: 0 };
+      return { fixed: 0, errors: 0, skipped: 0 };
     }
+
+    // 1) Buscar categoria de entrada válida para esta empresa (necessário por causa do trigger category_guard)
+    const { data: settingsData, error: settingsErr } = await supabase
+      .from("company_financial_settings")
+      .select("categories")
+      .eq("company_id", currentCompany.id)
+      .maybeSingle();
+
+    if (settingsErr) {
+      toast.error("Erro ao carregar configurações da empresa");
+      return { fixed: 0, errors: 0, skipped: 0 };
+    }
+
+    const categories: any[] = Array.isArray(settingsData?.categories) ? settingsData.categories as any[] : [];
+
+    // Tenta usar RECEBIMENTO_FATURAMENTO, senão pega a primeira categoria do tipo "entrada"
+    const findCategory = (code: string) =>
+      categories.find((c: any) => String(c.code || "").toUpperCase() === code.toUpperCase());
+
+    let defaultCategory =
+      findCategory("RECEBIMENTO_FATURAMENTO")?.code ||
+      findCategory("RECEBIMENTO")?.code ||
+      categories.find((c: any) => !c.entryType || c.entryType === "entrada")?.code ||
+      null;
+
+    if (!defaultCategory) {
+      toast.error(
+        "Nenhuma categoria de entrada válida encontrada. Cadastre ao menos uma categoria em Configurações antes de reconciliar.",
+      );
+      return { fixed: 0, errors: 0, skipped: 0 };
+    }
+
+    // Normalizar para uppercase (como o trigger espera)
+    defaultCategory = String(defaultCategory).toUpperCase().replace(/\s+/g, "_");
 
     const orphans = receivables.filter(
       (r) =>
@@ -934,11 +968,12 @@ export function useReceivablesDB() {
 
     if (orphans.length === 0) {
       toast.info("Nenhum recebível para verificar.");
-      return { fixed: 0, errors: 0 };
+      return { fixed: 0, errors: 0, skipped: 0 };
     }
 
     let fixed = 0;
     let errors = 0;
+    let skipped = 0;
 
     for (const receivable of orphans) {
       try {
@@ -952,13 +987,13 @@ export function useReceivablesDB() {
           .limit(1);
 
         if (existingErr) {
+          console.error(`Erro ao verificar entry para receivable ${receivable.id}:`, existingErr);
           errors++;
           continue;
         }
 
-        // Já tem entry correspondente — não precisa criar
+        // Já tem entry correspondente — apenas garante que o link está atualizado
         if (existing && existing.length > 0) {
-          // Se o receivable não tem linked_transaction_id, vincula agora
           if (!receivable.linkedTransactionId) {
             await (supabase as any)
               .from("receivables")
@@ -969,6 +1004,7 @@ export function useReceivablesDB() {
               })
               .eq("id", receivable.id);
           }
+          skipped++;
           continue;
         }
 
@@ -988,7 +1024,7 @@ export function useReceivablesDB() {
               data_prevista: receiptDate,
               data_recebimento: receiptDate,
               descricao,
-              categoria: "RECEBIMENTO_FATURAMENTO",
+              categoria: defaultCategory,
               unit_id: receivable.unit || null,
               receipt_type: receivable.source === "PARTICULAR" ? "PARTICULAR" : "CONVENIO",
               payment_method: "TRANSFER",
@@ -1000,7 +1036,8 @@ export function useReceivablesDB() {
           .single();
 
         if (insertError || !insertedEntry) {
-          console.error(`Erro ao criar entry para receivable ${receivable.id}:`, insertError);
+          const msg = (insertError as any)?.message || "erro desconhecido";
+          console.error(`Erro ao criar entry para receivable ${receivable.id}: ${msg}`, insertError);
           errors++;
           continue;
         }
@@ -1016,25 +1053,25 @@ export function useReceivablesDB() {
           .eq("id", receivable.id);
 
         fixed++;
-      } catch (err) {
+      } catch (err: any) {
         console.error(`Erro ao reconciliar receivable ${receivable.id}:`, err);
         errors++;
       }
     }
 
     if (fixed > 0) {
-      toast.success(`Reconciliação concluída: ${fixed} entrada(s) criada(s) no Caixa.`);
+      toast.success(`Reconciliação concluída: ${fixed} entrada(s) criada(s) no Caixa.${skipped > 0 ? ` ${skipped} já estavam corretos.` : ""}`);
       refreshAll();
       await fetchReceivables();
     } else if (errors === 0) {
-      toast.success("Nenhuma divergência encontrada. Dados consistentes.");
+      toast.success(`Caixa consistente. ${skipped} recebimento(s) já possuíam lançamento.`);
     }
 
     if (errors > 0) {
-      toast.error(`${errors} erro(s) durante reconciliação. Verifique o console.`);
+      toast.error(`${errors} erro(s) durante reconciliação — verifique se as categorias estão cadastradas em Configurações.`);
     }
 
-    return { fixed, errors };
+    return { fixed, errors, skipped };
   }, [currentCompany?.id, profile, receivables, fetchReceivables, refreshAll]);
 
   return {

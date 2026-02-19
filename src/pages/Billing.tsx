@@ -219,34 +219,36 @@ export default function Billing() {
 
   // Cross-check: buscar total de entradas no Caixa para o período e comparar com recebido do Faturamento
   const [caixaTotal, setCaixaTotal] = useState<number | null>(null);
+  const [caixaLoading, setCaixaLoading] = useState(false);
   const [reconciling, setReconciling] = useState(false);
+  // Contador para forçar refetch do caixaTotal após reconciliação
+  const [caixaRefreshTick, setCaixaRefreshTick] = useState(0);
+
+  const fetchCaixaTotal = useCallback(async () => {
+    if (!currentCompany?.id) return;
+    setCaixaLoading(true);
+    const startStr = format(dateRange.start, "yyyy-MM-dd");
+    const endStr = format(dateRange.end, "yyyy-MM-dd");
+
+    const { data, error } = await supabase
+      .from("financial_entries")
+      .select("valor")
+      .eq("company_id", currentCompany.id)
+      .eq("type", "entrada")
+      .eq("status", "recebido")
+      .gte("data_prevista", startStr)
+      .lte("data_prevista", endStr);
+
+    if (!error && data) {
+      const total = data.reduce((sum: number, e: { valor: number }) => sum + Number(e.valor), 0);
+      setCaixaTotal(total);
+    }
+    setCaixaLoading(false);
+  }, [currentCompany?.id, dateRange.start, dateRange.end]);
 
   useEffect(() => {
-    if (!currentCompany?.id) return;
-    let cancelled = false;
-
-    const fetchCaixaTotal = async () => {
-      const startStr = format(dateRange.start, "yyyy-MM-dd");
-      const endStr = format(dateRange.end, "yyyy-MM-dd");
-
-      const { data, error } = await supabase
-        .from("financial_entries")
-        .select("valor")
-        .eq("company_id", currentCompany.id)
-        .eq("type", "entrada")
-        .eq("status", "recebido")
-        .gte("data_prevista", startStr)
-        .lte("data_prevista", endStr);
-
-      if (!cancelled && !error && data) {
-        const total = data.reduce((sum: number, e: { valor: number }) => sum + Number(e.valor), 0);
-        setCaixaTotal(total);
-      }
-    };
-
     fetchCaixaTotal();
-    return () => { cancelled = true; };
-  }, [currentCompany?.id, dateRange.start, dateRange.end, reconciling]);
+  }, [fetchCaixaTotal, caixaRefreshTick]);
 
   const divergence = useMemo(() => {
     if (caixaTotal === null) return null;
@@ -259,6 +261,8 @@ export default function Billing() {
     setReconciling(true);
     await reconcileOrphanedReceivables();
     setReconciling(false);
+    // Atualiza caixaTotal após reconciliação
+    setCaixaRefreshTick((t) => t + 1);
   };
 
   const activeUnits = settings.units.filter((u) => u.active);
@@ -645,30 +649,68 @@ export default function Billing() {
           </div>
 
           {/* Alerta de divergência Faturamento vs Caixa */}
-          {hasDivergence && (
+          {caixaLoading && caixaTotal === null ? null : hasDivergence ? (
             <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-950/20 p-4">
               <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-amber-800 dark:text-amber-400">
                   Divergência detectada: Faturamento vs Caixa
                 </p>
-                <p className="text-xs text-amber-700 dark:text-amber-500 mt-0.5">
-                  Total Recebido nesta página: <strong>{formatCurrency(totals.recebido)}</strong> · Total no Caixa: <strong>{formatCurrency(caixaTotal ?? 0)}</strong> · Diferença: <strong>{formatCurrency(divergence ?? 0)}</strong>.
-                  Isso pode indicar recebíveis marcados como recebidos sem lançamento correspondente no Caixa.
+                <p className="text-xs text-amber-700 dark:text-amber-500 mt-1">
+                  Recebido no Faturamento: <strong>{formatCurrency(totals.recebido)}</strong>
+                  {" · "}
+                  Entradas no Caixa: <strong>{formatCurrency(caixaTotal ?? 0)}</strong>
+                  {" · "}
+                  Diferença: <strong className="text-amber-800 dark:text-amber-300">{formatCurrency(divergence ?? 0)}</strong>
+                </p>
+                <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">
+                  Recebíveis marcados como recebidos sem lançamento correspondente no Caixa.
+                  Clique em <strong>Reconciliar</strong> para criar automaticamente as entradas faltantes.
                 </p>
               </div>
+              <div className="flex flex-col gap-2 shrink-0">
+                <Button
+                  size="sm"
+                  variant="warning"
+                  className="gap-2"
+                  onClick={handleReconcile}
+                  disabled={reconciling || caixaLoading}
+                >
+                  <RefreshCw className={cn("h-3.5 w-3.5", reconciling && "animate-spin")} />
+                  {reconciling ? "Reconciliando..." : "Reconciliar"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-2 text-xs"
+                  onClick={() => setCaixaRefreshTick((t) => t + 1)}
+                  disabled={caixaLoading || reconciling}
+                >
+                  <RefreshCw className={cn("h-3 w-3", caixaLoading && "animate-spin")} />
+                  Verificar novamente
+                </Button>
+              </div>
+            </div>
+          ) : caixaTotal !== null && totals.recebido > 0 ? (
+            <div className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/5 px-4 py-3">
+              <CheckCircle className="h-4 w-4 text-success shrink-0" />
+              <p className="text-sm text-success flex-1">
+                <strong>Caixa consistente.</strong> Faturamento e Caixa estão alinhados para o período.
+              </p>
               <Button
                 size="sm"
-                variant="outline"
-                className="shrink-0 gap-2 border-amber-500/50 text-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/30"
-                onClick={handleReconcile}
-                disabled={reconciling}
+                variant="ghost"
+                className="gap-2 text-xs text-muted-foreground h-7"
+                onClick={() => setCaixaRefreshTick((t) => t + 1)}
+                disabled={caixaLoading}
               >
-                <RefreshCw className={cn("h-3.5 w-3.5", reconciling && "animate-spin")} />
-                {reconciling ? "Reconciliando..." : "Reconciliar"}
+                <RefreshCw className={cn("h-3 w-3", caixaLoading && "animate-spin")} />
+                Verificar
               </Button>
             </div>
-          )}
+          ) : null}
+
+
 
           {/* Totais Operacionais */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
