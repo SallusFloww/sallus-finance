@@ -21,6 +21,7 @@ interface SettingsProductionTypesProps {
   companyId: string;
   onUpdate: (types: ProductionTypeConfig[]) => void;
   onSyncComplete: (data: { productionTypes: ProductionTypeConfig[]; categories: Category[] }) => void;
+  onRefetch?: () => Promise<void>;
   onAddLog: (action: string, details: string) => void;
 }
 
@@ -69,6 +70,7 @@ export function SettingsProductionTypes({
   companyId,
   onUpdate,
   onSyncComplete,
+  onRefetch,
   onAddLog,
 }: SettingsProductionTypesProps) {
   // CORREÇÃO: Se não há tipos salvos no banco, usar defaults e PERSISTIR
@@ -130,12 +132,16 @@ export function SettingsProductionTypes({
 
     setAddingType(true);
     try {
+      console.log('[ADD_PROD_TYPE] calling RPC', { companyId, name: trimmed, description: newDescription.trim() });
+
       const { data, error } = await (supabase.rpc as any)('upsert_production_type_with_category', {
         _company_id: companyId,
         _name: trimmed,
         _description: newDescription.trim(),
         _desired_entry_type: 'entrada',
       });
+
+      console.log('[ADD_PROD_TYPE] rpc result', { data, error });
 
       if (error) throw error;
 
@@ -145,17 +151,23 @@ export function SettingsProductionTypes({
         return;
       }
 
-      onSyncComplete({
-        productionTypes: result.production_types,
-        categories: result.categories,
-      });
+      // RPC updated DB atomically. Refetch settings to get fresh data.
+      if (onRefetch) {
+        await onRefetch();
+      } else {
+        // Fallback: use onSyncComplete if onRefetch not available
+        onSyncComplete({
+          productionTypes: result.production_types ?? [],
+          categories: result.categories ?? [],
+        });
+      }
 
       onAddLog("UPDATE_SETTINGS", `Tipo "${trimmed}" adicionado com categoria ENTRADA vinculada`);
       setNewType("");
       setNewDescription("");
       toast.success("Tipo criado e categoria vinculada como ENTRADA");
     } catch (err) {
-      console.error("Erro ao criar tipo via RPC:", err);
+      console.error("[ADD_PROD_TYPE] Exception:", err);
       // Fallback: criar localmente sem categoria (compatibilidade)
       const newTypeObj: ProductionTypeConfig = {
         id: generateId(),

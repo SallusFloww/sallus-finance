@@ -67,7 +67,7 @@ export default function Settings() {
   const { profile, isAdmin, currentCompany } = useAuth();
 
   // Use database-backed settings instead of localStorage
-  const { settings, extendedSettings, updateSettings, updateExtendedSettings } = useCompanySettings();
+  const { settings, extendedSettings, updateSettings, updateExtendedSettings, refetch } = useCompanySettings();
 
   // Wrapper to update extended settings (supports updater fn or partial object)
   const setExtendedSettings = (updater: ((prev: ExpandedSettings) => ExpandedSettings) | Partial<ExpandedSettings>) => {
@@ -1069,6 +1069,7 @@ export default function Settings() {
                 setExtendedSettings((prev) => ({ ...prev, productionTypes }));
                 updateSettings({ categories });
               }}
+              onRefetch={async () => { await refetch(); }}
               onAddLog={addAuditLog}
             />
           </TabsContent>
