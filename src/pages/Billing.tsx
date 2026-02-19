@@ -22,6 +22,7 @@ import {
   Info,
   Eye,
   Edit3,
+  RefreshCw,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -75,6 +76,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useReceivablesDB } from "@/hooks/useReceivablesDB";
+import { supabase } from "@/integrations/supabase/client";
 import { useApp } from "@/contexts/AppContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatCurrency, parseMoneyBR } from "@/utils/formatters";
@@ -127,7 +129,7 @@ const TAB_TOOLTIPS = {
 export default function Billing() {
   const { transactions } = useApp();
   const { settings } = transactions;
-  const { profile } = useAuth();
+  const { profile, currentCompany } = useAuth();
   
   // Compatibilidade com código legado
   const user = { name: profile?.full_name || "Sistema" };
@@ -144,6 +146,7 @@ export default function Billing() {
     uniqueSources,
     loading: receivablesLoading,
     refetch: refetchReceivables,
+    reconcileOrphanedReceivables,
   } = useReceivablesDB();
 
   // Refetch quando a página ganha foco (cinto + suspensório para realtime)
@@ -213,6 +216,50 @@ export default function Billing() {
       pendente: pendentes.reduce((sum, r) => sum + r.billedAmount, 0),
     };
   }, [allFiltered, pendentes]);
+
+  // Cross-check: buscar total de entradas no Caixa para o período e comparar com recebido do Faturamento
+  const [caixaTotal, setCaixaTotal] = useState<number | null>(null);
+  const [reconciling, setReconciling] = useState(false);
+
+  useEffect(() => {
+    if (!currentCompany?.id) return;
+    let cancelled = false;
+
+    const fetchCaixaTotal = async () => {
+      const startStr = format(dateRange.start, "yyyy-MM-dd");
+      const endStr = format(dateRange.end, "yyyy-MM-dd");
+
+      const { data, error } = await supabase
+        .from("financial_entries")
+        .select("valor")
+        .eq("company_id", currentCompany.id)
+        .eq("type", "entrada")
+        .eq("status", "recebido")
+        .gte("data_prevista", startStr)
+        .lte("data_prevista", endStr);
+
+      if (!cancelled && !error && data) {
+        const total = data.reduce((sum: number, e: { valor: number }) => sum + Number(e.valor), 0);
+        setCaixaTotal(total);
+      }
+    };
+
+    fetchCaixaTotal();
+    return () => { cancelled = true; };
+  }, [currentCompany?.id, dateRange.start, dateRange.end, reconciling]);
+
+  const divergence = useMemo(() => {
+    if (caixaTotal === null) return null;
+    return Math.abs(totals.recebido - caixaTotal);
+  }, [totals.recebido, caixaTotal]);
+
+  const hasDivergence = divergence !== null && divergence > 0.01;
+
+  const handleReconcile = async () => {
+    setReconciling(true);
+    await reconcileOrphanedReceivables();
+    setReconciling(false);
+  };
 
   const activeUnits = settings.units.filter((u) => u.active);
 
@@ -596,6 +643,32 @@ export default function Billing() {
               </Popover>
             </div>
           </div>
+
+          {/* Alerta de divergência Faturamento vs Caixa */}
+          {hasDivergence && (
+            <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-950/20 p-4">
+              <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-amber-800 dark:text-amber-400">
+                  Divergência detectada: Faturamento vs Caixa
+                </p>
+                <p className="text-xs text-amber-700 dark:text-amber-500 mt-0.5">
+                  Total Recebido nesta página: <strong>{formatCurrency(totals.recebido)}</strong> · Total no Caixa: <strong>{formatCurrency(caixaTotal ?? 0)}</strong> · Diferença: <strong>{formatCurrency(divergence ?? 0)}</strong>.
+                  Isso pode indicar recebíveis marcados como recebidos sem lançamento correspondente no Caixa.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="shrink-0 gap-2 border-amber-500/50 text-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/30"
+                onClick={handleReconcile}
+                disabled={reconciling}
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", reconciling && "animate-spin")} />
+                {reconciling ? "Reconciliando..." : "Reconciliar"}
+              </Button>
+            </div>
+          )}
 
           {/* Totais Operacionais */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">

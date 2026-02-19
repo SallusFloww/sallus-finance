@@ -60,6 +60,7 @@ export const PRODUCTION_TYPE_LABELS: Record<string, string> = {
   INTERNACAO: "Internação",
   MAT_MED: "Mat/Med",
   OUTRO: "Outro",
+  PARECER: "Parecer",
   // Pacotes Convênio
   PACOTE_BOX: "Pacote Box (Convênio)",
   PACOTE_GTA: "Pacote GTA (Convênio)",

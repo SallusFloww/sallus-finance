@@ -915,6 +915,128 @@ export function useReceivablesDB() {
 
   const uniqueSources = useMemo(() => [...new Set(receivables.map((r) => r.source))].filter(Boolean), [receivables]);
 
+  /**
+   * Detecta recebíveis RECEBIDO/RECEBIDO_COM_GLOSA sem financial_entry correspondente
+   * e cria as entradas faltantes no Caixa, resolvendo a divergência entre
+   * "Total Recebido" do Faturamento e "Total de Entradas" do Caixa.
+   */
+  const reconcileOrphanedReceivables = useCallback(async (): Promise<{ fixed: number; errors: number }> => {
+    if (!currentCompany?.id || !profile?.id) {
+      toast.error("Usuário não autenticado");
+      return { fixed: 0, errors: 0 };
+    }
+
+    const orphans = receivables.filter(
+      (r) =>
+        (r.status === "RECEBIDO" || r.status === "RECEBIDO_COM_GLOSA") &&
+        r.receivedAmount > 0,
+    );
+
+    if (orphans.length === 0) {
+      toast.info("Nenhum recebível para verificar.");
+      return { fixed: 0, errors: 0 };
+    }
+
+    let fixed = 0;
+    let errors = 0;
+
+    for (const receivable of orphans) {
+      try {
+        // Verificar se já existe financial_entry para este receivable
+        const { data: existing, error: existingErr } = await supabase
+          .from("financial_entries")
+          .select("id")
+          .eq("company_id", currentCompany.id)
+          .ilike("observacao", `%receivable_id=${receivable.id}%`)
+          .neq("status", "cancelado")
+          .limit(1);
+
+        if (existingErr) {
+          errors++;
+          continue;
+        }
+
+        // Já tem entry correspondente — não precisa criar
+        if (existing && existing.length > 0) {
+          // Se o receivable não tem linked_transaction_id, vincula agora
+          if (!receivable.linkedTransactionId) {
+            await (supabase as any)
+              .from("receivables")
+              .update({
+                linked_transaction_id: existing[0].id,
+                updated_at: new Date().toISOString(),
+                updated_by: profile.id,
+              })
+              .eq("id", receivable.id);
+          }
+          continue;
+        }
+
+        // Não tem entry — criar a entry faltante
+        const receiptDate = receivable.actualReceiptDate || receivable.billingDate;
+        const descricao = `Recebimento Faturamento • ${receivable.source} • ${receivable.description}`.substring(0, 200);
+
+        const { data: insertedEntry, error: insertError } = await supabase
+          .from("financial_entries")
+          .insert([
+            {
+              company_id: currentCompany.id,
+              created_by: profile.id,
+              type: "entrada",
+              status: "recebido",
+              valor: receivable.receivedAmount,
+              data_prevista: receiptDate,
+              data_recebimento: receiptDate,
+              descricao,
+              categoria: "RECEBIMENTO_FATURAMENTO",
+              unit_id: receivable.unit || null,
+              receipt_type: receivable.source === "PARTICULAR" ? "PARTICULAR" : "CONVENIO",
+              payment_method: "TRANSFER",
+              operadora: receivable.source !== "PARTICULAR" ? receivable.source : null,
+              observacao: `[RECONCILIADO] Origem: receivable_id=${receivable.id} | Competência: ${receivable.competencia || "N/A"}`,
+            },
+          ])
+          .select("id")
+          .single();
+
+        if (insertError || !insertedEntry) {
+          console.error(`Erro ao criar entry para receivable ${receivable.id}:`, insertError);
+          errors++;
+          continue;
+        }
+
+        // Vincular entry ao receivable
+        await (supabase as any)
+          .from("receivables")
+          .update({
+            linked_transaction_id: insertedEntry.id,
+            updated_at: new Date().toISOString(),
+            updated_by: profile.id,
+          })
+          .eq("id", receivable.id);
+
+        fixed++;
+      } catch (err) {
+        console.error(`Erro ao reconciliar receivable ${receivable.id}:`, err);
+        errors++;
+      }
+    }
+
+    if (fixed > 0) {
+      toast.success(`Reconciliação concluída: ${fixed} entrada(s) criada(s) no Caixa.`);
+      refreshAll();
+      await fetchReceivables();
+    } else if (errors === 0) {
+      toast.success("Nenhuma divergência encontrada. Dados consistentes.");
+    }
+
+    if (errors > 0) {
+      toast.error(`${errors} erro(s) durante reconciliação. Verifique o console.`);
+    }
+
+    return { fixed, errors };
+  }, [currentCompany?.id, profile, receivables, fetchReceivables, refreshAll]);
+
   return {
     receivables,
     loading,
@@ -935,5 +1057,6 @@ export function useReceivablesDB() {
     openReceivables,
     receivablesInAppeal,
     uniqueSources,
+    reconcileOrphanedReceivables,
   };
 }
