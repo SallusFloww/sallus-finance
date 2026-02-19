@@ -11,13 +11,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { ProductionTypeConfig, Production } from "@/types";
+import { ProductionTypeConfig, Production, Category } from "@/types";
 import { generateId } from "@/utils/formatters";
+import { supabase } from "@/integrations/supabase/client";
 
 interface SettingsProductionTypesProps {
   productionTypes: ProductionTypeConfig[];
   productions: Production[];
+  companyId: string;
   onUpdate: (types: ProductionTypeConfig[]) => void;
+  onSyncComplete: (data: { productionTypes: ProductionTypeConfig[]; categories: Category[] }) => void;
   onAddLog: (action: string, details: string) => void;
 }
 
@@ -63,7 +66,9 @@ const DEFAULT_PRODUCTION_TYPES: ProductionTypeConfig[] = [
 export function SettingsProductionTypes({
   productionTypes,
   productions,
+  companyId,
   onUpdate,
+  onSyncComplete,
   onAddLog,
 }: SettingsProductionTypesProps) {
   // CORREÇÃO: Se não há tipos salvos no banco, usar defaults e PERSISTIR
@@ -111,7 +116,9 @@ export function SettingsProductionTypes({
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   }, [types, searchTerm]);
 
-  const handleAddType = () => {
+  const [addingType, setAddingType] = useState(false);
+
+  const handleAddType = async () => {
     const trimmed = newType.trim();
     if (!trimmed) return;
 
@@ -121,23 +128,53 @@ export function SettingsProductionTypes({
       return;
     }
 
-    const newTypeObj: ProductionTypeConfig = {
-      id: generateId(),
-      name: trimmed,
-      description: newDescription.trim() || undefined,
-      active: true,
-      allowBatchEntry: true,
-      requiresDetail: false,
-      valueModel: "TOTAL",
-      createdAt: new Date().toISOString(),
-    };
+    setAddingType(true);
+    try {
+      const { data, error } = await (supabase.rpc as any)('upsert_production_type_with_category', {
+        _company_id: companyId,
+        _name: trimmed,
+        _description: newDescription.trim(),
+        _desired_entry_type: 'entrada',
+      });
 
-    // CORREÇÃO: Usar a lista completa (types) ao invés de productionTypes
-    onUpdate([...types, newTypeObj]);
-    onAddLog("UPDATE_SETTINGS", `Tipo de produção "${trimmed}" adicionado`);
-    setNewType("");
-    setNewDescription("");
-    toast.success("Tipo de produção adicionado!");
+      if (error) throw error;
+
+      const result = data as any;
+      if (!result?.success) {
+        toast.error(result?.error || 'Erro ao criar tipo');
+        return;
+      }
+
+      onSyncComplete({
+        productionTypes: result.production_types,
+        categories: result.categories,
+      });
+
+      onAddLog("UPDATE_SETTINGS", `Tipo "${trimmed}" adicionado com categoria ENTRADA vinculada`);
+      setNewType("");
+      setNewDescription("");
+      toast.success("Tipo criado e categoria vinculada como ENTRADA");
+    } catch (err) {
+      console.error("Erro ao criar tipo via RPC:", err);
+      // Fallback: criar localmente sem categoria (compatibilidade)
+      const newTypeObj: ProductionTypeConfig = {
+        id: generateId(),
+        name: trimmed,
+        description: newDescription.trim() || undefined,
+        active: true,
+        allowBatchEntry: true,
+        requiresDetail: false,
+        valueModel: "TOTAL",
+        createdAt: new Date().toISOString(),
+      };
+      onUpdate([...types, newTypeObj]);
+      onAddLog("UPDATE_SETTINGS", `Tipo de produção "${trimmed}" adicionado (fallback local)`);
+      setNewType("");
+      setNewDescription("");
+      toast.warning("Tipo criado localmente. Categoria pode precisar ser criada manualmente.");
+    } finally {
+      setAddingType(false);
+    }
   };
 
   const handleToggle = (id: string) => {
@@ -248,9 +285,9 @@ export function SettingsProductionTypes({
                 onChange={(e) => setNewType(e.target.value)}
                 className="flex-1"
               />
-              <Button onClick={handleAddType} size="sm">
+              <Button onClick={handleAddType} size="sm" disabled={addingType}>
                 <Plus className="h-4 w-4 mr-2" />
-                Adicionar
+                {addingType ? "Criando..." : "Adicionar"}
               </Button>
             </div>
             <Textarea
