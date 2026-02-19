@@ -221,8 +221,6 @@ export default function Billing() {
   const [caixaTotal, setCaixaTotal] = useState<number | null>(null);
   const [caixaLoading, setCaixaLoading] = useState(false);
   const [reconciling, setReconciling] = useState(false);
-  // Contador para forçar refetch do caixaTotal após reconciliação
-  const [caixaRefreshTick, setCaixaRefreshTick] = useState(0);
 
   const fetchCaixaTotal = useCallback(async () => {
     if (!currentCompany?.id) return;
@@ -248,7 +246,7 @@ export default function Billing() {
 
   useEffect(() => {
     fetchCaixaTotal();
-  }, [fetchCaixaTotal, caixaRefreshTick]);
+  }, [fetchCaixaTotal]);
 
   const divergence = useMemo(() => {
     if (caixaTotal === null) return null;
@@ -259,10 +257,19 @@ export default function Billing() {
 
   const handleReconcile = async () => {
     setReconciling(true);
-    await reconcileOrphanedReceivables();
-    setReconciling(false);
-    // Atualiza caixaTotal após reconciliação
-    setCaixaRefreshTick((t) => t + 1);
+    try {
+      const result = await reconcileOrphanedReceivables();
+      // Aguarda um momento para o banco propagar as inserções antes de buscar o novo total
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      // Força refetch do total do caixa diretamente (não depende de tick/realtime)
+      await fetchCaixaTotal();
+      // Também atualiza os recebíveis locais
+      await refetchReceivables();
+    } catch (err) {
+      console.error("Erro inesperado na reconciliação:", err);
+    } finally {
+      setReconciling(false);
+    }
   };
 
   const activeUnits = settings.units.filter((u) => u.active);
@@ -683,7 +690,7 @@ export default function Billing() {
                   size="sm"
                   variant="outline"
                   className="gap-2 text-xs"
-                  onClick={() => setCaixaRefreshTick((t) => t + 1)}
+                  onClick={fetchCaixaTotal}
                   disabled={caixaLoading || reconciling}
                 >
                   <RefreshCw className={cn("h-3 w-3", caixaLoading && "animate-spin")} />
@@ -701,7 +708,7 @@ export default function Billing() {
                 size="sm"
                 variant="ghost"
                 className="gap-2 text-xs text-muted-foreground h-7"
-                onClick={() => setCaixaRefreshTick((t) => t + 1)}
+                onClick={fetchCaixaTotal}
                 disabled={caixaLoading}
               >
                 <RefreshCw className={cn("h-3 w-3", caixaLoading && "animate-spin")} />
