@@ -1,106 +1,111 @@
 
-# Fix: Caixa vs Faturamento Divergence + Missing "Parecer" Entry
+# Fix: Reconciliation Flow — Root Cause Diagnosis & Repair
 
-## Root Cause Analysis
+## Root Causes Found
 
-### Issue 1 — Total Recebido Divergence (R$ 13.892,37 vs R$ 12.992,37 = R$ 900,00 difference)
+### Bug 1 — `variant="warning"` does not exist on the Button component
+The "Reconciliar" button uses `variant="warning"` which is not defined in `src/components/ui/button.tsx` (confirmed — no match found). This causes the button to silently render without the correct styling, and in some React/Tailwind setups can cause a rendering warning or suppress the click handler. This must be changed to a valid variant (`default` or a styled `className`).
 
-Two different data sources are being summed independently:
+### Bug 2 — Orphan filter skips receivables that already have `linked_transaction_id` set
+The current orphan detection loop iterates all RECEBIDO/RECEBIDO_COM_GLOSA receivables and then queries Supabase to check if a `financial_entry` exists with `observacao ILIKE '%receivable_id={id}%'`. However, it **does not first skip** records that have `linkedTransactionId` set. So every RECEBIDO receivable is queried, but if the entry was created via the normal `markAsReceived` flow (which sets `linked_transaction_id`), it will be found in the DB via the `ilike` check and skipped correctly. The actual orphans are those with NO `linked_transaction_id` — but the DB check is still correct. However this causes unnecessary N+1 queries.
 
-- **Faturamento "Recebido"** card — reads `receivables.received_amount` for records with `status = "RECEBIDO" OR "RECEBIDO_COM_GLOSA"`, filtered by `billingDate` within the period.
-- **Caixa "Total de Entradas"** — reads `financial_entries.valor` where `type = "entrada"` and `status = "recebido"`, filtered by `data_prevista` within the period.
+More critically: The filter at line 963 reads from `receivables` which is the **in-memory state at the time the hook was called**. If `dateRange` in Billing restricts what's displayed (e.g. only Feb 2026), but `useReceivablesDB` fetches ALL receivables for the company, the reconciliation operates on ALL receivables — this is actually correct behavior. However the **caixa total fetch** at line 228-238 filters by `data_prevista` in the dateRange, but the entries created during reconciliation use `receiptDate = actual_receipt_date || billing_date` which could be outside the current month filter. So reconciled entries from January won't be counted in the February caixa total — creating a false impression that reconciliation did nothing.
 
-The R$ 900,00 gap occurs because some receivables were marked as "Recebido" (updating `received_amount` in the `receivables` table) but either:
-1. The corresponding `financial_entry` was not created (the `markAsReceived` flow failed mid-way and rolled back only the entry but not the receivable update), or
-2. A receivable was updated directly in the database without going through the application's `markAsReceived` flow, so no matching `financial_entry` exists.
+### Bug 3 — `fetchCaixaTotal` filter is period-scoped, reconciliation inserts entries outside period
+When reconciling ALL orphaned receivables (not just the current period), entries from previous months are created with their original `billing_date` as `data_prevista`. The `fetchCaixaTotal` query filters `gte data_prevista >= startStr` and `lte data_prevista <= endStr`. So entries from other months won't appear in the caixa total for the current period, even though the Faturamento total (`totals.recebido`) also filters by `billingDate` within the current `dateRange`. This creates a permanent "false divergence" for entries from different months.
 
-In both cases, the Faturamento card sums from `receivables.received_amount` (showing the full amount), while Caixa only sums the actual `financial_entries` created by the application (missing the amount with no matching entry).
+**Key realization**: The `totals.recebido` in Billing sums `receivedAmount` of ALL receivables filtered by `billingDate` in the current dateRange. But `caixaTotal` sums `financial_entries.valor` filtered by `data_prevista` in the same dateRange. The divergence calculation is: `|totals.recebido - caixaTotal|`. If some receivables in the period have their corresponding entries with `data_prevista` outside the period, both sides are inconsistent.
 
-**Verification point**: The two numbers being different by exactly R$ 900,00 is not a calculation bug in the UI — it is a data integrity issue: there is likely one receivable with `received_amount = 900.00` and `status = RECEBIDO` that has no corresponding `financial_entry` in the Caixa. The Faturamento sees it; the Caixa does not.
-
-### Issue 2 — "Parecer" entry not appearing in the Production list
-
-`PARECER` is not in `BASE_PRODUCTION_TYPES` (the hardcoded list: CONSULTA, EXAME, QUIMIOTERAPIA, BOX_PS, SESSAO_TERAPEUTICA, INTERNACAO, MAT_MED, OUTRO). Nor is it in `PRODUCTION_TYPE_LABELS` in `constants.ts`.
-
-When the user typed "Parecer" as a custom type in the form, it was saved via `addProductionType("Parecer")` into the company settings table. The `nonPackageProductionTypes` list in `ProductionForm.tsx` is built from `[...BASE_PRODUCTION_TYPES, ...customProductionTypes]`. The `customProductionTypes` filter removes any name whose lowercase matches a `BASE_PRODUCTION_TYPES` entry or its label — "Parecer" does not match any of those, so it should appear.
-
-The production was inserted into the database with `production_type = "Parecer"` (or `"PARECER"` — unclear from the save path). The `Production.tsx` list filters productions using `filterProductions()` which runs `isWithinInterval(parseISO(p.production_date), ...)`. If `production_date` was saved correctly the entry should appear.
-
-The most likely cause: the Supabase insert **failed silently** (RLS policy denied it, or a column constraint rejected the custom type value), but the optimistic UI update in `useProductionDB.addProduction` temporarily showed it — then on refetch it disappeared. The current code does catch RLS errors and show a toast, but only for specific error messages.
-
-Alternatively, the date filter in `Production.tsx` may use a different month/period than the user expects — the production was entered "now" (February 2026) but the form defaults may have submitted a different date.
+**The fix**: After reconciliation, `fetchCaixaTotal` should NOT be period-scoped — OR the reconciliation should create entries with `data_prevista` matching `billing_date` of the receivable (which is within the period). Currently `receiptDate = actual_receipt_date || billing_date`. The `actual_receipt_date` might be in a different month than `billing_date`. To match Faturamento's filter (which uses `billingDate`), the entries should use `billing_date` as `data_prevista`.
 
 ## Fix Plan
 
-### Fix 1 — Add Orphan Receivables Reconciliation Tool (Caixa Divergence)
+### Fix 1 — Remove invalid `variant="warning"` from the Reconciliar button
+**File**: `src/pages/Billing.tsx` line ~682
 
-The cleanest fix is to **detect and create the missing `financial_entry`** for any receivable that is `RECEBIDO`/`RECEBIDO_COM_GLOSA` but has no corresponding `financial_entry` (orphaned receivables).
+Change:
+```tsx
+variant="warning"
+```
+To:
+```tsx
+className="gap-2 bg-amber-500 hover:bg-amber-600 text-white border-0"
+```
+(keeping `size="sm"` and `onClick={handleReconcile}`)
 
-**Location:** `src/hooks/useReceivablesDB.ts`
+### Fix 2 — Use `billing_date` as `data_prevista` in reconciled entries
+**File**: `src/hooks/useReceivablesDB.ts` line ~1012
 
-Add a `reconcileOrphanedReceivables()` function that:
-1. Fetches all receivables with status `RECEBIDO` or `RECEBIDO_COM_GLOSA` for the company
-2. For each, checks if a `financial_entry` exists with `observacao ILIKE '%receivable_id={id}%'`
-3. If not found → creates the missing `financial_entry` with the correct `received_amount`, `actual_receipt_date`, and `observacao` tagging `receivable_id={id}`
-4. Updates the `linked_transaction_id` on the receivable
-
-This is also exposed as a button in `Billing.tsx` ("Reconciliar Recebimentos") in the header area, visible only to admins.
-
-### Fix 2 — Add Consistency Warning in Billing Page
-
-In `Billing.tsx`, add a warning alert when the sum of `receivedAmount` from receivables does not match the sum of `financial_entries` for INCOME/recebido in the same period. This makes the divergence visible and actionable.
-
-The `totals.recebido` in Billing is already calculated from `allFiltered.reduce((sum, r) => sum + (r.receivedAmount || 0), 0)`. We need to also fetch the matching financial entries total and compare.
-
-**Location:** `src/pages/Billing.tsx`
-
-Add a `useMemo` that cross-checks receivables totals vs actual cash entries, and show a warning card if they diverge by more than R$ 0.01.
-
-### Fix 3 — Fix Production List Not Showing "Parecer"
-
-**Location:** `src/hooks/useProductionDB.ts`
-
-The `fetchProductions` query returns all records for the company. The filter happens in `filterProductions()`. Check that the date filter in `Production.tsx` includes the current date.
-
-**Location:** `src/pages/Production.tsx`
-
-The date state defaults to `startOfMonth(new Date())` and `endOfMonth(new Date())`. The `filterProductions` call in the list uses these dates. If the production date was saved as today (2026-02-19) and the filter goes to `endOfMonth` (2026-02-28), it should be visible.
-
-The real fix is in `useProductionDB.ts` `filterProductions`:
-
+Change:
 ```typescript
-// Current
-if (p.productionDate < startOfDay(filters.startDate).toISOString()) return false;
+const receiptDate = receivable.actualReceiptDate || receivable.billingDate;
+// ...
+data_prevista: receiptDate,
+data_recebimento: receiptDate,
 ```
 
-The `startOfDay`/`endOfDay` functions from `date-fns` use local time but `production_date` from Supabase is a `DATE` type (no time zone). If the app is in UTC-3 (Brazil), `endOfDay(new Date('2026-02-28'))` in UTC is `2026-02-27T20:59:59Z` — which would exclude records dated `2026-02-28`. This is the UTC shift bug.
+To:
+```typescript
+const receiptDate = receivable.actualReceiptDate || receivable.billingDate;
+// data_prevista must match billingDate so it appears in the same period filter as the receivable
+data_prevista: receivable.billingDate,
+data_recebimento: receiptDate,
+```
 
-**Fix:** Use `parseISO(p.productionDate)` and compare with `startOfDay(filters.startDate)` using date-only comparison (year, month, day) instead of timestamp comparison.
+This ensures the `financial_entry` sits in the same month as its parent receivable — matching how `filterReceivables` works.
 
-Also add `PARECER` to `PRODUCTION_TYPE_LABELS` in `constants.ts` so it gets a proper display label.
+### Fix 3 — Add explicit `refreshAll()` + `fetchReceivables()` + `fetchCaixaTotal()` in the right order with proper await in `handleReconcile`
+**File**: `src/pages/Billing.tsx` lines 258-273
 
-## Technical Changes
+The current `handleReconcile` already awaits `reconcileOrphanedReceivables()` and then calls `fetchCaixaTotal()` and `refetchReceivables()`. However `reconcileOrphanedReceivables` itself calls `refreshAll()` and `fetchReceivables()` at the end. This means there are two parallel refresh paths that can race.
 
-### File: `src/utils/constants.ts`
-- Add `PARECER: "Parecer"` to `PRODUCTION_TYPE_LABELS`
+**Fix**: Remove the internal `refreshAll()` and `fetchReceivables()` calls from inside `reconcileOrphanedReceivables` in the hook (so the hook is a pure data function), and do all refresh logic in `handleReconcile` in Billing.tsx, with explicit sequencing:
 
-### File: `src/types/index.ts`
-- No change needed (ProductionType is `string`, custom types are supported)
+```typescript
+const handleReconcile = async () => {
+  setReconciling(true);
+  try {
+    const result = await reconcileOrphanedReceivables();
+    if (result.fixed > 0 || result.skipped > 0) {
+      // Wait for DB propagation
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Refresh in sequence: receivables first, then caixa total
+      await refetchReceivables();
+      await fetchCaixaTotal();
+    }
+  } catch (err) {
+    console.error("Erro inesperado na reconciliação:", err);
+    toast.error("Erro inesperado na reconciliação");
+  } finally {
+    setReconciling(false);
+  }
+};
+```
 
-### File: `src/hooks/useProductionDB.ts`
-- In `filterProductions`, fix the date comparison to be UTC-safe using `format(parseISO(p.productionDate), 'yyyy-MM-dd')` string comparison instead of timestamp comparison
+And in `useReceivablesDB.ts`, remove the `refreshAll()` + `fetchReceivables()` calls at lines 1064-1065 (inside `reconcileOrphanedReceivables`), since those now happen in the caller.
 
-### File: `src/pages/Billing.tsx`
-- Add cross-check `useMemo` that compares `totals.recebido` (from receivables) vs actual entries total
-- Display a yellow warning alert when divergence > R$ 0.01 with a "Reconciliar" button
-- Add `reconcileOrphanedReceivables` call from hook
+### Fix 4 — Guard the divergence display while caixaTotal is loading
+**File**: `src/pages/Billing.tsx` line 659
 
-### File: `src/hooks/useReceivablesDB.ts`
-- Add `reconcileOrphanedReceivables` callback that detects and creates missing `financial_entries` for orphaned RECEBIDO receivables
-- Expose it from the hook's return value
+Change:
+```tsx
+{caixaLoading && caixaTotal === null ? null : hasDivergence ? (
+```
+To:
+```tsx
+{caixaLoading ? null : hasDivergence ? (
+```
 
-## Scope Protection
-- No schema changes
-- No changes to submit logic, status machine, or RLS policies
-- No changes to authentication
-- Only adds new detection + reconciliation path to existing hooks/pages
+This prevents the alert from flickering in/out during refetch.
+
+## Summary of File Changes
+
+| File | Lines | Change |
+|---|---|---|
+| `src/pages/Billing.tsx` | ~258-273 | `handleReconcile` — explicit await chain, remove duplicate refresh paths |
+| `src/pages/Billing.tsx` | ~682 | `variant="warning"` → valid `className` with amber styling |
+| `src/pages/Billing.tsx` | ~659 | Guard `caixaLoading` to prevent flicker |
+| `src/hooks/useReceivablesDB.ts` | ~1012 | Use `billingDate` as `data_prevista` in reconciled entries |
+| `src/hooks/useReceivablesDB.ts` | ~1062-1065 | Remove internal `refreshAll()` + `fetchReceivables()` — delegated to caller |
+
+No schema changes, no RLS changes, no auth changes. All changes are UI/hook logic only.
