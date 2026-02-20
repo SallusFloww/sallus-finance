@@ -293,23 +293,25 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
     ? selectedTypes[0]
     : "";
 
+  // Locale-aware decimal parser (handles both "910.85" and "910,85")
+  const toNum = (s?: string): number => {
+    if (!s || s === "") return 0;
+    let str = String(s).trim().replace(/[¤$\u20AC£¥\s]/g, "");
+    const lastComma = str.lastIndexOf(",");
+    const lastDot = str.lastIndexOf(".");
+    if (lastComma > lastDot) {
+      str = str.replace(/\./g, "").replace(",", ".");
+    } else {
+      str = str.replace(/,/g, "");
+    }
+    const parsed = parseFloat(str);
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
   // ===================================================================
   // REAL-TIME TOTALS (pre-check display)
   // ===================================================================
   const totals = useMemo(() => {
-    const toNum = (s?: string): number => {
-      if (!s || s === "") return 0;
-      let str = String(s).trim().replace(/[¤$\u20AC£¥\s]/g, "");
-      const lastComma = str.lastIndexOf(",");
-      const lastDot = str.lastIndexOf(".");
-      if (lastComma > lastDot) {
-        str = str.replace(/\./g, "").replace(",", ".");
-      } else {
-        str = str.replace(/,/g, "");
-      }
-      const parsed = parseFloat(str);
-      return isNaN(parsed) ? 0 : parsed;
-    };
     const totalValue = selectedTypes.reduce(
       (acc, t) => acc + toNum(perTypeValues[t]?.totalValue),
       0
@@ -925,7 +927,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
 
   const calculatedUnitValue = (() => {
     const qty = parseInt(singleQuantity || packageQuantity) || 0;
-    const val = parseFloat(singleTotalValue || packageTotalValue) || 0;
+    const val = toNum(singleTotalValue || packageTotalValue);
     return qty > 0 ? val / qty : 0;
   })();
 
@@ -969,7 +971,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
     if (isSinglePackage) {
       const pkgType = selectedTypes[0];
       const pkgQty = parseInt(packageQuantity) || 1;
-      const pkgTotal = parseFloat(packageTotalValue) || 0;
+      const pkgTotal = toNum(packageTotalValue);
 
       if (pkgTotal <= 0) {
         toast.error("Informe o valor total do pacote");
@@ -1029,7 +1031,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
       const type = selectedTypes[0];
       const typeValues = perTypeValues[type] || { quantity: "1", totalValue: "" };
       const quantity = parseInt(typeValues.quantity) || 1;
-      const totalValue = parseFloat(typeValues.totalValue) || 0;
+      const totalValue = toNum(typeValues.totalValue);
 
       if (quantity <= 0) {
         toast.error("Quantidade deve ser maior que zero");
@@ -1124,7 +1126,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
       const rows = selectedTypes.map((type) => {
         const typeValues = perTypeValues[type] || { quantity: "1", totalValue: "" };
         const qty = parseInt(typeValues.quantity) || 1;
-        const total = parseFloat(typeValues.totalValue) || 0;
+        const total = toNum(typeValues.totalValue);
         const unitVal = qty > 0 ? total / qty : 0;
 
         let description = "";
@@ -1678,7 +1680,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
                   packageType={selectedTypes[0] as "PACOTE_BOX" | "PACOTE_GTA"}
                   planId={formData.convenio}
                   referenceDate={formData.productionDate}
-                  totalValue={parseFloat(packageTotalValue) || 0}
+                  totalValue={toNum(packageTotalValue)}
                   packageQty={parseInt(packageQuantity, 10) || 1}
                   onChange={(components) => {
                     setFormData((prev) => ({
