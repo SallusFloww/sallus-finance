@@ -329,7 +329,9 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
   }).format(totals.totalValue);
 
   // CORREÇÃO #1: Garantir unidades ativas - usar settings.units se units prop estiver vazia
-  const effectiveUnits = units && units.length > 0 ? units : settings?.units || [];
+  const effectiveUnits = settings?.units && settings.units.length > 0
+    ? settings.units
+    : (units && units.length > 0 ? units : []);
   const activeUnits = effectiveUnits.filter((u) => u.active);
 
   const selectedUnit = effectiveUnits.find((u) => u.id === formData.unit);
