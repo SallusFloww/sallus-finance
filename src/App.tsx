@@ -300,6 +300,7 @@ function AppRoutes() {
   );
 }
 
+// Provider hierarchy: Auth → GlobalRealtime → App → Routes
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
