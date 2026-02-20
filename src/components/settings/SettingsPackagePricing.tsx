@@ -48,8 +48,8 @@ import { OPERADORAS } from "@/utils/constants";
 import { formatCurrency } from "@/utils/formatters";
 
 const PACKAGE_TYPE_LABELS: Record<PackageType, string> = {
-  PACOTE_BOX: "Pacote Box (Convênio)",
-  PACOTE_GTA: "Pacote GTA (Convênio)",
+  PACOTE_BOX: "Pacote Box",
+  PACOTE_GTA: "Pacote GTA",
 };
 
 const PACKAGE_TYPE_COLORS: Record<PackageType, string> = {
@@ -160,7 +160,7 @@ export function SettingsPackagePricing() {
         <div>
           <h3 className="font-semibold text-foreground flex items-center gap-2">
             <Package className="h-5 w-5" />
-            Pacotes Convênio — Parâmetros (Consulta/Taxa)
+            Pacotes — Parâmetros (Consulta/Taxa)
           </h3>
           <p className="text-sm text-muted-foreground mt-1">
             Configure valores padrão de consulta e taxa por plano e tipo de pacote.
@@ -306,6 +306,9 @@ export function SettingsPackagePricing() {
                   <SelectValue placeholder="Selecione o plano" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="PARTICULAR">
+                    <span className="font-medium">PARTICULAR</span>
+                  </SelectItem>
                   {OPERADORAS.map((op) => (
                     <SelectItem key={op.id} value={op.id}>
                       {op.name}
@@ -327,12 +330,12 @@ export function SettingsPackagePricing() {
                 <SelectContent>
                   <SelectItem value="PACOTE_BOX">
                     <span className="flex items-center gap-2">
-                      📦 Pacote Box (Convênio)
+                      📦 Pacote Box
                     </span>
                   </SelectItem>
                   <SelectItem value="PACOTE_GTA">
                     <span className="flex items-center gap-2">
-                      🚑 Pacote GTA (Convênio)
+                      🚑 Pacote GTA
                     </span>
                   </SelectItem>
                 </SelectContent>

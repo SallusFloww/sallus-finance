@@ -61,20 +61,20 @@ export const PRODUCTION_TYPE_LABELS: Record<string, string> = {
   MAT_MED: "Mat/Med",
   OUTRO: "Outro",
   PARECER: "Parecer",
-  // Pacotes Convênio
-  PACOTE_BOX: "Pacote Box (Convênio)",
-  PACOTE_GTA: "Pacote GTA (Convênio)",
+  // Pacotes
+  PACOTE_BOX: "Pacote Box",
+  PACOTE_GTA: "Pacote GTA",
 };
 
-// ============= TIPOS DE PACOTE CONVÊNIO =============
+// ============= TIPOS DE PACOTE =============
 export const PACKAGE_TYPES = [
-  { id: "PACOTE_BOX", name: "Pacote Box (Convênio)", description: "Consulta + Taxa Box + Mat/Med em pacote" },
-  { id: "PACOTE_GTA", name: "Pacote GTA (Convênio)", description: "Consulta + Taxa GTA + Mat/Med em pacote" },
+  { id: "PACOTE_BOX", name: "Pacote Box", description: "Consulta + Taxa Box + Mat/Med em pacote" },
+  { id: "PACOTE_GTA", name: "Pacote GTA", description: "Consulta + Taxa GTA + Mat/Med em pacote" },
 ] as const;
 
 export const PACKAGE_TYPE_LABELS: Record<string, string> = {
-  PACOTE_BOX: "Pacote Box (Convênio)",
-  PACOTE_GTA: "Pacote GTA (Convênio)",
+  PACOTE_BOX: "Pacote Box",
+  PACOTE_GTA: "Pacote GTA",
 };
 
 // ============= CRITÉRIOS DE RATEIO (informativo) =============

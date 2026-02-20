@@ -366,9 +366,9 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
       case "INTERNACAO":
         return "Internação";
       case "PACOTE_BOX":
-        return "Pacote Box (Convênio)";
+      return "Pacote Box";
       case "PACOTE_GTA":
-        return "Pacote GTA (Convênio)";
+        return "Pacote GTA";
       case MATMED_PRODUCTION_TYPE:
         return "Materiais e Medicamentos";
       default:
@@ -420,13 +420,11 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
     }
   }, [formData.unit, isCentroClinico]);
 
-  // When switching to a package type, force payerType = CONVENIO
+  // When switching to a package type, reset breakdown fields (but don't force payerType)
   useEffect(() => {
     if (isSinglePackage) {
       setFormData((prev) => ({
         ...prev,
-        payerType: "CONVENIO",
-        paymentMethod: "",
         consultAmount: 0,
         feeAmount: 0,
         matmedAmount: 0,
@@ -979,21 +977,27 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
         toast.error("Informe o valor total do pacote");
         return;
       }
-      if (formData.payerType !== "CONVENIO") {
-        toast.error("Pacotes Convênio só podem ser registrados para pagador Convênio");
-        return;
+      // Para CONVENIO, validar convenio selecionado e regra de total
+      if (formData.payerType === "CONVENIO") {
+        if (!formData.convenio) {
+          toast.error("Selecione o convênio");
+          return;
+        }
+        const validation = validateTotal(
+          pkgTotal,
+          formData.convenio,
+          pkgType as "PACOTE_BOX" | "PACOTE_GTA",
+          formData.productionDate,
+          pkgQty,
+        );
+        if (!validation.valid) {
+          toast.error(validation.message);
+          return;
+        }
       }
-      const validation = validateTotal(
-        pkgTotal,
-        formData.convenio,
-        pkgType as "PACOTE_BOX" | "PACOTE_GTA",
-        formData.productionDate,
-        pkgQty,
-      );
-      if (!validation.valid) {
-        toast.error(validation.message);
-        return;
-      }
+      // Para PARTICULAR, validar forma de pagamento (já validado acima)
+
+      const planIdForPackage = formData.payerType === "PARTICULAR" ? "PARTICULAR" : formData.convenio;
 
       const unitValue = pkgQty > 0 ? pkgTotal / pkgQty : 0;
       onSubmit({
@@ -1003,8 +1007,8 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
         specialty: formData.specialty || undefined,
         doctorId: formData.doctorId || undefined,
         payerType: formData.payerType,
-        convenio: formData.convenio,
-        paymentMethod: undefined,
+        convenio: formData.payerType === "CONVENIO" ? formData.convenio : undefined,
+        paymentMethod: formData.payerType === "PARTICULAR" ? formData.paymentMethod : undefined,
         productionType: pkgType as ProductionType,
         description: getProductionTypeLabel(pkgType),
         procedureCode: formData.procedureCode || undefined,
@@ -1672,7 +1676,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
           {/* PACKAGE FIELDS (only when a package type is selected alone) */}
           {isPackageType && (
             <div className="space-y-4">
-              {!formData.convenio ? (
+              {formData.payerType === "CONVENIO" && !formData.convenio ? (
                 <div className="p-3 rounded bg-amber-500/10 border border-amber-500/20 text-amber-700 text-sm flex items-center gap-2">
                   <AlertCircle className="h-4 w-4" />
                   Selecione o convênio para calcular automaticamente os componentes do pacote.
@@ -1680,10 +1684,11 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
               ) : (
                 <PackageFields
                   packageType={selectedTypes[0] as "PACOTE_BOX" | "PACOTE_GTA"}
-                  planId={formData.convenio}
+                  planId={formData.payerType === "PARTICULAR" ? "PARTICULAR" : formData.convenio}
                   referenceDate={formData.productionDate}
                   totalValue={toNum(packageTotalValue)}
                   packageQty={parseInt(packageQuantity, 10) || 1}
+                  forceManual={formData.payerType === "PARTICULAR"}
                   onChange={(components) => {
                     setFormData((prev) => ({
                       ...prev,
