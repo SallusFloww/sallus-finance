@@ -1,81 +1,103 @@
 
+# Editar Producao - Funcionalidade de Ponta a Ponta
 
-# Auditoria e Correcao: Split Receipt por Data de Producao
+## O que sera feito
 
-## Problema Identificado
+Adicionar a possibilidade de **editar uma producao existente** diretamente na lista de producoes (aba Producao). O usuario podera corrigir medico, data, unidade, convenio, descricao, quantidade, valor e demais campos de uma producao que ainda esteja com status "PRODUZIDO".
 
-A funcionalidade "Receber por data de producao" cria **N movimentacoes financeiras** (uma por data), mas o receivable so armazena **um unico** `linked_transaction_id` (o primeiro). Isso causa uma divergencia sistematica no calculo de consistencia entre Faturamento e Caixa.
+## Regra de negocio
 
-### Causa Raiz
+- Somente producoes com status **PRODUZIDO** podem ser editadas (producoes ja faturadas/recebidas/glosadas sao bloqueadas)
+- Toda edicao gera um registro no `edit_logs` e no `history` da producao para rastreabilidade completa
+- O formulario de edicao abre pre-preenchido com os dados atuais da producao
 
-O calculo de `fetchCaixaTotal` em `Billing.tsx` (linhas 244-287) busca entradas financeiras **apenas pelo campo `linked_transaction_id`** dos receivables:
+## Alteracoes por arquivo
+
+### 1. `src/hooks/useProductionDB.ts` - Expandir campos editaveis
+
+O `updateProduction` atual so atualiza `description`, `quantity`, `unitValue` e `doctorId`. Sera expandido para suportar tambem:
+
+- `production_date` (data da producao)
+- `competencia`
+- `unit` (unidade)
+- `payer_type` (convenio/particular)
+- `convenio`
+- `payment_method`
+- `specialty`
+- `procedure_code`
+- `production_type`
+
+Cada campo so e atualizado se vier definido no `data` parcial, mantendo o comportamento seguro atual.
+
+### 2. `src/components/production/ProductionList.tsx` - Adicionar opcao "Editar" e dialog de edicao
+
+**Menu dropdown**: Adicionar item "Editar" no menu de acoes (icone de lapis), visivel apenas quando `status === "PRODUZIDO"` e quando o callback `onEdit` esta disponivel.
+
+**Dialog de edicao**: Um dialog inline no proprio `ProductionList` com os campos editaveis:
+
+- Data da producao (date input)
+- Competencia (text input com mascara MM/YYYY)
+- Unidade (select das unidades disponiveis)
+- Medico (select dos medicos carregados)
+- Pagador: Convenio/Particular (select)
+- Convenio (select, visivel se pagador = CONVENIO)
+- Tipo de producao (select)
+- Descricao/Procedimento (text input)
+- Codigo do procedimento (text input opcional)
+- Quantidade (number input)
+- Valor unitario (number input)
+- Especialidade (select, visivel se unidade = Centro Clinico)
+
+O dialog exibe o **valor total calculado** (quantidade x valor unitario) em tempo real.
+
+**Comportamento**:
+- Ao clicar "Editar" no dropdown, abre o dialog pre-preenchido
+- Ao confirmar, chama `onEdit(productionId, dadosAlterados)`
+- Exibe toast de sucesso/erro
+- A lista atualiza automaticamente via refetch
+
+### 3. `src/pages/Production.tsx` - Conectar o fluxo
+
+- Importar `updateProduction` do hook (ja retornado mas nao usado)
+- Criar handler `handleEditProduction` que chama `updateProduction(id, data, userName)`
+- Passar `onEdit={handleEditProduction}` para `ProductionList`
+
+### 4. `src/components/production/index.ts` - Sem alteracoes
+
+O export do `ProductionList` ja existe.
+
+## Fluxo visual
 
 ```text
-const entryIds = receivedInPeriod
-  .map((r) => r.linkedTransactionId)
-  .filter(Boolean) as string[];
-
-const { data } = await supabase
-  .from("financial_entries")
-  .select("valor")
-  .in("id", entryIds)
-  .neq("status", "cancelado");
+Lista de Producoes
+  |
+  +-- [Menu ...] --> "Editar" (so para status PRODUZIDO)
+        |
+        v
+  +------------------------------------------+
+  | Editar Producao                          |
+  +------------------------------------------+
+  | Data: [2026-02-15]                       |
+  | Competencia: [02/2026]                   |
+  | Unidade: [Centro Clinico v]              |
+  | Medico: [Dr. Silva v]                    |
+  | Pagador: [Convenio v]                    |
+  | Convenio: [UNIMED v]                     |
+  | Tipo: [Consulta v]                       |
+  | Descricao: [Consulta Medica]             |
+  | Cod. Proc.: [10101012]                   |
+  | Qtde: [1]   Valor Unit.: [350,00]        |
+  | Total: R$ 350,00                         |
+  |                                          |
+  | [Cancelar]  [Salvar Alteracoes]           |
+  +------------------------------------------+
 ```
-
-Quando um receivable tem 3 entradas (split), so a primeira e encontrada. As outras 2 ficam "invisiveis" para o calculo, gerando a divergencia de R$ 9.350,00 mostrada no alerta.
-
-## Correcoes Necessarias
-
-### 1. Corrigir `fetchCaixaTotal` em `Billing.tsx`
-
-**Problema**: So busca por `id IN (linked_transaction_ids)`.
-
-**Solucao**: Buscar tambem por `observacao` contendo `receivable_id=<id>` para capturar todas as entradas criadas pelo split receipt. A observacao ja contem essa informacao (ex: `Origem: receivable_id=xxx | Data producao: ...`).
-
-Logica corrigida:
-- Para receivables com `linkedTransactionId`, buscar por ID (rapido)
-- Adicionalmente, buscar por `observacao` contendo os IDs dos receivables recebidos
-- Unificar os resultados sem duplicar (usar Set de IDs)
-
-### 2. Corrigir `reconcileOrphanedReceivables` em `useReceivablesDB.ts`
-
-**Problema**: A funcao verifica se o receivable e orfao checando apenas `linked_transaction_id`. Para split receipts, o receivable tem o primeiro ID vinculado mas as outras entradas nao sao contabilizadas.
-
-**Solucao**: A reconciliacao ja usa `ilike("observacao", ...)` para encontrar entradas existentes, entao a logica de deteccao de orfaos esta correta. Porem, ao contar o total no `fetchCaixaTotal`, as entradas extras nao sao vistas. A correcao do item 1 resolve isso.
-
-### 3. Adicionar validacao de valor no split receipt (`Billing.tsx`)
-
-**Problema**: O total das producoes agrupadas pode diferir do `billedAmount` do receivable. Nao ha aviso ao usuario.
-
-**Solucao**: Mostrar aviso quando o total do split difere do valor faturado, similar ao aviso existente para valor inferior no modo simples.
-
-### 4. Proteger contra split com valor zero
-
-**Problema**: Se uma producao tiver `total_value = 0`, ela entra no grupo com valor zero, o que viola a validacao `amount > 0` no hook.
-
-**Solucao**: Filtrar producoes com `total_value > 0` ao construir os grupos em `openReceiveDialog`.
-
-## Arquivos Modificados
-
-| Arquivo | Alteracao |
-|---------|-----------|
-| `src/pages/Billing.tsx` | Corrigir `fetchCaixaTotal` para buscar por observacao; adicionar aviso de valor divergente no split; filtrar producoes com valor zero |
-| `src/hooks/useReceivablesDB.ts` | Nenhuma alteracao necessaria - a logica do hook esta correta |
 
 ## O que NAO muda
 
-- Nenhum schema de banco de dados
-- Nenhuma RLS, trigger ou RPC
-- O modo de recebimento simples (data unica) continua identico
-- A logica de criacao de entradas no `markAsReceivedMultipleDates` esta correta
-- A logica de idempotencia e rollback esta correta
-- Nenhum outro dialog ou pagina e afetado
-
-## Teste de Validacao
-
-Apos a correcao:
-1. Abrir Faturamento com receivables que usaram split receipt
-2. Verificar que o alerta de divergencia **desaparece** (ou mostra valor correto)
-3. Testar novo split receipt e confirmar que o calculo de consistencia reflete todas as entradas
-4. Testar recebimento simples (data unica) e confirmar que continua funcionando
-
+- Nenhum schema de banco de dados (a tabela `productions` ja tem todos os campos)
+- Nenhuma RLS (a policy de UPDATE para Admin/Gestor ja existe)
+- O formulario de criacao (ProductionForm) permanece identico
+- O fluxo de exclusao permanece identico
+- Nenhum outro componente ou pagina e afetado
+- A logica de historico e edit_logs ja existe no hook e sera reutilizada
