@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useGlobalRealtime } from "@/contexts/GlobalRealtimeProvider";
 import { toast } from "sonner";
 import {
   Settings,
@@ -253,6 +254,14 @@ export function useCompanySettings() {
       loadSettings();
     }
   }, [isAuthenticated, dataLoaded, currentCompany?.id, loadSettings]);
+
+  // React to global realtime version changes (e.g. settings updated in another tab)
+  const { version } = useGlobalRealtime();
+  useEffect(() => {
+    if (initialLoadDone.current && currentCompany?.id) {
+      loadSettings();
+    }
+  }, [version]);
 
   // Update settings in database
   const updateSettings = useCallback(
