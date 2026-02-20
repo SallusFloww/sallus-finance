@@ -411,9 +411,22 @@ export function useProductionDB() {
       if (data.doctorId !== undefined) {
         const safeDoctorId =
           typeof data.doctorId === "string" && data.doctorId.trim().length > 0 ? data.doctorId : null;
-
         updateData.doctor_id = safeDoctorId;
       }
+
+      // Campos expandidos para edição
+      if (data.productionDate !== undefined) updateData.production_date = data.productionDate;
+      if (data.competencia !== undefined) updateData.competencia = data.competencia;
+      if (data.unit !== undefined) updateData.unit = data.unit;
+      if (data.payerType !== undefined) updateData.payer_type = data.payerType;
+      if (data.convenio !== undefined) updateData.convenio = data.convenio || null;
+      if (data.paymentMethod !== undefined) updateData.payment_method = data.paymentMethod || null;
+      if (data.specialty !== undefined) {
+        updateData.specialty = typeof data.specialty === "string" && data.specialty.trim().length > 0
+          ? data.specialty.trim() : null;
+      }
+      if (data.procedureCode !== undefined) updateData.procedure_code = data.procedureCode || null;
+      if (data.productionType !== undefined) updateData.production_type = data.productionType;
 
       if (data.quantity !== undefined || data.unitValue !== undefined) {
         const qty = data.quantity ?? production.quantity;

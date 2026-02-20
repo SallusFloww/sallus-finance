@@ -111,6 +111,7 @@ export default function Production() {
     productions, 
     addProduction, 
     deleteProduction, 
+    updateProduction,
     filterProductions, 
     getStats: getProductionStats,
     uniqueConvenios,
@@ -181,6 +182,10 @@ export default function Production() {
 
   const handleDeleteProduction = (id: string) => {
     deleteProduction(id);
+  };
+
+  const handleEditProduction = async (id: string, data: Partial<any>) => {
+    await updateProduction(id, data, user.name);
   };
 
   // Total de quantidade
@@ -445,6 +450,7 @@ export default function Production() {
           productions={filteredProductions}
           units={settings.units}
           onDelete={handleDeleteProduction}
+          onEdit={handleEditProduction}
         />
 
         {/* CTA Faturamento (simples) */}
