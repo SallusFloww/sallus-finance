@@ -1,54 +1,54 @@
 
-
-# Adicionar coluna "Data" na tabela de producoes do modal de faturamento sugerido
+# Melhorar dialog "Marcar como Recebido" no Faturamento
 
 ## O que sera feito
 
-No modal "Confirmar Faturamento Sugerido", na tabela "Producoes a incluir no faturamento:", sera adicionada uma coluna "Data" exibindo a data de producao de cada item, facilitando a verificacao antes de confirmar o faturamento.
+No dialog de "Registrar Recebimento" da pagina de Faturamento (`/billing`), sera adicionado um botao de atalho que permite marcar o recebimento com a mesma data do faturamento (data de producao/emissao). Isso facilita o fluxo de recebimentos de particulares, onde o pagamento ocorre no ato.
 
-## Arquivo: `src/pages/SuggestedBilling.tsx`
+## Arquivo: `src/pages/Billing.tsx`
 
-### Alteracao 1 - Header da tabela (linha 1071-1075)
+### Alteracao no dialog "Marcar Recebido" (linhas 1026-1033)
 
-Adicionar coluna "Data" apos a coluna "Descricao":
+Substituir o campo simples de data por um bloco com:
 
-De:
-```text
-<TableHead className="w-10"></TableHead>
-<TableHead>Descricao</TableHead>
-<TableHead className="text-center">Status</TableHead>
-<TableHead className="text-right">Qtd</TableHead>
-<TableHead className="text-right">Valor</TableHead>
-```
+1. O campo de data existente (mantido como esta)
+2. Um botao de atalho "Usar data do faturamento (dd/MM/yyyy)" que preenche automaticamente a data de recebimento com a `billingDate` do receivable selecionado
 
-Para:
-```text
-<TableHead className="w-10"></TableHead>
-<TableHead>Descricao</TableHead>
-<TableHead className="text-center">Data</TableHead>
-<TableHead className="text-center">Status</TableHead>
-<TableHead className="text-right">Qtd</TableHead>
-<TableHead className="text-right">Valor</TableHead>
-```
-
-### Alteracao 2 - Corpo da tabela (apos linha 1112, antes da celula de Status)
-
-Adicionar celula com a data formatada em dd/MM/yyyy:
+O bloco ficara assim:
 
 ```text
-<TableCell className="text-center text-sm text-muted-foreground">
-  {format(parseISO(p.productionDate), "dd/MM/yyyy")}
-</TableCell>
+<div className="space-y-2">
+  <Label>Data do Recebimento *</Label>
+  <Input
+    type="date"
+    value={receiveData.date}
+    onChange={(e) => setReceiveData({ ...receiveData, date: e.target.value })}
+  />
+  {selectedReceivable && (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="w-full gap-2 text-xs"
+      onClick={() => setReceiveData({ ...receiveData, date: selectedReceivable.billingDate })}
+    >
+      <CalendarIcon className="h-3 w-3" />
+      Usar data do faturamento ({format(parseISO(selectedReceivable.billingDate), "dd/MM/yyyy")})
+    </Button>
+  )}
+</div>
 ```
 
 ## O que NAO muda
 
-- Nenhuma outra tabela ou modal
-- Nenhum calculo ou logica de faturamento
+- Nenhuma logica de recebimento ou criacao de movimentacao financeira
+- Nenhum outro dialog (glosa, recurso, historico)
 - Nenhum schema, RPC ou RLS
-- As funcoes `format` e `parseISO` ja estao importadas no arquivo
+- O campo de data continua editavel manualmente
+- O comportamento padrao (data de hoje) continua igual
 
-## Resultado visual
+## Resultado
 
-A tabela passara a ter as colunas: [checkbox] | Descricao | Data | Status | Qtd | Valor
-
+- O campo de data do recebimento continua com a data de hoje como padrao
+- Um botao abaixo permite trocar rapidamente para a data do faturamento (util para particulares que pagam na hora)
+- O usuario pode tambem digitar qualquer outra data manualmente
