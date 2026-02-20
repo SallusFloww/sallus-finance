@@ -437,6 +437,7 @@ export const BASE_PRODUCTION_TYPES = [
   "INTERNACAO",
   "MAT_MED",
   "OUTRO",
+  "PARECER",
 ] as const;
 
 // Subtipos para Exame
