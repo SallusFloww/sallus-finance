@@ -1,46 +1,53 @@
 
-# Fix: "Parecer" nao aparece no dropdown de Tipo de Producao
 
-## Problema
-
-"Parecer" esta cadastrado em `company_financial_settings.production_types` e aparece na aba Configuracoes, mas **nao aparece** no formulario de lancamento de producao.
+# Fix: Unidade "Hiperbarica" nao aparece no formulario de Producao
 
 ## Causa raiz
 
-No `ProductionForm.tsx` (linha 214-219), o filtro que separa tipos customizados dos tipos base faz duas verificacoes:
+A pagina `Production.tsx` obtem unidades de `transactions.settings.units`, que vem do `AppContext` -> `useTransactionsDB` -> `useCompanySettings`. Esse e um **hook independente** que carrega dados apenas uma vez no mount. Quando voce cria "Hiperbarica" em Configuracoes, aquela instancia de `useCompanySettings` atualiza, mas a instancia do `AppContext` **nao recarrega**. O `GlobalRealtimeProvider` escuta apenas `financial_entries`, `productions` e `receivables` -- nunca `company_financial_settings`.
 
-1. Se o **nome** do tipo customizado esta na lista `BASE_PRODUCTION_TYPES` (IDs como "CONSULTA", "EXAME")
-2. Se o **nome** do tipo customizado bate com algum **label** em `PRODUCTION_TYPE_LABELS`
+Resultado: ao navegar para Producao, as unidades passadas no prop `units={settings.units}` estao desatualizadas.
 
-"PARECER" foi adicionado a `PRODUCTION_TYPE_LABELS` (em `constants.ts` linha 63) com label "Parecer". Entao quando o filtro compara `"parecer" === "parecer"`, ele considera que e um tipo base e **remove** da lista de customizados.
+Alem disso, o `ProductionForm` tem sua propria instancia de `useCompanySettings` (linha 123), mas a logica na linha 332 **prioriza o prop `units`** sobre os dados frescos:
 
-Porem, "PARECER" **nao** esta em `BASE_PRODUCTION_TYPES` (que so tem CONSULTA, EXAME, QUIMIOTERAPIA, BOX_PS, SESSAO_TERAPEUTICA, INTERNACAO, MAT_MED, OUTRO). Entao ele nunca e incluido por nenhum dos dois caminhos.
+```text
+const effectiveUnits = units && units.length > 0 ? units : settings?.units || [];
+```
+
+Como o prop sempre tem pelo menos as 3 unidades default (Oncologia, Pronto Socorro, Centro Clinico), a condicao `units.length > 0` e sempre `true`, e os dados frescos do `ProductionForm` sao ignorados.
 
 ## Solucao
 
-Adicionar `"PARECER"` ao array `BASE_PRODUCTION_TYPES` em `src/types/index.ts`. Isso e a correcao mais simples e coerente: se o tipo ja tem um label oficial no sistema, ele deve ser um tipo base.
+Inverter a prioridade na linha 332 do `ProductionForm.tsx`: usar os dados do proprio `useCompanySettings` do formulario como fonte primaria (pois ele carrega diretamente do banco no mount), e usar o prop `units` apenas como fallback.
 
-### Arquivo: `src/types/index.ts`
+### Arquivo: `src/components/production/ProductionForm.tsx`
 
-Adicionar `"PARECER"` ao array `BASE_PRODUCTION_TYPES`:
+Linha 332 -- mudar de:
 
 ```text
-export const BASE_PRODUCTION_TYPES = [
-  "CONSULTA",
-  "EXAME",
-  "QUIMIOTERAPIA",
-  "BOX_PS",
-  "SESSAO_TERAPEUTICA",
-  "INTERNACAO",
-  "MAT_MED",
-  "OUTRO",
-  "PARECER",        // <-- ADICIONAR
-] as const;
+const effectiveUnits = units && units.length > 0 ? units : settings?.units || [];
 ```
 
-### O que NAO muda
+Para:
 
-- Nenhum outro arquivo e alterado
-- Tipos customizados criados pelo usuario continuam funcionando
-- Nenhuma alteracao de banco, RPC, trigger ou dados historicos
-- O label "Parecer" ja existe em `PRODUCTION_TYPE_LABELS`, entao o dropdown mostrara o nome correto
+```text
+const effectiveUnits = settings?.units && settings.units.length > 0
+  ? settings.units
+  : (units && units.length > 0 ? units : []);
+```
+
+Isso garante que o formulario sempre usa os dados mais recentes do banco (sua propria instancia de `useCompanySettings` carrega no mount do dialog), com fallback para o prop caso o carregamento ainda nao tenha terminado.
+
+## O que NAO muda
+
+- Nenhum outro arquivo
+- Nenhum schema, RPC, trigger ou RLS
+- O prop `units` continua existindo como fallback
+- Dados historicos intactos
+- Fluxos de edicao, exclusao e inativacao de unidades inalterados
+
+## Teste
+
+1. Criar unidade "Hiperbarica" em Configuracoes (ja feito)
+2. Ir para Producao -> Nova Producao
+3. Verificar que "Hiperbarica" aparece no dropdown de Unidade
