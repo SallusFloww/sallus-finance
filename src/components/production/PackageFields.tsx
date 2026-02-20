@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +25,7 @@ interface PackageFieldsProps {
     isManualOverride: boolean;
   }) => void;
   disabled?: boolean;
+  forceManual?: boolean; // Ativa modo manual automaticamente (ex: PARTICULAR sem regra)
 }
 
 export function PackageFields({
@@ -34,12 +36,18 @@ export function PackageFields({
   packageQty = 1,
   onChange,
   disabled = false,
+  forceManual = false,
 }: PackageFieldsProps) {
   // Quantidade efetiva do pacote para exibição (hardening: sempre inteiro >= 1)
   const displayQty = Math.max(1, Math.floor(Number(packageQty) || 1));
   const { calculateComponents, validateTotal, getEffectiveRule } = usePackagePricing();
 
-  const [isManualOverride, setIsManualOverride] = useState(false);
+  const [isManualOverride, setIsManualOverride] = useState(forceManual);
+
+  // Sincronizar forceManual com estado local
+  useEffect(() => {
+    if (forceManual) setIsManualOverride(true);
+  }, [forceManual]);
   const [manualConsult, setManualConsult] = useState("");
   const [manualFee, setManualFee] = useState("");
   const [manualMatmed, setManualMatmed] = useState("");
@@ -151,7 +159,7 @@ export function PackageFields({
         <div className="flex items-center gap-2">
           <Package className="h-5 w-5 text-primary" />
           <span className="font-medium text-sm">
-            Componentes do Pacote (Convênio)
+            Componentes do Pacote
           </span>
         </div>
         
@@ -217,16 +225,28 @@ export function PackageFields({
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">Consulta (R$)</Label>
           {isManualOverride ? (
-            <Input
-              type="number"
-              step="0.01"
-              min="0"
-              value={manualConsult}
-              onChange={(e) => setManualConsult(e.target.value)}
-              disabled={disabled}
-              className="h-9"
-              placeholder="0,00"
-            />
+            <div className="space-y-1">
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={manualConsult}
+                onChange={(e) => setManualConsult(e.target.value)}
+                disabled={disabled}
+                className="h-9"
+                placeholder="0,00"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 text-xs px-2 text-muted-foreground hover:text-primary"
+                onClick={() => setManualConsult("0")}
+                disabled={disabled}
+              >
+                Sem consulta
+              </Button>
+            </div>
           ) : (
             <div className="h-9 flex items-center px-3 bg-muted rounded-md font-medium text-sm">
               {formatCurrency(displayComponents.consultAmount)}
