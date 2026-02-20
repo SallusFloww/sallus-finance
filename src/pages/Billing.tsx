@@ -84,6 +84,20 @@ import { Receivable, ReceivableStatus, GlossType, AppealStatus } from "@/types";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
+import { Switch } from "@/components/ui/switch";
+
+// Tipo local para produções vinculadas
+interface LinkedProduction {
+  id: string;
+  production_date: string;
+  total_value: number;
+}
+
+interface ProductionDateGroup {
+  date: string;
+  count: number;
+  totalValue: number;
+}
 
 const STATUS_CONFIG: Record<ReceivableStatus, { label: string; color: string; icon: any; semanticLabel: string }> = {
   FATURADO: { 
@@ -138,6 +152,7 @@ export default function Billing() {
   const {
     receivables,
     markAsReceived,
+    markAsReceivedMultipleDates,
     markAsGlossed,
     initiateAppeal,
     approveAppeal,
@@ -177,6 +192,9 @@ export default function Billing() {
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [selectedReceivable, setSelectedReceivable] = useState<Receivable | null>(null);
   const [linkedProductionDates, setLinkedProductionDates] = useState<string[]>([]);
+  const [linkedProductions, setLinkedProductions] = useState<LinkedProduction[]>([]);
+  const [receiveByProductionDate, setReceiveByProductionDate] = useState(false);
+  const [productionDateGroups, setProductionDateGroups] = useState<ProductionDateGroup[]>([]);
   const [receiveData, setReceiveData] = useState({ amount: "", date: format(new Date(), "yyyy-MM-dd") });
   const [glossData, setGlossData] = useState<{ 
     type: GlossType; 
@@ -301,7 +319,39 @@ export default function Billing() {
 
   // Handlers
   const handleMarkReceived = async () => {
-    if (!selectedReceivable || !receiveData.amount || !receiveData.date) {
+    if (!selectedReceivable) return;
+
+    // Modo por data de produção
+    if (receiveByProductionDate && productionDateGroups.length > 0) {
+      const entries = productionDateGroups.map(g => ({ date: g.date, amount: g.totalValue }));
+      
+      try {
+        const result = await markAsReceivedMultipleDates(
+          selectedReceivable.id,
+          entries,
+          user?.name || "Sistema"
+        );
+
+        if (result) {
+          toast.success(`Recebimento registrado! ${entries.length} movimentação(ões) criada(s) no Caixa.`);
+        }
+      } catch (error) {
+        console.error("Erro ao marcar como recebido (múltiplas datas):", error);
+        toast.error("Erro ao registrar recebimento");
+      } finally {
+        setReceiveDialogOpen(false);
+        setSelectedReceivable(null);
+        setReceiveData({ amount: "", date: format(new Date(), "yyyy-MM-dd") });
+        setLinkedProductionDates([]);
+        setLinkedProductions([]);
+        setReceiveByProductionDate(false);
+        setProductionDateGroups([]);
+      }
+      return;
+    }
+
+    // Modo simples (data única) - comportamento original
+    if (!receiveData.amount || !receiveData.date) {
       toast.error("Preencha o valor e data de recebimento");
       return;
     }
@@ -325,6 +375,9 @@ export default function Billing() {
       setSelectedReceivable(null);
       setReceiveData({ amount: "", date: format(new Date(), "yyyy-MM-dd") });
       setLinkedProductionDates([]);
+      setLinkedProductions([]);
+      setReceiveByProductionDate(false);
+      setProductionDateGroups([]);
     }
   };
 
@@ -438,21 +491,38 @@ export default function Billing() {
     setSelectedReceivable(receivable);
     setReceiveData({ amount: receivable.billedAmount.toString(), date: format(new Date(), "yyyy-MM-dd") });
     setLinkedProductionDates([]);
+    setLinkedProductions([]);
+    setReceiveByProductionDate(false);
+    setProductionDateGroups([]);
     setReceiveDialogOpen(true);
 
-    // Fetch linked production dates
+    // Fetch linked productions (full data)
     if (currentCompany?.id) {
       const { data: prods } = await supabase
         .from("productions")
-        .select("production_date")
+        .select("id, production_date, total_value")
         .eq("company_id", currentCompany.id)
         .eq("linked_receivable_id", receivable.id);
 
-      const uniqueDates = Array.from(new Set(
-        (prods || []).map(p => p.production_date).filter(Boolean)
-      )).sort();
+      if (prods && prods.length > 0) {
+        setLinkedProductions(prods as LinkedProduction[]);
 
-      setLinkedProductionDates(uniqueDates);
+        const uniqueDates = Array.from(new Set(
+          prods.map(p => p.production_date).filter(Boolean)
+        )).sort();
+        setLinkedProductionDates(uniqueDates);
+
+        // Group by date
+        const groups: ProductionDateGroup[] = uniqueDates.map(date => {
+          const prodsForDate = prods.filter(p => p.production_date === date);
+          return {
+            date,
+            count: prodsForDate.length,
+            totalValue: prodsForDate.reduce((sum, p) => sum + Number(p.total_value || 0), 0),
+          };
+        });
+        setProductionDateGroups(groups);
+      }
     }
   };
 
@@ -1005,86 +1075,152 @@ export default function Billing() {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label>Valor Recebido *</Label>
-                <Input
-                  placeholder="0,00"
-                  value={receiveData.amount}
-                  onChange={(e) => setReceiveData({ ...receiveData, amount: e.target.value })}
-                />
-                {selectedReceivable && (
-                  <p className="text-xs text-muted-foreground">
-                    Valor faturado: {formatCurrency(selectedReceivable.billedAmount)}
-                  </p>
-                )}
-                {/* Regra assistiva: sugerir glosa parcial se valor recebido < faturado */}
-                {selectedReceivable && receiveData.amount && (
-                  (() => {
-                    const receivedValue = parseMoneyBR(receiveData.amount);
-                    const billedValue = selectedReceivable.billedAmount;
-                    const difference = billedValue - receivedValue;
-                    
-                    if (receivedValue > 0 && receivedValue < billedValue) {
-                      return (
-                        <div className="flex items-start gap-2 p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-md mt-2">
-                          <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                          <div className="text-xs">
-                            <p className="font-medium text-amber-700">Valor inferior ao faturado</p>
-                            <p className="text-amber-600 mt-0.5">
-                              Diferença de {formatCurrency(difference)}. Considere registrar uma <strong>glosa parcial</strong> para manter a rastreabilidade do valor não recebido.
-                            </p>
+              {/* Valor - hidden when receiveByProductionDate */}
+              {!receiveByProductionDate && (
+                <div className="space-y-2">
+                  <Label>Valor Recebido *</Label>
+                  <Input
+                    placeholder="0,00"
+                    value={receiveData.amount}
+                    onChange={(e) => setReceiveData({ ...receiveData, amount: e.target.value })}
+                  />
+                  {selectedReceivable && (
+                    <p className="text-xs text-muted-foreground">
+                      Valor faturado: {formatCurrency(selectedReceivable.billedAmount)}
+                    </p>
+                  )}
+                  {selectedReceivable && receiveData.amount && (
+                    (() => {
+                      const receivedValue = parseMoneyBR(receiveData.amount);
+                      const billedValue = selectedReceivable.billedAmount;
+                      const difference = billedValue - receivedValue;
+                      
+                      if (receivedValue > 0 && receivedValue < billedValue) {
+                        return (
+                          <div className="flex items-start gap-2 p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-md mt-2">
+                            <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                            <div className="text-xs">
+                              <p className="font-medium text-amber-700">Valor inferior ao faturado</p>
+                              <p className="text-amber-600 mt-0.5">
+                                Diferença de {formatCurrency(difference)}. Considere registrar uma <strong>glosa parcial</strong> para manter a rastreabilidade do valor não recebido.
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  })()
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label>Data do Recebimento *</Label>
-                <Input
-                  type="date"
-                  value={receiveData.date}
-                  onChange={(e) => setReceiveData({ ...receiveData, date: e.target.value })}
-                />
-                {linkedProductionDates.length > 0 && (
-                  <div className="space-y-1">
-                    {linkedProductionDates.map((d) => (
-                      <Button
-                        key={d}
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="w-full gap-2 text-xs"
-                        onClick={() => setReceiveData({ ...receiveData, date: d })}
-                      >
-                        <CalendarIcon className="h-3 w-3" />
-                        Usar data da produção ({format(parseISO(d), "dd/MM/yyyy")})
-                      </Button>
-                    ))}
+                        );
+                      }
+                      return null;
+                    })()
+                  )}
+                </div>
+              )}
+
+              {/* Data única - hidden when receiveByProductionDate */}
+              {!receiveByProductionDate && (
+                <div className="space-y-2">
+                  <Label>Data do Recebimento *</Label>
+                  <Input
+                    type="date"
+                    value={receiveData.date}
+                    onChange={(e) => setReceiveData({ ...receiveData, date: e.target.value })}
+                  />
+                  {linkedProductionDates.length > 0 && (
+                    <div className="space-y-1">
+                      {linkedProductionDates.map((d) => (
+                        <Button
+                          key={d}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="w-full gap-2 text-xs"
+                          onClick={() => setReceiveData({ ...receiveData, date: d })}
+                        >
+                          <CalendarIcon className="h-3 w-3" />
+                          Usar data da produção ({format(parseISO(d), "dd/MM/yyyy")})
+                        </Button>
+                      ))}
+                    </div>
+                  )}
+                  {selectedReceivable && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full gap-2 text-xs"
+                      onClick={() => setReceiveData({ ...receiveData, date: selectedReceivable.billingDate })}
+                    >
+                      <CalendarIcon className="h-3 w-3" />
+                      Usar data do faturamento ({format(parseISO(selectedReceivable.billingDate), "dd/MM/yyyy")})
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {/* Switch: Receber por data de produção - only if multiple dates */}
+              {productionDateGroups.length > 1 && (
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div className="space-y-0.5">
+                    <Label className="text-sm font-medium">Receber por data de produção</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Cria uma movimentação por data ({productionDateGroups.length} datas)
+                    </p>
                   </div>
-                )}
-                {selectedReceivable && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="w-full gap-2 text-xs"
-                    onClick={() => setReceiveData({ ...receiveData, date: selectedReceivable.billingDate })}
-                  >
-                    <CalendarIcon className="h-3 w-3" />
-                    Usar data do faturamento ({format(parseISO(selectedReceivable.billingDate), "dd/MM/yyyy")})
-                  </Button>
-                )}
-              </div>
+                  <Switch
+                    checked={receiveByProductionDate}
+                    onCheckedChange={setReceiveByProductionDate}
+                  />
+                </div>
+              )}
+
+              {/* Tabela de datas - when switch is on */}
+              {receiveByProductionDate && productionDateGroups.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-sm">Movimentações que serão criadas:</Label>
+                  <div className="border rounded-lg overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">Data Produção</TableHead>
+                          <TableHead className="text-xs text-center">Qtd</TableHead>
+                          <TableHead className="text-xs text-right">Valor</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {productionDateGroups.map((g) => (
+                          <TableRow key={g.date}>
+                            <TableCell className="text-sm font-medium">
+                              {format(parseISO(g.date), "dd/MM/yyyy")}
+                            </TableCell>
+                            <TableCell className="text-sm text-center">{g.count}</TableCell>
+                            <TableCell className="text-sm text-right font-medium">
+                              {formatCurrency(g.totalValue)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <div className="flex justify-between items-center pt-1">
+                    <span className="text-xs text-muted-foreground">Total</span>
+                    <span className="text-sm font-bold">
+                      {formatCurrency(productionDateGroups.reduce((sum, g) => sum + g.totalValue, 0))}
+                    </span>
+                  </div>
+                  {selectedReceivable && (
+                    <p className="text-xs text-muted-foreground">
+                      Valor faturado: {formatCurrency(selectedReceivable.billedAmount)}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setReceiveDialogOpen(false)}>
                 Cancelar
               </Button>
               <Button onClick={handleMarkReceived} className="gradient-primary">
-                Confirmar Recebimento
+                {receiveByProductionDate 
+                  ? `Confirmar ${productionDateGroups.length} Recebimentos` 
+                  : "Confirmar Recebimento"}
               </Button>
             </DialogFooter>
           </DialogContent>

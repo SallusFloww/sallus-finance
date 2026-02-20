@@ -1116,6 +1116,262 @@ export function useReceivablesDB() {
     return { fixed, errors, skipped };
   }, [currentCompany?.id, profile, receivables]);
 
+  // Mark as received with MULTIPLE dates (one financial entry per date group)
+  const markAsReceivedMultipleDates = useCallback(
+    async (
+      id: string,
+      entries: Array<{ date: string; amount: number }>,
+      userName: string,
+    ): Promise<{ id: string; transactionIds: string[] } | null> => {
+      if (!currentCompany?.id || !profile?.id) {
+        toast.error("Usuário não autenticado");
+        return null;
+      }
+
+      const receivable = receivables.find((r) => r.id === id);
+      if (!receivable) {
+        toast.error("Recebível não encontrado");
+        return null;
+      }
+
+      if (receivable.status !== "FATURADO") {
+        toast.error("Apenas recebíveis FATURADO podem ser marcados como recebidos");
+        return null;
+      }
+
+      if (receivable.linkedTransactionId) {
+        toast.error("Este recebível já está vinculado a uma movimentação.");
+        return null;
+      }
+
+      if (entries.length === 0 || entries.some(e => e.amount <= 0)) {
+        toast.error("Todos os valores devem ser maiores que zero");
+        return null;
+      }
+
+      // TRAVA ANTI DUPLICIDADE
+      if (processingIdsRef.current.has(id)) {
+        toast.error("Recebimento já está sendo processado. Aguarde...");
+        return null;
+      }
+      processingIdsRef.current.add(id);
+
+      const createdTransactionIds: string[] = [];
+
+      try {
+        // CHECAGEM IDEMPOTÊNCIA
+        const { data: existing, error: existingErr } = await supabase
+          .from("financial_entries")
+          .select("id, status")
+          .eq("company_id", currentCompany.id)
+          .ilike("observacao", `%receivable_id=${id}%`)
+          .neq("status", "cancelado")
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (!existingErr && existing && existing.length > 0) {
+          toast.error("Movimentação deste recebimento já existe. Evitando duplicidade.");
+          return { id, transactionIds: [existing[0].id] };
+        }
+
+        // Inferir especialidade (same as markAsReceived)
+        let inferredSpecialty: string | null = null;
+        let specialtyNote = "";
+
+        const { data: prodSpecs } = await supabase
+          .from("productions")
+          .select("specialty")
+          .eq("company_id", currentCompany.id)
+          .eq("linked_receivable_id", id);
+
+        if (Array.isArray(prodSpecs)) {
+          const cleaned = prodSpecs
+            .map((p: any) => (typeof p.specialty === "string" ? p.specialty.trim() : ""))
+            .filter((s: string) => s.length > 0 && s !== "SEM_ESPECIALIDADE");
+          const unique = Array.from(new Set(cleaned));
+          if (unique.length === 1) {
+            inferredSpecialty = unique[0];
+          } else if (unique.length > 1) {
+            specialtyNote = ` | Especialidade: múltiplas (${unique.join(", ").substring(0, 120)})`;
+          }
+        }
+
+        // Inferir categoria (same as markAsReceived)
+        let inferredCategory = "RECEBIMENTO_FATURAMENTO";
+        let typeNote = "";
+
+        const { data: prodTypes } = await supabase
+          .from("productions")
+          .select("production_type")
+          .eq("company_id", currentCompany.id)
+          .eq("linked_receivable_id", id);
+
+        if (Array.isArray(prodTypes)) {
+          const cleanedTypes = prodTypes
+            .map((p: any) => (typeof p.production_type === "string" ? p.production_type.trim() : ""))
+            .filter((t: string) => t.length > 0);
+          const uniqueTypes = Array.from(new Set(cleanedTypes));
+
+          const { data: settingsData } = await supabase
+            .from("company_financial_settings")
+            .select("categories")
+            .eq("company_id", currentCompany.id)
+            .maybeSingle();
+
+          const validCategoryCodes = new Set(
+            (Array.isArray(settingsData?.categories) ? settingsData.categories as any[] : [])
+              .map((c: any) => String(c.code || c.id || c.name || "").toUpperCase())
+              .filter(Boolean)
+          );
+
+          if (uniqueTypes.length === 1 && validCategoryCodes.has(uniqueTypes[0].toUpperCase())) {
+            inferredCategory = uniqueTypes[0];
+          } else if (uniqueTypes.length === 1) {
+            typeNote = ` | Tipo produção: ${uniqueTypes[0]} (não mapeado como categoria)`;
+          } else if (uniqueTypes.length > 1) {
+            typeNote = ` | Tipos: múltiplos (${uniqueTypes.join(", ").substring(0, 120)})`;
+          }
+        }
+
+        const { PRODUCTION_TYPE_LABELS: PROD_LABELS } = await import("@/utils/constants");
+
+        let readableTypePrefix = "";
+        if (inferredCategory === "RECEBIMENTO_FATURAMENTO") {
+          const { data: prodTypesForLabel } = await supabase
+            .from("productions")
+            .select("production_type")
+            .eq("company_id", currentCompany.id)
+            .eq("linked_receivable_id", id);
+          if (Array.isArray(prodTypesForLabel) && prodTypesForLabel.length > 0) {
+            const types = Array.from(new Set(prodTypesForLabel.map((p: any) => p.production_type).filter(Boolean)));
+            if (types.length === 1) {
+              readableTypePrefix = `${PROD_LABELS[types[0] as string] || types[0]} • `;
+            } else {
+              readableTypePrefix = "Recebimento Faturamento • ";
+            }
+          }
+        } else {
+          readableTypePrefix = `${PROD_LABELS[inferredCategory] || inferredCategory} • `;
+        }
+
+        const totalAmount = entries.reduce((sum, e) => sum + e.amount, 0);
+
+        // Create one financial entry per date
+        for (let i = 0; i < entries.length; i++) {
+          const entry = entries[i];
+          const descricao = `${readableTypePrefix}${receivable.source} • ${receivable.description} (${i + 1}/${entries.length})`.substring(0, 200);
+
+          const { data: insertedEntry, error: insertError } = await supabase
+            .from("financial_entries")
+            .insert([{
+              company_id: currentCompany.id,
+              created_by: profile.id,
+              type: "entrada",
+              status: "recebido",
+              valor: entry.amount,
+              data_prevista: entry.date,
+              data_recebimento: entry.date,
+              descricao,
+              categoria: inferredCategory,
+              unit_id: receivable.unit || null,
+              receipt_type: receivable.source === "PARTICULAR" ? "PARTICULAR" : "CONVENIO",
+              payment_method: "TRANSFER",
+              operadora: receivable.source !== "PARTICULAR" ? receivable.source : null,
+              specialty: inferredSpecialty,
+              observacao: `Origem: receivable_id=${id} | Data produção: ${entry.date} | Parcela ${i + 1}/${entries.length} | Competência: ${receivable.competencia || "N/A"}${specialtyNote}${typeNote}`,
+            }])
+            .select()
+            .single();
+
+          if (insertError) {
+            console.error(`Erro ao criar entry ${i + 1}/${entries.length}:`, insertError);
+            // Rollback all created entries
+            for (const txId of createdTransactionIds) {
+              await supabase
+                .from("financial_entries")
+                .update({
+                  status: "cancelado",
+                  cancelled_at: new Date().toISOString(),
+                  cancelled_by: profile.id,
+                  cancel_reason: `Rollback automático: falha parcial ao criar múltiplas entradas para receivable ${id}`,
+                })
+                .eq("id", txId);
+            }
+            toast.error("Erro ao criar movimentações. Todas foram canceladas automaticamente.");
+            return null;
+          }
+
+          createdTransactionIds.push(insertedEntry.id);
+        }
+
+        // Update receivable
+        const history = [...(receivable.history || [])];
+        history.push(
+          createHistoryEntry(
+            "RECEBIDO",
+            `Recebimento por data de produção: ${entries.length} movimentações criadas (total R$ ${totalAmount.toFixed(2)})`,
+            userName,
+            totalAmount,
+            createdTransactionIds[0],
+          ),
+        );
+
+        const { error: updateError } = await (supabase as any)
+          .from("receivables")
+          .update({
+            status: "RECEBIDO",
+            received_amount: totalAmount,
+            glossed_amount: 0,
+            actual_receipt_date: entries[0].date,
+            linked_transaction_id: createdTransactionIds[0],
+            updated_at: new Date().toISOString(),
+            updated_by: profile.id,
+            history: JSON.parse(JSON.stringify(history)),
+          })
+          .eq("id", id);
+
+        if (updateError) {
+          // Rollback all
+          for (const txId of createdTransactionIds) {
+            await supabase
+              .from("financial_entries")
+              .update({
+                status: "cancelado",
+                cancelled_at: new Date().toISOString(),
+                cancelled_by: profile.id,
+                cancel_reason: `Rollback automático: falha ao vincular receivable ${id}`,
+              })
+              .eq("id", txId);
+          }
+          toast.error("Erro ao atualizar recebível. Movimentações canceladas automaticamente.");
+          return null;
+        }
+
+        await fetchReceivables();
+        refreshAll();
+        return { id, transactionIds: createdTransactionIds };
+      } catch (error) {
+        console.error("Erro inesperado em markAsReceivedMultipleDates:", error);
+        for (const txId of createdTransactionIds) {
+          await supabase
+            .from("financial_entries")
+            .update({
+              status: "cancelado",
+              cancelled_at: new Date().toISOString(),
+              cancelled_by: profile.id,
+              cancel_reason: `Rollback automático: erro inesperado ao processar receivable ${id}`,
+            })
+            .eq("id", txId);
+        }
+        toast.error("Erro inesperado ao processar recebimento");
+        return null;
+      } finally {
+        processingIdsRef.current.delete(id);
+      }
+    },
+    [receivables, currentCompany?.id, profile?.id, fetchReceivables, refreshAll],
+  );
+
   return {
     receivables,
     loading,
@@ -1127,6 +1383,7 @@ export function useReceivablesDB() {
       toast.error("Exclusão não permitida");
     },
     markAsReceived,
+    markAsReceivedMultipleDates,
     markAsGlossed,
     initiateAppeal,
     approveAppeal,
