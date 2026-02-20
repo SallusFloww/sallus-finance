@@ -14,9 +14,11 @@ import {
   DollarSign,
   Info,
   AlertCircle,
+  Pencil,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -27,13 +29,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Production, ProductionStatus, ProductionType, UnitConfig } from "@/types";
 import { formatCurrency } from "@/utils/formatters";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCompanySettings } from "@/hooks/useCompanySettings";
+import { toast } from "sonner";
 
 const STATUS_CONFIG: Record<
   ProductionStatus,
@@ -89,14 +93,19 @@ interface ProductionListProps {
   productions: Production[];
   units: UnitConfig[];
   onDelete?: (id: string) => void;
+  onEdit?: (id: string, data: Partial<Production>) => Promise<void>;
   onViewHistory?: (production: Production) => void;
 }
 
-export function ProductionList({ productions, units, onDelete, onViewHistory }: ProductionListProps) {
+export function ProductionList({ productions, units, onDelete, onEdit, onViewHistory }: ProductionListProps) {
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingProduction, setEditingProduction] = useState<Production | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
 
   // Médicos(as) - exibição na lista (nome a partir de doctorId)
   const { currentCompany, profile } = useAuth();
+  const { extendedSettings } = useCompanySettings();
   const companyId = (currentCompany as any)?.id || (profile as any)?.company_id;
 
   const [doctorNameById, setDoctorNameById] = useState<Record<string, string>>({});
@@ -159,6 +168,85 @@ export function ProductionList({ productions, units, onDelete, onViewHistory }: 
     setSelectedProduction(production);
     setHistoryDialogOpen(true);
   };
+
+  // Edit form state
+  const [editForm, setEditForm] = useState({
+    productionDate: "",
+    competencia: "",
+    unit: "",
+    doctorId: "",
+    payerType: "CONVENIO" as "CONVENIO" | "PARTICULAR",
+    convenio: "",
+    paymentMethod: "",
+    productionType: "",
+    description: "",
+    procedureCode: "",
+    quantity: 1,
+    unitValue: 0,
+    specialty: "",
+  });
+
+  const openEditDialog = (production: Production) => {
+    setEditingProduction(production);
+    setEditForm({
+      productionDate: production.productionDate,
+      competencia: production.competencia,
+      unit: production.unit,
+      doctorId: production.doctorId || "",
+      payerType: production.payerType,
+      convenio: production.convenio || "",
+      paymentMethod: production.paymentMethod || "",
+      productionType: production.productionType,
+      description: production.description,
+      procedureCode: production.procedureCode || "",
+      quantity: production.quantity,
+      unitValue: production.unitValue,
+      specialty: production.specialty || "",
+    });
+    setEditDialogOpen(true);
+  };
+
+  const isCentroClinico = (unitId: string) => {
+    const name = (units.find((u) => u.id === unitId)?.name || unitId).toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return name.includes("centro clinico") || name.includes("clinico");
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingProduction || !onEdit) return;
+    setEditSaving(true);
+    try {
+      const data: Partial<Production> = {};
+      if (editForm.productionDate !== editingProduction.productionDate) data.productionDate = editForm.productionDate;
+      if (editForm.competencia !== editingProduction.competencia) data.competencia = editForm.competencia;
+      if (editForm.unit !== editingProduction.unit) data.unit = editForm.unit;
+      if (editForm.doctorId !== (editingProduction.doctorId || "")) data.doctorId = editForm.doctorId || undefined;
+      if (editForm.payerType !== editingProduction.payerType) data.payerType = editForm.payerType;
+      if (editForm.convenio !== (editingProduction.convenio || "")) data.convenio = editForm.convenio || undefined;
+      if (editForm.paymentMethod !== (editingProduction.paymentMethod || "")) data.paymentMethod = editForm.paymentMethod || undefined;
+      if (editForm.productionType !== editingProduction.productionType) data.productionType = editForm.productionType;
+      if (editForm.description !== editingProduction.description) data.description = editForm.description;
+      if (editForm.procedureCode !== (editingProduction.procedureCode || "")) data.procedureCode = editForm.procedureCode || undefined;
+      if (editForm.quantity !== editingProduction.quantity) data.quantity = editForm.quantity;
+      if (editForm.unitValue !== editingProduction.unitValue) data.unitValue = editForm.unitValue;
+      if (editForm.specialty !== (editingProduction.specialty || "")) data.specialty = editForm.specialty || undefined;
+
+      if (Object.keys(data).length === 0) {
+        toast.info("Nenhuma alteração detectada");
+        setEditDialogOpen(false);
+        return;
+      }
+
+      await onEdit(editingProduction.id, data);
+      setEditDialogOpen(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const editTotal = editForm.quantity * editForm.unitValue;
 
   if (productions.length === 0) {
     return (
@@ -392,6 +480,12 @@ export function ProductionList({ productions, units, onDelete, onViewHistory }: 
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-48">
+                          {production.status === "PRODUZIDO" && onEdit && (
+                            <DropdownMenuItem onClick={() => openEditDialog(production)}>
+                              <Pencil className="h-4 w-4 mr-2" />
+                              Editar
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem onClick={() => openHistoryDialog(production)}>
                             <History className="h-4 w-4 mr-2" />
                             Ver histórico
@@ -497,6 +591,211 @@ export function ProductionList({ productions, units, onDelete, onViewHistory }: 
                 <p>Nenhum histórico registrado</p>
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Dialog */}
+        <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Pencil className="h-5 w-5" />
+                Editar Produção
+              </DialogTitle>
+              <DialogDescription>
+                Altere os campos necessários. Somente produções com status "Produzido" podem ser editadas.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Data da Produção</Label>
+                  <Input
+                    type="date"
+                    value={editForm.productionDate}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, productionDate: e.target.value }))}
+                    className="h-9"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Competência (YYYY-MM)</Label>
+                  <Input
+                    value={editForm.competencia}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, competencia: e.target.value }))}
+                    placeholder="2026-02"
+                    className="h-9"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-xs">Unidade</Label>
+                <Select value={editForm.unit} onValueChange={(v) => setEditForm((prev) => ({ ...prev, unit: v, specialty: isCentroClinico(v) ? prev.specialty : "" }))}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {units.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {isCentroClinico(editForm.unit) && (
+                <div>
+                  <Label className="text-xs">Especialidade</Label>
+                  <Select value={editForm.specialty} onValueChange={(v) => setEditForm((prev) => ({ ...prev, specialty: v }))}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(extendedSettings.specialties && extendedSettings.specialties.length > 0
+                        ? extendedSettings.specialties.filter((s: any) => s.active !== false)
+                        : []
+                      ).map((s: any) => (
+                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <div>
+                <Label className="text-xs">Médico</Label>
+                <Select value={editForm.doctorId || "NONE"} onValueChange={(v) => setEditForm((prev) => ({ ...prev, doctorId: v === "NONE" ? "" : v }))}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NONE">Sem médico</SelectItem>
+                    {Object.entries(doctorNameById)
+                      .sort((a, b) => a[1].localeCompare(b[1]))
+                      .map(([id, name]) => (
+                        <SelectItem key={id} value={id}>{name}</SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Pagador</Label>
+                  <Select value={editForm.payerType} onValueChange={(v) => setEditForm((prev) => ({ ...prev, payerType: v as "CONVENIO" | "PARTICULAR", convenio: v === "PARTICULAR" ? "" : prev.convenio }))}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CONVENIO">Convênio</SelectItem>
+                      <SelectItem value="PARTICULAR">Particular</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {editForm.payerType === "CONVENIO" && (
+                  <div>
+                    <Label className="text-xs">Convênio</Label>
+                    <Select value={editForm.convenio} onValueChange={(v) => setEditForm((prev) => ({ ...prev, convenio: v }))}>
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="Selecione" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(extendedSettings.payers || []).filter((p: any) => p.active !== false).map((p: any) => (
+                          <SelectItem key={p.id || p.name} value={p.name || p.id}>{p.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                {editForm.payerType === "PARTICULAR" && (
+                  <div>
+                    <Label className="text-xs">Forma de Pagamento</Label>
+                    <Select value={editForm.paymentMethod} onValueChange={(v) => setEditForm((prev) => ({ ...prev, paymentMethod: v }))}>
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="Selecione" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(extendedSettings.paymentMethodsParticular || []).filter((m: any) => m.active !== false).map((m: any) => (
+                          <SelectItem key={m.id || m.name} value={m.name || m.id}>{m.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <Label className="text-xs">Tipo de Produção</Label>
+                <Select value={editForm.productionType} onValueChange={(v) => setEditForm((prev) => ({ ...prev, productionType: v }))}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(extendedSettings.productionTypes || []).filter((t: any) => t.active !== false).map((t: any) => (
+                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Descrição / Procedimento</Label>
+                  <Input
+                    value={editForm.description}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, description: e.target.value }))}
+                    className="h-9"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Cód. Procedimento</Label>
+                  <Input
+                    value={editForm.procedureCode}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, procedureCode: e.target.value }))}
+                    className="h-9"
+                    placeholder="Opcional"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Quantidade</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={editForm.quantity}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, quantity: Math.max(1, parseInt(e.target.value) || 1) }))}
+                    className="h-9"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Valor Unitário</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={editForm.unitValue}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, unitValue: Math.max(0, parseFloat(e.target.value) || 0) }))}
+                    className="h-9"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 rounded-lg bg-muted/50 border text-sm flex justify-between">
+                <span className="text-muted-foreground">Total calculado:</span>
+                <span className="font-bold text-primary">{formatCurrency(editTotal)}</span>
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setEditDialogOpen(false)} disabled={editSaving}>
+                Cancelar
+              </Button>
+              <Button onClick={handleSaveEdit} disabled={editSaving}>
+                {editSaving ? "Salvando..." : "Salvar Alterações"}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </>
