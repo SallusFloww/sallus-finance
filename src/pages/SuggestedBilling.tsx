@@ -1070,6 +1070,7 @@ export default function SuggestedBilling() {
                           <TableRow>
                             <TableHead className="w-10"></TableHead>
                             <TableHead>Descrição</TableHead>
+                            <TableHead className="text-center">Data</TableHead>
                             <TableHead className="text-center">Status</TableHead>
                             <TableHead className="text-right">Qtd</TableHead>
                             <TableHead className="text-right">Valor</TableHead>
@@ -1110,6 +1111,9 @@ export default function SuggestedBilling() {
                                       Já faturado
                                     </Badge>
                                   )}
+                                </TableCell>
+                                <TableCell className="text-center text-sm text-muted-foreground">
+                                  {format(parseISO(p.productionDate), "dd/MM/yyyy")}
                                 </TableCell>
                                 <TableCell className="text-center">{getProductionStatusBadge(p)}</TableCell>
                                 <TableCell className="text-right">{p.quantity}</TableCell>
