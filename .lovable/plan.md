@@ -1,78 +1,116 @@
 
 
-# Botao "Usar data da producao" no dialog de Recebimento
+# Receber por data de producao individual
 
-## O que sera feito
+## Problema
 
-No dialog "Registrar Recebimento" da pagina de Faturamento (`/billing`):
+Quando um recebivel agrupa producoes de dias diferentes, hoje so e possivel registrar o recebimento com UMA unica data. O usuario precisa poder receber cada grupo de producao na sua data especifica, gerando uma movimentacao financeira separada por data.
 
-1. **Corrigir o label** de "Usar data do faturamento" para "Usar data da producao"
-2. **Buscar as datas de producao distintas** vinculadas ao receivable selecionado (via tabela `productions` com `linked_receivable_id`)
-3. **Exibir um botao por data de producao distinta** encontrada, permitindo preencher rapidamente a data de recebimento com a data correta de cada producao
-4. **Manter o funcionamento atual**: o campo de data continua editavel manualmente e com default "hoje"
+## Solucao
+
+Adicionar um **modo de recebimento por data de producao** no dialog existente, mantendo o modo atual (data unica) como padrao.
+
+## Como vai funcionar
+
+1. Ao abrir o dialog "Registrar Recebimento", o sistema busca as producoes vinculadas ao recebivel
+2. Se houver producoes de **datas diferentes**, aparece uma opcao: "Receber por data de producao"
+3. Ao ativar essa opcao, o dialog mostra uma tabela com cada data de producao, quantidade de itens e valor proporcional
+4. Ao confirmar, o sistema cria **uma movimentacao financeira por data**, cada uma com o valor proporcional das producoes daquele dia
+5. O recebivel e marcado como RECEBIDO com o valor total
+6. O modo padrao (data unica) continua funcionando exatamente como hoje
 
 ## Detalhes tecnicos
 
 ### Arquivo: `src/pages/Billing.tsx`
 
-**1. Novo estado para armazenar as datas de producao vinculadas**
-
-Adicionar um estado `linkedProductionDates` (array de strings YYYY-MM-DD, sem duplicatas, ordenado).
-
-**2. Alterar `openReceiveDialog`**
-
-Ao abrir o dialog, buscar as datas de producao distintas no banco:
+**1. Expandir o estado para armazenar producoes completas (nao so datas)**
 
 ```text
-const { data: prods } = await supabase
-  .from("productions")
-  .select("production_date")
-  .eq("company_id", currentCompany.id)
-  .eq("linked_receivable_id", receivable.id);
+// Tipo local para producoes vinculadas
+interface LinkedProduction {
+  id: string;
+  production_date: string;
+  total_value: number;
+}
 
-const uniqueDates = Array.from(new Set(
-  (prods || []).map(p => p.production_date).filter(Boolean)
-)).sort();
-
-setLinkedProductionDates(uniqueDates);
+// Estado
+const [linkedProductions, setLinkedProductions] = useState<LinkedProduction[]>([]);
+const [receiveByProductionDate, setReceiveByProductionDate] = useState(false);
 ```
 
-**3. Substituir o botao atual no dialog**
+**2. Alterar `openReceiveDialog` para buscar producoes completas**
 
-Remover o botao fixo "Usar data do faturamento" e substituir por:
+Buscar `id`, `production_date` e `total_value` das producoes vinculadas. Agrupar por data para exibir no dialog.
 
-- Se houver **1 data de producao**: exibir um unico botao "Usar data da producao (dd/MM/yyyy)"
-- Se houver **varias datas**: exibir um botao por data, com label "Usar data da producao: dd/MM/yyyy"
-- Se **nao houver producoes vinculadas**: nao exibir nenhum botao (comportamento limpo)
+**3. Alterar o dialog para mostrar as duas opcoes**
+
+- Manter campo de data unica (padrao) com os botoes de atalho de data de producao
+- Adicionar um Switch "Receber por data de producao" que, ao ativar, mostra a tabela de datas com valores
+- A tabela exibe: Data | Qtd producoes | Valor proporcional
+- Remover o botao "Usar data do faturamento" (nao e mais necessario)
+
+**4. Alterar `handleMarkReceived` para suportar os dois modos**
+
+- **Modo simples (padrao)**: funciona exatamente como hoje - uma movimentacao, uma data
+- **Modo por data de producao**: chama `markAsReceived` uma vez para cada grupo de data, com o valor proporcional. Alternativamente, cria as movimentacoes diretamente no Billing.tsx e depois atualiza o receivable
+
+### Arquivo: `src/hooks/useReceivablesDB.ts`
+
+**5. Adicionar funcao `markAsReceivedMultipleDates`**
+
+Nova funcao que recebe um array de `{ date, amount }` e cria uma movimentacao por item:
 
 ```text
-{linkedProductionDates.length > 0 && (
-  <div className="space-y-1">
-    {linkedProductionDates.map((d) => (
-      <Button
-        key={d}
-        type="button"
-        variant="outline"
-        size="sm"
-        className="w-full gap-2 text-xs"
-        onClick={() => setReceiveData({ ...receiveData, date: d })}
-      >
-        <CalendarIcon className="h-3 w-3" />
-        Usar data da producao ({format(parseISO(d), "dd/MM/yyyy")})
-      </Button>
-    ))}
-  </div>
-)}
+markAsReceivedMultipleDates(
+  receivableId: string,
+  entries: Array<{ date: string; amount: number }>,
+  userName: string
+)
 ```
 
-**4. Limpar estado ao fechar dialog**
-
-Resetar `linkedProductionDates` para `[]` ao fechar o dialog.
+Internamente:
+- Reutiliza a mesma logica de inferencia de categoria/especialidade do `markAsReceived` atual
+- Cria N financial_entries (uma por data/valor)
+- Atualiza o receivable com status RECEBIDO e o total recebido
+- Vincula o primeiro transaction_id ao receivable (linked_transaction_id)
+- Registra todas as movimentacoes no historico
 
 ## O que NAO muda
 
-- Nenhuma logica de recebimento, criacao de movimentacao financeira ou RPC
+- Nenhum schema de banco de dados
+- Nenhuma RLS ou RPC
+- O modo de recebimento simples (data unica) continua identico
 - Nenhum outro dialog (glosa, recurso, historico)
-- Nenhum schema ou RLS
-- O campo de data manual continua funcionando normalmente
-- O default continua sendo a data de hoje
+- A logica de idempotencia e anti-duplicidade e mantida
+- O rollback automatico e mantido
+
+## Fluxo visual do dialog
+
+```text
++------------------------------------------+
+| Registrar Recebimento                    |
++------------------------------------------+
+| Valor: R$ 1.500,00                       |
+|                                          |
+| Data do Recebimento: [2026-02-20]        |
+| [Usar data da producao (10/02/2026)]     |
+| [Usar data da producao (15/02/2026)]     |
+|                                          |
+| [x] Receber por data de producao         |
+|                                          |
+| (quando ativado, mostra:)                |
+| +------+-------+----------+             |
+| | Data | Qtd   | Valor    |             |
+| +------+-------+----------+             |
+| | 10/02| 3     | R$ 900   |             |
+| | 15/02| 2     | R$ 600   |             |
+| +------+-------+----------+             |
+| Total: R$ 1.500,00                       |
+|                                          |
+| [Cancelar]  [Confirmar Recebimento]      |
++------------------------------------------+
+```
+
+Quando o switch esta desativado, funciona exatamente como hoje (campo de data unica).
+Quando ativado, ignora o campo de data unica e usa as datas individuais das producoes.
+
