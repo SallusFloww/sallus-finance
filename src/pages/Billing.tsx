@@ -176,6 +176,7 @@ export default function Billing() {
   const [resolveAppealDialogOpen, setResolveAppealDialogOpen] = useState(false);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [selectedReceivable, setSelectedReceivable] = useState<Receivable | null>(null);
+  const [linkedProductionDates, setLinkedProductionDates] = useState<string[]>([]);
   const [receiveData, setReceiveData] = useState({ amount: "", date: format(new Date(), "yyyy-MM-dd") });
   const [glossData, setGlossData] = useState<{ 
     type: GlossType; 
@@ -323,6 +324,7 @@ export default function Billing() {
       setReceiveDialogOpen(false);
       setSelectedReceivable(null);
       setReceiveData({ amount: "", date: format(new Date(), "yyyy-MM-dd") });
+      setLinkedProductionDates([]);
     }
   };
 
@@ -432,10 +434,26 @@ export default function Billing() {
     return { text: `${daysOpen} dias`, isOverdue };
   };
 
-  const openReceiveDialog = (receivable: Receivable) => {
+  const openReceiveDialog = async (receivable: Receivable) => {
     setSelectedReceivable(receivable);
     setReceiveData({ amount: receivable.billedAmount.toString(), date: format(new Date(), "yyyy-MM-dd") });
+    setLinkedProductionDates([]);
     setReceiveDialogOpen(true);
+
+    // Fetch linked production dates
+    if (currentCompany?.id) {
+      const { data: prods } = await supabase
+        .from("productions")
+        .select("production_date")
+        .eq("company_id", currentCompany.id)
+        .eq("linked_receivable_id", receivable.id);
+
+      const uniqueDates = Array.from(new Set(
+        (prods || []).map(p => p.production_date).filter(Boolean)
+      )).sort();
+
+      setLinkedProductionDates(uniqueDates);
+    }
   };
 
   const openGlossDialog = (receivable: Receivable) => {
@@ -1030,6 +1048,23 @@ export default function Billing() {
                   value={receiveData.date}
                   onChange={(e) => setReceiveData({ ...receiveData, date: e.target.value })}
                 />
+                {linkedProductionDates.length > 0 && (
+                  <div className="space-y-1">
+                    {linkedProductionDates.map((d) => (
+                      <Button
+                        key={d}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-full gap-2 text-xs"
+                        onClick={() => setReceiveData({ ...receiveData, date: d })}
+                      >
+                        <CalendarIcon className="h-3 w-3" />
+                        Usar data da produção ({format(parseISO(d), "dd/MM/yyyy")})
+                      </Button>
+                    ))}
+                  </div>
+                )}
                 {selectedReceivable && (
                   <Button
                     type="button"
