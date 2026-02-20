@@ -1030,6 +1030,18 @@ export default function Billing() {
                   value={receiveData.date}
                   onChange={(e) => setReceiveData({ ...receiveData, date: e.target.value })}
                 />
+                {selectedReceivable && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2 text-xs"
+                    onClick={() => setReceiveData({ ...receiveData, date: selectedReceivable.billingDate })}
+                  >
+                    <CalendarIcon className="h-3 w-3" />
+                    Usar data do faturamento ({format(parseISO(selectedReceivable.billingDate), "dd/MM/yyyy")})
+                  </Button>
+                )}
               </div>
             </div>
             <DialogFooter>
