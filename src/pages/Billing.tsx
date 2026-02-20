@@ -245,9 +245,6 @@ export default function Billing() {
     if (!currentCompany?.id) return;
     setCaixaLoading(true);
 
-    // CRÍTICO: usar `receivables` diretamente (não via filterReceivables memoizado)
-    // para evitar stale closure após refetchReceivables() na reconciliação.
-    // Filtrar pelo mesmo critério de billingDate que totals.recebido usa.
     const start = dateRange.start;
     const end = dateRange.end;
 
@@ -256,8 +253,7 @@ export default function Billing() {
       return (
         d >= start &&
         d <= end &&
-        (r.status === "RECEBIDO" || r.status === "RECEBIDO_COM_GLOSA") &&
-        r.linkedTransactionId
+        (r.status === "RECEBIDO" || r.status === "RECEBIDO_COM_GLOSA")
       );
     });
 
@@ -267,22 +263,53 @@ export default function Billing() {
       return;
     }
 
+    // 1) Buscar por linked_transaction_id (modo simples)
     const entryIds = receivedInPeriod
       .map((r) => r.linkedTransactionId)
       .filter(Boolean) as string[];
 
-    const { data, error } = await supabase
-      .from("financial_entries")
-      .select("valor")
-      .in("id", entryIds)
-      .neq("status", "cancelado");
+    const seenIds = new Set<string>();
+    let totalCaixa = 0;
 
-    if (!error && data) {
-      const total = data.reduce((sum: number, e: { valor: number }) => sum + Number(e.valor), 0);
-      setCaixaTotal(total);
-    } else {
-      setCaixaTotal(null);
+    if (entryIds.length > 0) {
+      const { data } = await supabase
+        .from("financial_entries")
+        .select("id, valor")
+        .in("id", entryIds)
+        .neq("status", "cancelado");
+
+      if (data) {
+        data.forEach((e) => {
+          seenIds.add(e.id);
+          totalCaixa += Number(e.valor);
+        });
+      }
     }
+
+    // 2) Buscar entradas extras pelo campo observacao (split receipts)
+    // As entradas split contêm "receivable_id=<id>" na observação
+    const receivableIds = receivedInPeriod.map((r) => r.id);
+
+    // Buscar em lotes para evitar queries muito grandes
+    for (const rId of receivableIds) {
+      const { data: extraEntries } = await supabase
+        .from("financial_entries")
+        .select("id, valor")
+        .eq("company_id", currentCompany.id)
+        .ilike("observacao", `%receivable_id=${rId}%`)
+        .neq("status", "cancelado");
+
+      if (extraEntries) {
+        extraEntries.forEach((e) => {
+          if (!seenIds.has(e.id)) {
+            seenIds.add(e.id);
+            totalCaixa += Number(e.valor);
+          }
+        });
+      }
+    }
+
+    setCaixaTotal(totalCaixa);
     setCaixaLoading(false);
   }, [currentCompany?.id, dateRange.start, dateRange.end, receivables]);
 
@@ -513,14 +540,17 @@ export default function Billing() {
         setLinkedProductionDates(uniqueDates);
 
         // Group by date
+        // Filter out zero-value productions for split receipt
+        const validProds = prods.filter(p => Number(p.total_value || 0) > 0);
+
         const groups: ProductionDateGroup[] = uniqueDates.map(date => {
-          const prodsForDate = prods.filter(p => p.production_date === date);
+          const prodsForDate = validProds.filter(p => p.production_date === date);
           return {
             date,
             count: prodsForDate.length,
             totalValue: prodsForDate.reduce((sum, p) => sum + Number(p.total_value || 0), 0),
           };
-        });
+        }).filter(g => g.totalValue > 0);
         setProductionDateGroups(groups);
       }
     }
@@ -1205,11 +1235,27 @@ export default function Billing() {
                       {formatCurrency(productionDateGroups.reduce((sum, g) => sum + g.totalValue, 0))}
                     </span>
                   </div>
-                  {selectedReceivable && (
-                    <p className="text-xs text-muted-foreground">
-                      Valor faturado: {formatCurrency(selectedReceivable.billedAmount)}
-                    </p>
-                  )}
+                  {selectedReceivable && (() => {
+                    const splitTotal = productionDateGroups.reduce((sum, g) => sum + g.totalValue, 0);
+                    const diff = Math.abs(splitTotal - selectedReceivable.billedAmount);
+                    const hasDiff = diff > 0.01;
+                    return (
+                      <>
+                        <p className="text-xs text-muted-foreground">
+                          Valor faturado: {formatCurrency(selectedReceivable.billedAmount)}
+                        </p>
+                        {hasDiff && (
+                          <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2">
+                            <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                            <p className="text-xs text-amber-700">
+                              O total das produções ({formatCurrency(splitTotal)}) difere do valor faturado ({formatCurrency(selectedReceivable.billedAmount)}). 
+                              Diferença: {formatCurrency(diff)}.
+                            </p>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
             </div>
