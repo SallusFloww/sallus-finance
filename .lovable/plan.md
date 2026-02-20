@@ -1,54 +1,78 @@
 
-# Melhorar dialog "Marcar como Recebido" no Faturamento
+
+# Botao "Usar data da producao" no dialog de Recebimento
 
 ## O que sera feito
 
-No dialog de "Registrar Recebimento" da pagina de Faturamento (`/billing`), sera adicionado um botao de atalho que permite marcar o recebimento com a mesma data do faturamento (data de producao/emissao). Isso facilita o fluxo de recebimentos de particulares, onde o pagamento ocorre no ato.
+No dialog "Registrar Recebimento" da pagina de Faturamento (`/billing`):
 
-## Arquivo: `src/pages/Billing.tsx`
+1. **Corrigir o label** de "Usar data do faturamento" para "Usar data da producao"
+2. **Buscar as datas de producao distintas** vinculadas ao receivable selecionado (via tabela `productions` com `linked_receivable_id`)
+3. **Exibir um botao por data de producao distinta** encontrada, permitindo preencher rapidamente a data de recebimento com a data correta de cada producao
+4. **Manter o funcionamento atual**: o campo de data continua editavel manualmente e com default "hoje"
 
-### Alteracao no dialog "Marcar Recebido" (linhas 1026-1033)
+## Detalhes tecnicos
 
-Substituir o campo simples de data por um bloco com:
+### Arquivo: `src/pages/Billing.tsx`
 
-1. O campo de data existente (mantido como esta)
-2. Um botao de atalho "Usar data do faturamento (dd/MM/yyyy)" que preenche automaticamente a data de recebimento com a `billingDate` do receivable selecionado
+**1. Novo estado para armazenar as datas de producao vinculadas**
 
-O bloco ficara assim:
+Adicionar um estado `linkedProductionDates` (array de strings YYYY-MM-DD, sem duplicatas, ordenado).
+
+**2. Alterar `openReceiveDialog`**
+
+Ao abrir o dialog, buscar as datas de producao distintas no banco:
 
 ```text
-<div className="space-y-2">
-  <Label>Data do Recebimento *</Label>
-  <Input
-    type="date"
-    value={receiveData.date}
-    onChange={(e) => setReceiveData({ ...receiveData, date: e.target.value })}
-  />
-  {selectedReceivable && (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      className="w-full gap-2 text-xs"
-      onClick={() => setReceiveData({ ...receiveData, date: selectedReceivable.billingDate })}
-    >
-      <CalendarIcon className="h-3 w-3" />
-      Usar data do faturamento ({format(parseISO(selectedReceivable.billingDate), "dd/MM/yyyy")})
-    </Button>
-  )}
-</div>
+const { data: prods } = await supabase
+  .from("productions")
+  .select("production_date")
+  .eq("company_id", currentCompany.id)
+  .eq("linked_receivable_id", receivable.id);
+
+const uniqueDates = Array.from(new Set(
+  (prods || []).map(p => p.production_date).filter(Boolean)
+)).sort();
+
+setLinkedProductionDates(uniqueDates);
 ```
+
+**3. Substituir o botao atual no dialog**
+
+Remover o botao fixo "Usar data do faturamento" e substituir por:
+
+- Se houver **1 data de producao**: exibir um unico botao "Usar data da producao (dd/MM/yyyy)"
+- Se houver **varias datas**: exibir um botao por data, com label "Usar data da producao: dd/MM/yyyy"
+- Se **nao houver producoes vinculadas**: nao exibir nenhum botao (comportamento limpo)
+
+```text
+{linkedProductionDates.length > 0 && (
+  <div className="space-y-1">
+    {linkedProductionDates.map((d) => (
+      <Button
+        key={d}
+        type="button"
+        variant="outline"
+        size="sm"
+        className="w-full gap-2 text-xs"
+        onClick={() => setReceiveData({ ...receiveData, date: d })}
+      >
+        <CalendarIcon className="h-3 w-3" />
+        Usar data da producao ({format(parseISO(d), "dd/MM/yyyy")})
+      </Button>
+    ))}
+  </div>
+)}
+```
+
+**4. Limpar estado ao fechar dialog**
+
+Resetar `linkedProductionDates` para `[]` ao fechar o dialog.
 
 ## O que NAO muda
 
-- Nenhuma logica de recebimento ou criacao de movimentacao financeira
+- Nenhuma logica de recebimento, criacao de movimentacao financeira ou RPC
 - Nenhum outro dialog (glosa, recurso, historico)
-- Nenhum schema, RPC ou RLS
-- O campo de data continua editavel manualmente
-- O comportamento padrao (data de hoje) continua igual
-
-## Resultado
-
-- O campo de data do recebimento continua com a data de hoje como padrao
-- Um botao abaixo permite trocar rapidamente para a data do faturamento (util para particulares que pagam na hora)
-- O usuario pode tambem digitar qualquer outra data manualmente
+- Nenhum schema ou RLS
+- O campo de data manual continua funcionando normalmente
+- O default continua sendo a data de hoje
