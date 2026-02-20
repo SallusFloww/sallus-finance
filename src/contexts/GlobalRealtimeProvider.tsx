@@ -99,6 +99,20 @@ export function GlobalRealtimeProvider({ children }: { children: ReactNode }) {
           notifyAll();
         }
       )
+      // company_financial_settings - Configurações (unidades, categorias, etc.)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "company_financial_settings",
+          filter: `company_id=eq.${companyId}`,
+        },
+        (payload) => {
+          console.log("[GlobalRealtime] company_financial_settings alterado:", payload.eventType);
+          notifyAll();
+        }
+      )
       .subscribe((status) => {
         console.log("[GlobalRealtime] Status do canal:", status);
       });
