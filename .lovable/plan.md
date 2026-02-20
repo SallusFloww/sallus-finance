@@ -1,53 +1,74 @@
 
 
-# Fix: Unidade "Hiperbarica" nao aparece no formulario de Producao
+# Fix: Unidades criadas em Configuracoes devem refletir em todas as abas e relatorios
 
-## Causa raiz
+## Problema
 
-A pagina `Production.tsx` obtem unidades de `transactions.settings.units`, que vem do `AppContext` -> `useTransactionsDB` -> `useCompanySettings`. Esse e um **hook independente** que carrega dados apenas uma vez no mount. Quando voce cria "Hiperbarica" em Configuracoes, aquela instancia de `useCompanySettings` atualiza, mas a instancia do `AppContext` **nao recarrega**. O `GlobalRealtimeProvider` escuta apenas `financial_entries`, `productions` e `receivables` -- nunca `company_financial_settings`.
+Quando uma nova unidade (ex: "Hiperbarica") e criada em Configuracoes, ela nao aparece imediatamente nos filtros de Relatorios, Faturamento, Recebiveis, BI, Score, DRE, etc. O usuario precisa dar F5 para ver a unidade nova.
 
-Resultado: ao navegar para Producao, as unidades passadas no prop `units={settings.units}` estao desatualizadas.
+Isso acontece porque essas paginas consomem `settings.units` via `useApp()` -> `useTransactionsDB` -> `useCompanySettings`. O `useCompanySettings` carrega dados uma unica vez no mount e nao escuta mudancas. O `GlobalRealtimeProvider` so escuta `financial_entries`, `productions` e `receivables` -- nunca `company_financial_settings`.
 
-Alem disso, o `ProductionForm` tem sua propria instancia de `useCompanySettings` (linha 123), mas a logica na linha 332 **prioriza o prop `units`** sobre os dados frescos:
+## Solucao (2 arquivos)
 
-```text
-const effectiveUnits = units && units.length > 0 ? units : settings?.units || [];
-```
+### 1. `src/contexts/GlobalRealtimeProvider.tsx` -- Adicionar listener para `company_financial_settings`
 
-Como o prop sempre tem pelo menos as 3 unidades default (Oncologia, Pronto Socorro, Centro Clinico), a condicao `units.length > 0` e sempre `true`, e os dados frescos do `ProductionForm` sao ignorados.
+Adicionar um quarto `.on()` no canal realtime para escutar mudancas na tabela `company_financial_settings`, filtrado por `company_id`. Quando o usuario salva uma nova unidade em Configuracoes, o canal detecta a mudanca e incrementa a versao global.
 
-## Solucao
+### 2. `src/hooks/useCompanySettings.ts` -- Reagir a versao global
 
-Inverter a prioridade na linha 332 do `ProductionForm.tsx`: usar os dados do proprio `useCompanySettings` do formulario como fonte primaria (pois ele carrega diretamente do banco no mount), e usar o prop `units` apenas como fallback.
+Importar `useGlobalRealtime` e observar `version`. Quando `version` mudar (indicando que alguma tabela critica foi alterada, incluindo agora `company_financial_settings`), chamar `loadSettings()` para refetch dos dados.
 
-### Arquivo: `src/components/production/ProductionForm.tsx`
+Isso faz com que **todas** as instancias de `useCompanySettings` (dentro de `useTransactionsDB`/`AppContext`, dentro de `ProductionForm`, dentro de `FinancialEntryForm`, etc.) recebam os dados atualizados automaticamente.
 
-Linha 332 -- mudar de:
+## Detalhes tecnicos
 
-```text
-const effectiveUnits = units && units.length > 0 ? units : settings?.units || [];
-```
+### Arquivo 1: `src/contexts/GlobalRealtimeProvider.tsx`
 
-Para:
+Adicionar ao canal `global-financial-realtime`, apos o listener de `receivables`:
 
 ```text
-const effectiveUnits = settings?.units && settings.units.length > 0
-  ? settings.units
-  : (units && units.length > 0 ? units : []);
+.on(
+  "postgres_changes",
+  {
+    event: "*",
+    schema: "public",
+    table: "company_financial_settings",
+    filter: `company_id=eq.${companyId}`,
+  },
+  (payload) => {
+    console.log("[GlobalRealtime] company_financial_settings alterado:", payload.eventType);
+    notifyAll();
+  }
+)
 ```
 
-Isso garante que o formulario sempre usa os dados mais recentes do banco (sua propria instancia de `useCompanySettings` carrega no mount do dialog), com fallback para o prop caso o carregamento ainda nao tenha terminado.
+### Arquivo 2: `src/hooks/useCompanySettings.ts`
+
+1. Importar `useGlobalRealtime`
+2. Obter `version` do contexto
+3. Adicionar um `useEffect` que chama `loadSettings()` quando `version` muda (apos o carregamento inicial, para evitar duplo-load no mount)
+
+```text
+const { version } = useGlobalRealtime();
+
+useEffect(() => {
+  if (initialLoadDone.current && currentCompany?.id) {
+    loadSettings();
+  }
+}, [version]);
+```
 
 ## O que NAO muda
 
-- Nenhum outro arquivo
+- Nenhuma pagina individual precisa ser alterada (Reports, Billing, Receivables, BI, etc.)
 - Nenhum schema, RPC, trigger ou RLS
-- O prop `units` continua existindo como fallback
+- A correcao anterior do `ProductionForm` (effectiveUnits) continua valida como camada extra de seguranca
 - Dados historicos intactos
-- Fluxos de edicao, exclusao e inativacao de unidades inalterados
+- Performance: o refetch so ocorre quando ha mudanca real detectada pelo realtime
 
 ## Teste
 
-1. Criar unidade "Hiperbarica" em Configuracoes (ja feito)
-2. Ir para Producao -> Nova Producao
-3. Verificar que "Hiperbarica" aparece no dropdown de Unidade
+1. Abrir a aba Relatorios (ou Faturamento, Recebiveis, BI)
+2. Em outra aba do navegador, ir em Configuracoes e criar uma nova unidade "Hiperbarica"
+3. Voltar para Relatorios -- a unidade "Hiperbarica" deve aparecer nos filtros de unidade sem precisar dar F5
+
