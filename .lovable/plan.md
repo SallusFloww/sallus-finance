@@ -1,74 +1,54 @@
 
 
-# Fix: Unidades criadas em Configuracoes devem refletir em todas as abas e relatorios
+# Adicionar coluna "Data" na tabela de producoes do modal de faturamento sugerido
 
-## Problema
+## O que sera feito
 
-Quando uma nova unidade (ex: "Hiperbarica") e criada em Configuracoes, ela nao aparece imediatamente nos filtros de Relatorios, Faturamento, Recebiveis, BI, Score, DRE, etc. O usuario precisa dar F5 para ver a unidade nova.
+No modal "Confirmar Faturamento Sugerido", na tabela "Producoes a incluir no faturamento:", sera adicionada uma coluna "Data" exibindo a data de producao de cada item, facilitando a verificacao antes de confirmar o faturamento.
 
-Isso acontece porque essas paginas consomem `settings.units` via `useApp()` -> `useTransactionsDB` -> `useCompanySettings`. O `useCompanySettings` carrega dados uma unica vez no mount e nao escuta mudancas. O `GlobalRealtimeProvider` so escuta `financial_entries`, `productions` e `receivables` -- nunca `company_financial_settings`.
+## Arquivo: `src/pages/SuggestedBilling.tsx`
 
-## Solucao (2 arquivos)
+### Alteracao 1 - Header da tabela (linha 1071-1075)
 
-### 1. `src/contexts/GlobalRealtimeProvider.tsx` -- Adicionar listener para `company_financial_settings`
+Adicionar coluna "Data" apos a coluna "Descricao":
 
-Adicionar um quarto `.on()` no canal realtime para escutar mudancas na tabela `company_financial_settings`, filtrado por `company_id`. Quando o usuario salva uma nova unidade em Configuracoes, o canal detecta a mudanca e incrementa a versao global.
-
-### 2. `src/hooks/useCompanySettings.ts` -- Reagir a versao global
-
-Importar `useGlobalRealtime` e observar `version`. Quando `version` mudar (indicando que alguma tabela critica foi alterada, incluindo agora `company_financial_settings`), chamar `loadSettings()` para refetch dos dados.
-
-Isso faz com que **todas** as instancias de `useCompanySettings` (dentro de `useTransactionsDB`/`AppContext`, dentro de `ProductionForm`, dentro de `FinancialEntryForm`, etc.) recebam os dados atualizados automaticamente.
-
-## Detalhes tecnicos
-
-### Arquivo 1: `src/contexts/GlobalRealtimeProvider.tsx`
-
-Adicionar ao canal `global-financial-realtime`, apos o listener de `receivables`:
-
+De:
 ```text
-.on(
-  "postgres_changes",
-  {
-    event: "*",
-    schema: "public",
-    table: "company_financial_settings",
-    filter: `company_id=eq.${companyId}`,
-  },
-  (payload) => {
-    console.log("[GlobalRealtime] company_financial_settings alterado:", payload.eventType);
-    notifyAll();
-  }
-)
+<TableHead className="w-10"></TableHead>
+<TableHead>Descricao</TableHead>
+<TableHead className="text-center">Status</TableHead>
+<TableHead className="text-right">Qtd</TableHead>
+<TableHead className="text-right">Valor</TableHead>
 ```
 
-### Arquivo 2: `src/hooks/useCompanySettings.ts`
+Para:
+```text
+<TableHead className="w-10"></TableHead>
+<TableHead>Descricao</TableHead>
+<TableHead className="text-center">Data</TableHead>
+<TableHead className="text-center">Status</TableHead>
+<TableHead className="text-right">Qtd</TableHead>
+<TableHead className="text-right">Valor</TableHead>
+```
 
-1. Importar `useGlobalRealtime`
-2. Obter `version` do contexto
-3. Adicionar um `useEffect` que chama `loadSettings()` quando `version` muda (apos o carregamento inicial, para evitar duplo-load no mount)
+### Alteracao 2 - Corpo da tabela (apos linha 1112, antes da celula de Status)
+
+Adicionar celula com a data formatada em dd/MM/yyyy:
 
 ```text
-const { version } = useGlobalRealtime();
-
-useEffect(() => {
-  if (initialLoadDone.current && currentCompany?.id) {
-    loadSettings();
-  }
-}, [version]);
+<TableCell className="text-center text-sm text-muted-foreground">
+  {format(parseISO(p.productionDate), "dd/MM/yyyy")}
+</TableCell>
 ```
 
 ## O que NAO muda
 
-- Nenhuma pagina individual precisa ser alterada (Reports, Billing, Receivables, BI, etc.)
-- Nenhum schema, RPC, trigger ou RLS
-- A correcao anterior do `ProductionForm` (effectiveUnits) continua valida como camada extra de seguranca
-- Dados historicos intactos
-- Performance: o refetch so ocorre quando ha mudanca real detectada pelo realtime
+- Nenhuma outra tabela ou modal
+- Nenhum calculo ou logica de faturamento
+- Nenhum schema, RPC ou RLS
+- As funcoes `format` e `parseISO` ja estao importadas no arquivo
 
-## Teste
+## Resultado visual
 
-1. Abrir a aba Relatorios (ou Faturamento, Recebiveis, BI)
-2. Em outra aba do navegador, ir em Configuracoes e criar uma nova unidade "Hiperbarica"
-3. Voltar para Relatorios -- a unidade "Hiperbarica" deve aparecer nos filtros de unidade sem precisar dar F5
+A tabela passara a ter as colunas: [checkbox] | Descricao | Data | Status | Qtd | Valor
 
