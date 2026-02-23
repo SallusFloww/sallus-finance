@@ -72,6 +72,12 @@ const STATUS_CONFIG: Record<
     icon: CheckCircle,
     description: "Recebimento confirmado. Valor no caixa.",
   },
+  CANCELADO: {
+    label: "Cancelado",
+    color: "bg-gray-500/10 text-gray-500 border-gray-500/20",
+    icon: XCircle,
+    description: "Produção cancelada. Não será faturada.",
+  },
 };
 
 const PRODUCTION_TYPE_LABELS: Record<string, string> = {
@@ -93,15 +99,20 @@ interface ProductionListProps {
   productions: Production[];
   units: UnitConfig[];
   onDelete?: (id: string) => void;
+  onCancel?: (id: string, reason?: string) => Promise<void>;
   onEdit?: (id: string, data: Partial<Production>) => Promise<void>;
   onViewHistory?: (production: Production) => void;
 }
 
-export function ProductionList({ productions, units, onDelete, onEdit, onViewHistory }: ProductionListProps) {
+export function ProductionList({ productions, units, onDelete, onCancel, onEdit, onViewHistory }: ProductionListProps) {
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingProduction, setEditingProduction] = useState<Production | null>(null);
   const [editSaving, setEditSaving] = useState(false);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancellingProduction, setCancellingProduction] = useState<Production | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelSaving, setCancelSaving] = useState(false);
 
   // Médicos(as) - exibição na lista (nome a partir de doctorId)
   const { currentCompany, profile } = useAuth();
@@ -259,10 +270,10 @@ export function ProductionList({ productions, units, onDelete, onEdit, onViewHis
   }
 
   // AUDIT_FIX: Calculate totals using effectiveQty for packages
-  // Nota: ProductionStatus não tem "CANCELADO" - todos os status são válidos para contagem
-  // effectiveQty = packageQty (se pacote) ?? quantity (padrão) para consistência com relatórios
+  // Produções canceladas são excluídas dos totais
   const totals = filteredProductions.reduce(
     (acc, p) => {
+      if (p.status === "CANCELADO") return acc;
       const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";
       const effectiveQty = isPackage ? (p.packageQty ?? p.quantity ?? 1) : p.quantity;
       return {
@@ -273,6 +284,29 @@ export function ProductionList({ productions, units, onDelete, onEdit, onViewHis
     },
     { quantity: 0, estimatedValue: 0, records: 0 },
   );
+
+  const handleOpenCancel = (production: Production) => {
+    setCancellingProduction(production);
+    setCancelReason("");
+    setCancelDialogOpen(true);
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!cancellingProduction) return;
+    setCancelSaving(true);
+    try {
+      if (onCancel) {
+        await onCancel(cancellingProduction.id, cancelReason || undefined);
+      } else if (onDelete) {
+        onDelete(cancellingProduction.id);
+      }
+      setCancelDialogOpen(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setCancelSaving(false);
+    }
+  };
 
   return (
     <TooltipProvider>
@@ -329,13 +363,15 @@ export function ProductionList({ productions, units, onDelete, onEdit, onViewHis
             </TableHeader>
             <TableBody>
               {filteredProductions.map((production) => {
-                const statusConfig = STATUS_CONFIG[production.status];
+                const statusConfig = STATUS_CONFIG[production.status] || STATUS_CONFIG.PRODUZIDO;
                 const StatusIcon = statusConfig.icon;
                 const hasLinkedReceivable = production.linkedReceivableIds && production.linkedReceivableIds.length > 0;
                 const isAlreadyBilled = production.status !== "PRODUZIDO";
+                const isCancelled = production.status === "CANCELADO";
 
                 return (
-                  <TableRow key={production.id} className="group">
+                  <TableRow key={production.id} className={cn("group", isCancelled && "opacity-50")}>
+
                     <TableCell className="font-medium">
                       <div>
                         <p className="text-sm">{format(parseISO(production.productionDate), "dd/MM/yy")}</p>
@@ -344,7 +380,7 @@ export function ProductionList({ productions, units, onDelete, onEdit, onViewHis
                     </TableCell>
                     <TableCell>
                       <div>
-                        <p className="font-medium truncate max-w-[220px]">{production.description}</p>
+                        <p className={cn("font-medium truncate max-w-[220px]", isCancelled && "line-through")}>{production.description}</p>
                         <div className="flex items-center gap-2 mt-0.5">
                           <Badge variant="outline" className="text-[10px] h-5">
                             {getProductionTypeLabel(production.productionType)}
@@ -490,15 +526,15 @@ export function ProductionList({ productions, units, onDelete, onEdit, onViewHis
                             <History className="h-4 w-4 mr-2" />
                             Ver histórico
                           </DropdownMenuItem>
-                          {production.status === "PRODUZIDO" && onDelete && (
+                          {production.status === "PRODUZIDO" && (onCancel || onDelete) && (
                             <>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
-                                onClick={() => onDelete(production.id)}
+                                onClick={() => handleOpenCancel(production)}
                                 className="text-destructive focus:text-destructive"
                               >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Excluir
+                                <XCircle className="h-4 w-4 mr-2" />
+                                Cancelar
                               </DropdownMenuItem>
                             </>
                           )}
@@ -794,6 +830,45 @@ export function ProductionList({ productions, units, onDelete, onEdit, onViewHis
               </Button>
               <Button onClick={handleSaveEdit} disabled={editSaving}>
                 {editSaving ? "Salvando..." : "Salvar Alterações"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Cancel confirmation dialog */}
+        <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Cancelar Produção</DialogTitle>
+              <DialogDescription>
+                Esta ação não pode ser desfeita. A produção será marcada como cancelada e não poderá ser faturada.
+              </DialogDescription>
+            </DialogHeader>
+            {cancellingProduction && (
+              <div className="space-y-3">
+                <div className="rounded-lg border p-3 bg-muted/50 text-sm space-y-1">
+                  <p><strong>{cancellingProduction.description}</strong></p>
+                  <p className="text-muted-foreground">
+                    {format(parseISO(cancellingProduction.productionDate), "dd/MM/yyyy")} · {cancellingProduction.quantity}x · {formatCurrency(cancellingProduction.estimatedValue)}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cancel-reason">Motivo do cancelamento (opcional)</Label>
+                  <Input
+                    id="cancel-reason"
+                    placeholder="Ex: Paciente não compareceu"
+                    value={cancelReason}
+                    onChange={(e) => setCancelReason(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setCancelDialogOpen(false)} disabled={cancelSaving}>
+                Voltar
+              </Button>
+              <Button variant="destructive" onClick={handleConfirmCancel} disabled={cancelSaving}>
+                {cancelSaving ? "Cancelando..." : "Confirmar Cancelamento"}
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -110,7 +110,8 @@ export default function Production() {
   const {
     productions, 
     addProduction, 
-    deleteProduction, 
+    deleteProduction,
+    cancelProduction,
     updateProduction,
     filterProductions, 
     getStats: getProductionStats,
@@ -184,13 +185,17 @@ export default function Production() {
     deleteProduction(id);
   };
 
+  const handleCancelProduction = async (id: string, reason?: string) => {
+    await cancelProduction(id, reason);
+  };
+
   const handleEditProduction = async (id: string, data: Partial<any>) => {
     await updateProduction(id, data, user.name);
   };
 
   // Total de quantidade
   const totalQuantity = useMemo(() => {
-    return filteredProductions.reduce((sum, p) => sum + p.quantity, 0);
+    return filteredProductions.filter(p => p.status !== "CANCELADO").reduce((sum, p) => sum + p.quantity, 0);
   }, [filteredProductions]);
 
   // KPIs Operacionais (sem valores financeiros)
@@ -199,7 +204,9 @@ export default function Production() {
     const byUnit: Record<string, number> = {};
     const byConvenio: Record<string, number> = {};
 
-    filteredProductions.forEach((p) => {
+    const activeProductions = filteredProductions.filter(p => p.status !== "CANCELADO");
+
+    activeProductions.forEach((p) => {
       byType[p.productionType] = (byType[p.productionType] || 0) + p.quantity;
       byUnit[p.unit] = (byUnit[p.unit] || 0) + p.quantity;
       if (p.convenio) {
@@ -398,6 +405,7 @@ export default function Production() {
                   <SelectItem value="FATURADO">Faturado</SelectItem>
                   <SelectItem value="RECEBIDO">Recebido</SelectItem>
                   <SelectItem value="GLOSADO">Glosado</SelectItem>
+                  <SelectItem value="CANCELADO">Cancelado</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={selectedUnit} onValueChange={setSelectedUnit}>
@@ -450,6 +458,7 @@ export default function Production() {
           productions={filteredProductions}
           units={settings.units}
           onDelete={handleDeleteProduction}
+          onCancel={handleCancelProduction}
           onEdit={handleEditProduction}
         />
 
