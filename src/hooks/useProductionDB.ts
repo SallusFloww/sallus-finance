@@ -469,17 +469,54 @@ export function useProductionDB() {
     [productions, fetchProductions],
   );
 
-  const deleteProduction = useCallback(
-    async (id: string) => {
+  const cancelProduction = useCallback(
+    async (id: string, reason?: string) => {
       const production = productions.find((p) => p.id === id);
-      if (!production || production.status !== "PRODUZIDO") {
-        toast.error("Apenas produções com status PRODUZIDO podem ser excluídas");
+      if (!production) {
+        toast.error("Produção não encontrada");
+        return;
+      }
+      if (production.status !== "PRODUZIDO") {
+        toast.error("Apenas produções com status PRODUZIDO podem ser canceladas");
         return;
       }
 
-      toast.error("Exclusão não permitida. Use cancelamento em vez disso.");
+      const userName = profile?.full_name || "system";
+      const history = [...(production.history || [])];
+      history.push(
+        createHistoryEntry(
+          "CANCELADO" as any,
+          reason ? `Produção cancelada. Motivo: ${reason}` : "Produção cancelada",
+          userName,
+        ),
+      );
+
+      const { error: updateError } = await supabase
+        .from("productions")
+        .update({
+          status: "CANCELADO",
+          updated_at: new Date().toISOString(),
+          history: JSON.parse(JSON.stringify(history)),
+        })
+        .eq("id", id);
+
+      if (updateError) {
+        console.error(updateError);
+        toast.error("Erro ao cancelar produção");
+        return;
+      }
+
+      await fetchProductions();
+      toast.success("Produção cancelada com sucesso");
     },
-    [productions],
+    [productions, profile, fetchProductions],
+  );
+
+  const deleteProduction = useCallback(
+    async (id: string) => {
+      await cancelProduction(id);
+    },
+    [cancelProduction],
   );
 
   const linkToReceivable = useCallback(
@@ -796,6 +833,7 @@ export function useProductionDB() {
     addProduction,
     updateProduction,
     deleteProduction,
+    cancelProduction,
     linkToReceivable,
     markAsReceived,
     markAsGlossed,

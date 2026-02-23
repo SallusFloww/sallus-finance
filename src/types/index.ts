@@ -421,7 +421,7 @@ export interface ReceivablesStats {
 // Rastreamento da produção antes do faturamento
 // ISOLADO de: Caixa, DRE, Score - alimenta apenas indicadores operacionais
 
-export type ProductionStatus = "PRODUZIDO" | "FATURADO" | "GLOSADO" | "RECEBIDO";
+export type ProductionStatus = "PRODUZIDO" | "FATURADO" | "GLOSADO" | "RECEBIDO" | "CANCELADO";
 
 // ProductionType é string para permitir cadastro dinâmico de novos tipos
 export type ProductionType = string;
