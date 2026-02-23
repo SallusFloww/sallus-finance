@@ -1,59 +1,65 @@
 
-# Corrigir Registros Antigos com "RECEBIMENTO_FATURAMENTO"
+# Corrigir Vinculacao de Medico na Importacao CSV
 
 ## Problema
 
-Existem registros antigos na tabela `financial_entries` com `categoria = 'RECEBIMENTO_FATURAMENTO'` que deveriam ter o nome correto do tipo de producao (ex: o codigo da "Oxigenoterapia Hiperbarica", "MAT_MED", etc.).
+A RPC `import_productions_batch` recebe `doctor_id` tanto no contexto quanto nas linhas individuais do CSV, mas **nunca extrai nem insere esse campo** na tabela `productions`. O frontend envia corretamente, porem o banco ignora.
+
+## Causa raiz
+
+Na funcao `import_productions_batch`:
+- O contexto envia `doctor_id` mas a RPC nao faz `_doctor_id := _context->>'doctor_id'`
+- Cada linha envia `doctor_id` mas a RPC nao faz `_row->>'doctor_id'`
+- O INSERT em `productions` nao inclui a coluna `doctor_id`
 
 ## Solucao
 
-Executar um **UPDATE no banco de dados** que:
+Atualizar a RPC `import_productions_batch` via migracao SQL para:
 
-1. Busca todas as `financial_entries` com `categoria = 'RECEBIMENTO_FATURAMENTO'`
-2. Para cada uma, extrai o `receivable_id` do campo `observacao`
-3. Busca as `productions` vinculadas a esse receivable (via `linked_receivable_id`)
-4. Se houver **um unico** `production_type`, atualiza a `categoria` da financial_entry com esse tipo
-5. Se houver multiplos tipos ou nenhuma producao vinculada, mantem como esta
+1. Extrair `_doctor_id` do contexto (medico padrao do lote)
+2. Dentro do loop de cada linha, extrair `doctor_id` da linha (medico individual)
+3. Usar prioridade: medico da linha > medico do contexto > null
+4. Incluir `doctor_id` no INSERT de `productions`
 
-## SQL a ser executado (via insert tool)
+## Migracao SQL
 
 ```sql
-UPDATE financial_entries fe
-SET categoria = sub.production_type
-FROM (
-  SELECT
-    fe2.id AS entry_id,
-    MIN(p.production_type) AS production_type,
-    COUNT(DISTINCT p.production_type) AS type_count
-  FROM financial_entries fe2
-  JOIN receivables r ON fe2.observacao LIKE '%receivable_id=' || r.id::text || '%'
-  JOIN productions p ON p.linked_receivable_id = r.id
-    AND p.company_id = fe2.company_id
-  WHERE fe2.categoria = 'RECEBIMENTO_FATURAMENTO'
-    AND fe2.status != 'cancelado'
-  GROUP BY fe2.id
-  HAVING COUNT(DISTINCT p.production_type) = 1
-) sub
-WHERE fe.id = sub.entry_id;
+-- Dentro das variaveis DECLARE, adicionar:
+_doctor_id UUID;
+_row_doctor_id UUID;
+
+-- Apos extrair contexto, adicionar:
+_doctor_id := NULLIF(TRIM(_context->>'doctor_id'), '')::UUID;
+
+-- Dentro do loop, antes do INSERT:
+BEGIN
+  _row_doctor_id := NULLIF(TRIM(_row->>'doctor_id'), '')::UUID;
+EXCEPTION WHEN OTHERS THEN
+  _row_doctor_id := NULL;
+END;
+
+-- No INSERT, adicionar coluna doctor_id com valor:
+COALESCE(_row_doctor_id, _doctor_id)
 ```
 
-Esta query:
-- So atualiza quando ha exatamente 1 tipo de producao vinculado (seguro)
-- Mantem RECEBIMENTO_FATURAMENTO quando ha multiplos tipos (correto)
-- Nao altera registros cancelados
-- Nao modifica nenhum schema, trigger ou RLS
+## Dados existentes
+
+A producao de Quimioterapia ja importada ficou sem `doctor_id`. Sera necessario atualizar manualmente esse registro OU re-importar. Nao ha como corrigir automaticamente registros antigos sem saber qual medico vincular (a menos que o usuario informe).
+
+## Arquivos alterados
+
+| Local | Alteracao |
+|-------|-----------|
+| Migracao SQL (RPC `import_productions_batch`) | Adicionar extracao e insercao de `doctor_id` (contexto + linha) |
 
 ## O que NAO muda
 
-- Nenhum arquivo de codigo (a correcao anterior no useReceivablesDB.ts ja previne novos registros com esse problema)
-- Nenhum schema de banco
+- Nenhum arquivo frontend (ja envia `doctor_id` corretamente)
 - Nenhuma RLS ou trigger
-- Registros com multiplos tipos de producao permanecem como "RECEBIMENTO_FATURAMENTO" (exibido como "Recebimento de Faturamento" pelo resolveCategoryLabel)
+- Nenhum outro schema
+- Lancamentos manuais nao sao afetados (ja funcionam)
+- Fluxo de faturamento/recebimento nao e afetado
 
 ## Risco
 
-**Baixo**. O UPDATE so altera o campo `categoria` de registros que ja possuem producoes vinculadas com tipo unico. O `financial_entries_category_guard` trigger validara que o novo codigo existe nas categories da empresa -- se nao existir, o UPDATE falhara silenciosamente para aquele registro (seguro). Os registros que nao puderem ser atualizados continuarao exibindo "Recebimento de Faturamento" (label legivel).
-
-## Verificacao pos-execucao
-
-Conferir na aba Movimentacoes que os registros agora exibem nomes corretos (ex: "Oxigenoterapia Hiperbarica" em vez de "Recebimento de Faturamento").
+**Muito baixo**. A coluna `doctor_id` ja existe na tabela `productions` e aceita NULL. A unica mudanca e passar a preenche-la durante a importacao CSV.
