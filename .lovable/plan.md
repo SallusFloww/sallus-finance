@@ -1,75 +1,59 @@
 
-# Corrigir Label "RECEBIMENTO_FATURAMENTO" nas Movimentacoes
+# Corrigir Registros Antigos com "RECEBIMENTO_FATURAMENTO"
 
 ## Problema
 
-Quando uma producao com tipo customizado (ex: "Oxigenoterapia Hiperbarica") e recebida via faturamento, o sistema armazena a categoria como `RECEBIMENTO_FATURAMENTO` no banco porque o tipo de producao nao esta registrado como "categoria valida" nas configuracoes da empresa. Isso faz com que nas movimentacoes e relatorios apareca o codigo bruto em vez do nome legivel.
+Existem registros antigos na tabela `financial_entries` com `categoria = 'RECEBIMENTO_FATURAMENTO'` que deveriam ter o nome correto do tipo de producao (ex: o codigo da "Oxigenoterapia Hiperbarica", "MAT_MED", etc.).
 
-## Causa raiz
+## Solucao
 
-No `useReceivablesDB.ts`, a logica de inferencia de categoria faz:
+Executar um **UPDATE no banco de dados** que:
 
-1. Busca o `production_type` das producoes vinculadas
-2. Valida se esse tipo existe nas `categories` da empresa (company_financial_settings)
-3. Se NAO existir como categoria registrada -> fallback para `"RECEBIMENTO_FATURAMENTO"`
+1. Busca todas as `financial_entries` com `categoria = 'RECEBIMENTO_FATURAMENTO'`
+2. Para cada uma, extrai o `receivable_id` do campo `observacao`
+3. Busca as `productions` vinculadas a esse receivable (via `linked_receivable_id`)
+4. Se houver **um unico** `production_type`, atualiza a `categoria` da financial_entry com esse tipo
+5. Se houver multiplos tipos ou nenhuma producao vinculada, mantem como esta
 
-O problema e que tipos como "Oxigenoterapia Hiperbarica" sao tipos de **producao**, nao categorias financeiras registradas. A validacao e desnecessariamente restritiva.
+## SQL a ser executado (via insert tool)
 
-## Solucao (2 camadas)
-
-### Camada 1 - Causa raiz: `src/hooks/useReceivablesDB.ts`
-
-Alterar a logica de inferencia de categoria em **2 locais** (funcao `markAsReceived` ~linha 479 e funcao de recebimento parcelado ~linha 1227):
-
-**Antes**: So usa o production_type como categoria se ele estiver registrado nas categories da empresa. Senao, fallback para RECEBIMENTO_FATURAMENTO.
-
-**Depois**: Se o production_type existe em `PRODUCTION_TYPE_LABELS` (constantes do sistema) OU nas categories da empresa OU nos `productionTypes` customizados da empresa, usa-lo diretamente como categoria. Isso cobre CONSULTA, EXAME, QUIMIOTERAPIA e tambem tipos customizados como "Oxigenoterapia Hiperbarica".
-
-Logica expandida:
-```
-// Validar contra: categories da empresa + PRODUCTION_TYPE_LABELS + productionTypes customizados
-if (uniqueTypes.length === 1) {
-  const type = uniqueTypes[0];
-  if (validCategoryCodes.has(type.toUpperCase()) || PRODUCTION_TYPE_LABELS[type] || PRODUCTION_TYPE_LABELS[type.toUpperCase()]) {
-    inferredCategory = type;  // Usar o tipo diretamente
-  } else {
-    // Fallback mas com nota
-    inferredCategory = type;  // Usar mesmo assim - resolveCategoryLabel resolve na exibicao
-  }
-}
+```sql
+UPDATE financial_entries fe
+SET categoria = sub.production_type
+FROM (
+  SELECT
+    fe2.id AS entry_id,
+    MIN(p.production_type) AS production_type,
+    COUNT(DISTINCT p.production_type) AS type_count
+  FROM financial_entries fe2
+  JOIN receivables r ON fe2.observacao LIKE '%receivable_id=' || r.id::text || '%'
+  JOIN productions p ON p.linked_receivable_id = r.id
+    AND p.company_id = fe2.company_id
+  WHERE fe2.categoria = 'RECEBIMENTO_FATURAMENTO'
+    AND fe2.status != 'cancelado'
+  GROUP BY fe2.id
+  HAVING COUNT(DISTINCT p.production_type) = 1
+) sub
+WHERE fe.id = sub.entry_id;
 ```
 
-Simplificando: **sempre usar o production_type como categoria quando ha um unico tipo**. Manter RECEBIMENTO_FATURAMENTO apenas para multiplos tipos ou quando nao ha producoes vinculadas.
-
-### Camada 2 - Safety net na exibicao: `src/hooks/useTransactionsDB.ts`
-
-Expandir a funcao `resolveCategoryLabel` para tratar:
-
-1. Adicionar `"RECEBIMENTO_FATURAMENTO" -> "Recebimento de Faturamento"` como mapeamento direto (para registros antigos ja salvos no banco)
-2. Tentar resolver nomes customizados que podem estar no formato de display (ex: "Oxigenoterapia Hiperbarica") - ja funciona com o return as-is
-
-### Camada 3 - Mapeamento global: `src/utils/constants.ts`
-
-Adicionar `RECEBIMENTO_FATURAMENTO: "Recebimento de Faturamento"` ao `PRODUCTION_TYPE_LABELS` para que qualquer lugar do sistema que use esse mapa consiga resolver o label.
-
-## Arquivos alterados
-
-| Arquivo | Alteracao |
-|---------|-----------|
-| `src/hooks/useReceivablesDB.ts` | Simplificar inferencia de categoria: usar production_type diretamente quando ha um unico tipo (2 locais) |
-| `src/utils/constants.ts` | Adicionar RECEBIMENTO_FATURAMENTO ao PRODUCTION_TYPE_LABELS |
-| `src/hooks/useTransactionsDB.ts` | Nenhuma alteracao necessaria - resolveCategoryLabel ja consulta PRODUCTION_TYPE_LABELS |
-
-## Impacto
-
-- **Novos recebimentos**: Vao gravar o production_type correto como categoria (ex: "Oxigenoterapia Hiperbarica", "CONSULTA", "QUIMIOTERAPIA")
-- **Registros antigos**: Os que ja estao salvos como "RECEBIMENTO_FATURAMENTO" passarao a exibir "Recebimento de Faturamento" (label legivel) em vez do codigo bruto
-- **Qualquer tipo customizado futuro**: Automaticamente resolvido, pois o sistema vai usar o production_type diretamente
+Esta query:
+- So atualiza quando ha exatamente 1 tipo de producao vinculado (seguro)
+- Mantem RECEBIMENTO_FATURAMENTO quando ha multiplos tipos (correto)
+- Nao altera registros cancelados
+- Nao modifica nenhum schema, trigger ou RLS
 
 ## O que NAO muda
 
-- Nenhum schema de banco de dados
+- Nenhum arquivo de codigo (a correcao anterior no useReceivablesDB.ts ja previne novos registros com esse problema)
+- Nenhum schema de banco
 - Nenhuma RLS ou trigger
-- O fluxo de convenio/particular permanece identico
-- Relatorios e DRE usam `resolveCategoryLabel` que ja funciona com o PRODUCTION_TYPE_LABELS
-- Nenhum componente de UI precisa ser alterado (a resolucao e feita no hook)
+- Registros com multiplos tipos de producao permanecem como "RECEBIMENTO_FATURAMENTO" (exibido como "Recebimento de Faturamento" pelo resolveCategoryLabel)
+
+## Risco
+
+**Baixo**. O UPDATE so altera o campo `categoria` de registros que ja possuem producoes vinculadas com tipo unico. O `financial_entries_category_guard` trigger validara que o novo codigo existe nas categories da empresa -- se nao existir, o UPDATE falhara silenciosamente para aquele registro (seguro). Os registros que nao puderem ser atualizados continuarao exibindo "Recebimento de Faturamento" (label legivel).
+
+## Verificacao pos-execucao
+
+Conferir na aba Movimentacoes que os registros agora exibem nomes corretos (ex: "Oxigenoterapia Hiperbarica" em vez de "Recebimento de Faturamento").
