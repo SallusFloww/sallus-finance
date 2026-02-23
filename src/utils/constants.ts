@@ -64,6 +64,7 @@ export const PRODUCTION_TYPE_LABELS: Record<string, string> = {
   // Pacotes
   PACOTE_BOX: "Pacote Box",
   PACOTE_GTA: "Pacote GTA",
+  RECEBIMENTO_FATURAMENTO: "Recebimento de Faturamento",
 };
 
 // ============= TIPOS DE PACOTE =============

@@ -476,12 +476,10 @@ export function useReceivablesDB() {
               .filter(Boolean)
           );
 
-          if (uniqueTypes.length === 1 && validCategoryCodes.has(uniqueTypes[0].toUpperCase())) {
-            inferredCategory = uniqueTypes[0]; // ex: "CONSULTA" — código registrado como categoria
-          } else if (uniqueTypes.length === 1) {
-            // production_type não mapeado como categoria — fallback seguro
-            typeNote = ` | Tipo produção: ${uniqueTypes[0]} (não mapeado como categoria)`;
-            inferredCategory = "RECEBIMENTO_FATURAMENTO";
+          if (uniqueTypes.length === 1) {
+            // Sempre usar o production_type diretamente como categoria
+            // resolveCategoryLabel no useTransactionsDB resolve o label na exibição
+            inferredCategory = uniqueTypes[0];
           } else if (uniqueTypes.length > 1) {
             inferredCategory = "RECEBIMENTO_FATURAMENTO";
             typeNote = ` | Tipos: múltiplos (${uniqueTypes.join(", ").substring(0, 120)})`;
@@ -1224,10 +1222,9 @@ export function useReceivablesDB() {
               .filter(Boolean)
           );
 
-          if (uniqueTypes.length === 1 && validCategoryCodes.has(uniqueTypes[0].toUpperCase())) {
+          if (uniqueTypes.length === 1) {
+            // Sempre usar o production_type diretamente como categoria
             inferredCategory = uniqueTypes[0];
-          } else if (uniqueTypes.length === 1) {
-            typeNote = ` | Tipo produção: ${uniqueTypes[0]} (não mapeado como categoria)`;
           } else if (uniqueTypes.length > 1) {
             typeNote = ` | Tipos: múltiplos (${uniqueTypes.join(", ").substring(0, 120)})`;
           }
