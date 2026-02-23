@@ -1512,6 +1512,7 @@ export default function ProductionReport() {
                 <p className="text-[10px] text-muted-foreground mt-2 italic">Avulso QUIMIOTERAPIA</p>
               </CardContent>
             </Card>
+          </div>
         </section>
 
         {/* ══════════════════════════════════════════════════════════════════
