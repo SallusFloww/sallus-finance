@@ -48,7 +48,7 @@ interface ImportContext {
   payer_type: "CONVENIO" | "PARTICULAR";
   convenio: string;
   payment_method: string;
-  doctor_id?: string; // ✅ médico padrão do contexto (opcional)
+  doctor_id?: string | undefined; // ✅ undefined explícito — string vazia evitada intencionalmente
 }
 
 type RowStatus = "OK" | "ERRO" | "DUPLICADA";
@@ -172,7 +172,7 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
     payer_type: "CONVENIO",
     convenio: "",
     payment_method: "",
-    doctor_id: "",
+    doctor_id: undefined, // ✅ undefined em vez de "" — ?? funciona corretamente; string vazia causaria edge case na RPC
   });
 
   // ============= MÉDICO =============
@@ -480,7 +480,7 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
       try {
         let query = supabase
           .from("productions")
-          .select("production_date, unit_value, production_type, unit, payer_type, convenio, paciente_nome")
+          .select("production_date, unit_value, production_type, unit, payer_type, convenio, paciente_nome, doctor_id") // ✅ inclui doctor_id para chave de duplicidade mais precisa
           .eq("company_id", currentCompany.id)
           .eq("competencia", context.competencia)
           .eq("unit", context.unit)
@@ -507,7 +507,8 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
         const existingKeys = new Set(
           existing.map(
             (p) =>
-              `${p.production_date}|${Number(p.unit_value).toFixed(2)}|${(p.paciente_nome || "").toLowerCase().trim()}`,
+              // ✅ Chave inclui doctor_id: dois médicos diferentes atendendo mesmo paciente/dia/valor não são duplicatas
+              `${p.production_date}|${Number(p.unit_value || 0).toFixed(2)}|${(p.paciente_nome || "").toLowerCase().trim()}|${p.doctor_id || ""}`,
           ),
         );
 
@@ -516,7 +517,8 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
             return { ...r, isDuplicate: false, status: "ERRO" as RowStatus };
           }
 
-          const key = `${r.production_date}|${(r.unit_value || 0).toFixed(2)}|${r.paciente_nome.toLowerCase().trim()}`;
+          // ✅ Chave inclui doctor_id: mesmo paciente/dia/valor com médicos diferentes não é duplicata
+          const key = `${r.production_date}|${(r.unit_value || 0).toFixed(2)}|${r.paciente_nome.toLowerCase().trim()}|${r.doctor_id || ""}`;
           const isDuplicate = existingKeys.has(key);
 
           return {
@@ -612,7 +614,7 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
     if (parsedRows.length > 0 && step === "upload") {
       checkDuplicates(parsedRows);
     }
-  }, [parsedRows.length, step]);
+  }, [parsedRows, step]); // ✅ depende do conteúdo completo, não só do tamanho
 
   // ============= DOWNLOAD TEMPLATE =============
 
@@ -658,7 +660,7 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
         production_date: r.production_date,
         unit_value: r.unit_value,
         paciente_nome: r.paciente_nome || null,
-        doctor_id: r.doctor_id || null, // ✅ UUID resolvido no frontend, gravado pela RPC
+        doctor_id: r.doctor_id ?? context.doctor_id ?? null, // ✅ ?? evita falha com string vazia
         is_package: r.isPackage || false,
         consult_amount: r.consultAmount || 0,
         fee_amount: r.feeAmount || 0,
@@ -784,7 +786,7 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
       payer_type: "CONVENIO",
       convenio: "",
       payment_method: "",
-      doctor_id: "",
+      doctor_id: undefined, // ✅ reset para undefined, consistente com estado inicial
     });
     setFileName("");
     setParsedRows([]);
@@ -869,8 +871,8 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
               <div className="space-y-2">
                 <Label>Médico padrão do lote (opcional)</Label>
                 <Select
-                  value={context.doctor_id || "__NONE__"}
-                  onValueChange={(v) => setContext((c) => ({ ...c, doctor_id: v === "__NONE__" ? "" : v }))}
+                  value={context.doctor_id ?? "__NONE__"} // ✅ ?? correto: undefined e null caem no __NONE__, "" não interfere
+                  onValueChange={(v) => setContext((c) => ({ ...c, doctor_id: v === "__NONE__" ? undefined : v }))} // ✅ undefined semânticamente correto — evita string vazia chegar na RPC
                 >
                   <SelectTrigger>
                     <SelectValue placeholder={doctorsLoading ? "Carregando..." : "Sem médico"} />
