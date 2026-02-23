@@ -1,112 +1,75 @@
 
-# Pacote Box/GTA Particular - Suporte Completo
+# Corrigir Label "RECEBIMENTO_FATURAMENTO" nas Movimentacoes
 
-## Resumo
+## Problema
 
-Hoje o sistema bloqueia pacotes (PACOTE_BOX/PACOTE_GTA) para pagador "Particular". O objetivo e permitir que pacotes sejam lancados como Particular, com a possibilidade de **zerar a consulta** (cobrando apenas taxa + mat/med), e configurar regras de precificacao para "PARTICULAR" na aba de Pacotes em Configuracoes.
+Quando uma producao com tipo customizado (ex: "Oxigenoterapia Hiperbarica") e recebida via faturamento, o sistema armazena a categoria como `RECEBIMENTO_FATURAMENTO` no banco porque o tipo de producao nao esta registrado como "categoria valida" nas configuracoes da empresa. Isso faz com que nas movimentacoes e relatorios apareca o codigo bruto em vez do nome legivel.
 
-## Pontos de bloqueio atuais (4 pontos)
+## Causa raiz
 
-1. **useEffect linha 423-438**: Forca `payerType = "CONVENIO"` quando pacote e selecionado
-2. **Validacao submit linha 982-985**: Rejeita pacotes com pagador diferente de CONVENIO
-3. **PackageFields render linha 1672-1704**: So exibe componentes se `formData.convenio` estiver preenchido (PARTICULAR nao tem convenio)
-4. **Labels**: "Pacote Box (Convenio)" / "Pacote GTA (Convenio)" em 4 locais
+No `useReceivablesDB.ts`, a logica de inferencia de categoria faz:
 
-## Alteracoes
+1. Busca o `production_type` das producoes vinculadas
+2. Valida se esse tipo existe nas `categories` da empresa (company_financial_settings)
+3. Se NAO existir como categoria registrada -> fallback para `"RECEBIMENTO_FATURAMENTO"`
 
-### 1. `src/components/production/ProductionForm.tsx`
+O problema e que tipos como "Oxigenoterapia Hiperbarica" sao tipos de **producao**, nao categorias financeiras registradas. A validacao e desnecessariamente restritiva.
 
-**a) Remover forcamento de payerType (linhas 423-438)**
-O useEffect que forca `payerType = "CONVENIO"` sera alterado para apenas resetar os campos de breakdown (consultAmount, feeAmount, etc.) sem forcar o payerType. O usuario fica livre para escolher Convenio ou Particular.
+## Solucao (2 camadas)
 
-**b) Remover bloqueio no submit (linhas 982-985)**
-Remover o bloco que impede submissao quando `payerType !== "CONVENIO"`. Para PARTICULAR:
-- Se houver regra configurada para planId="PARTICULAR", usar calculo automatico normalmente
-- Se nao houver regra, permitir modo manual (PackageFields ja suporta isso)
-- Pular a validacao `validateTotal` quando pagador for PARTICULAR sem regra configurada
+### Camada 1 - Causa raiz: `src/hooks/useReceivablesDB.ts`
 
-**c) Ajustar submit para PARTICULAR (linhas 999-1024)**
-No bloco de submit do pacote, quando `payerType === "PARTICULAR"`:
-- Passar `paymentMethod` no lugar de `convenio`
-- Passar `planId` como `"PARTICULAR"` para o PackageFields
+Alterar a logica de inferencia de categoria em **2 locais** (funcao `markAsReceived` ~linha 479 e funcao de recebimento parcelado ~linha 1227):
 
-**d) Ajustar renderizacao do PackageFields (linhas 1672-1704)**
-Trocar a condicao `!formData.convenio` por uma logica que:
-- Se CONVENIO e sem convenio selecionado: mostra aviso "Selecione o convenio"
-- Se PARTICULAR: mostra PackageFields com `planId="PARTICULAR"` e modo manual ativado. O usuario pode definir consulta como R$0,00 (cobrando apenas taxa + mat/med)
-- Se CONVENIO com convenio selecionado: fluxo atual normal
+**Antes**: So usa o production_type como categoria se ele estiver registrado nas categories da empresa. Senao, fallback para RECEBIMENTO_FATURAMENTO.
 
-**e) Atualizar labels (linhas 369-371)**
-De "Pacote Box (Convenio)" para "Pacote Box" e "Pacote GTA (Convenio)" para "Pacote GTA" na funcao `getDefaultDescription`.
+**Depois**: Se o production_type existe em `PRODUCTION_TYPE_LABELS` (constantes do sistema) OU nas categories da empresa OU nos `productionTypes` customizados da empresa, usa-lo diretamente como categoria. Isso cobre CONSULTA, EXAME, QUIMIOTERAPIA e tambem tipos customizados como "Oxigenoterapia Hiperbarica".
 
-### 2. `src/components/production/PackageFields.tsx`
-
-**a) Label generico (linha 154)**
-De "Componentes do Pacote (Convenio)" para "Componentes do Pacote".
-
-**b) Consulta zerada**
-O componente ja suporta modo manual onde o usuario pode digitar R$0,00 na consulta. Para PARTICULAR sem regra, o modo manual sera ativado automaticamente (prop `forceManual`), permitindo ao usuario definir consulta = 0 facilmente. Adicionar tambem um botao rapido "Sem consulta" que zera o campo de consulta com um clique.
-
-### 3. `src/utils/constants.ts`
-
-**a) Atualizar PRODUCTION_TYPE_LABELS (linhas 65-66)**
-De `"Pacote Box (Convenio)"` para `"Pacote Box"` e `"Pacote GTA (Convenio)"` para `"Pacote GTA"`.
-
-**b) Atualizar PACKAGE_TYPES (linhas 71-73)**
-Mesma atualizacao nos nomes.
-
-**c) Atualizar PACKAGE_TYPE_LABELS (linhas 75-78)**
-Mesma atualizacao nos nomes.
-
-### 4. `src/components/settings/SettingsPackagePricing.tsx`
-
-**a) Adicionar "PARTICULAR" como opcao de plano/convenio (linha 300-315)**
-No select de "Plano/Convenio", adicionar uma opcao fixa "PARTICULAR" alem dos convenios existentes (OPERADORAS). Isso permite ao usuario configurar regras de precificacao especificas para pacotes particulares (ex: consulta = 0, taxa = X).
-
-**b) Atualizar labels de tipo de pacote (linhas 50-53)**
-Remover "(Convenio)" dos labels exibidos na listagem.
-
-**c) Atualizar titulo da secao (linha 163)**
-De "Pacotes Convenio -- Parametros" para "Pacotes -- Parametros (Consulta/Taxa)".
-
-### 5. `src/hooks/usePackagePricing.ts`
-
-Nenhuma alteracao necessaria. O hook ja aceita qualquer `planId` string (incluindo "PARTICULAR") e busca regras normalmente. Se nao houver regra para "PARTICULAR", retorna null e o sistema cai no modo manual - comportamento correto.
-
-## Fluxo do usuario - Particular sem consulta
-
-```text
-1. Configuracoes > Pacotes > Nova Regra
-   - Plano: PARTICULAR
-   - Tipo: Pacote Box
-   - Consulta: R$ 0,00
-   - Taxa: R$ 150,00
-   - Vigencia: 01/01/2026
-
-2. Producao > Nova Producao
-   - Selecionar "Pacote Box"
-   - Pagador: Particular
-   - Forma de Pagamento: PIX
-   - Valor Total: R$ 500,00
-   - Componentes calculados automaticamente:
-     Consulta: R$ 0,00 | Taxa: R$ 150,00 | Mat/Med: R$ 350,00
-   - OU clicar "Sem consulta" no modo manual
+Logica expandida:
 ```
+// Validar contra: categories da empresa + PRODUCTION_TYPE_LABELS + productionTypes customizados
+if (uniqueTypes.length === 1) {
+  const type = uniqueTypes[0];
+  if (validCategoryCodes.has(type.toUpperCase()) || PRODUCTION_TYPE_LABELS[type] || PRODUCTION_TYPE_LABELS[type.toUpperCase()]) {
+    inferredCategory = type;  // Usar o tipo diretamente
+  } else {
+    // Fallback mas com nota
+    inferredCategory = type;  // Usar mesmo assim - resolveCategoryLabel resolve na exibicao
+  }
+}
+```
+
+Simplificando: **sempre usar o production_type como categoria quando ha um unico tipo**. Manter RECEBIMENTO_FATURAMENTO apenas para multiplos tipos ou quando nao ha producoes vinculadas.
+
+### Camada 2 - Safety net na exibicao: `src/hooks/useTransactionsDB.ts`
+
+Expandir a funcao `resolveCategoryLabel` para tratar:
+
+1. Adicionar `"RECEBIMENTO_FATURAMENTO" -> "Recebimento de Faturamento"` como mapeamento direto (para registros antigos ja salvos no banco)
+2. Tentar resolver nomes customizados que podem estar no formato de display (ex: "Oxigenoterapia Hiperbarica") - ja funciona com o return as-is
+
+### Camada 3 - Mapeamento global: `src/utils/constants.ts`
+
+Adicionar `RECEBIMENTO_FATURAMENTO: "Recebimento de Faturamento"` ao `PRODUCTION_TYPE_LABELS` para que qualquer lugar do sistema que use esse mapa consiga resolver o label.
+
+## Arquivos alterados
+
+| Arquivo | Alteracao |
+|---------|-----------|
+| `src/hooks/useReceivablesDB.ts` | Simplificar inferencia de categoria: usar production_type diretamente quando ha um unico tipo (2 locais) |
+| `src/utils/constants.ts` | Adicionar RECEBIMENTO_FATURAMENTO ao PRODUCTION_TYPE_LABELS |
+| `src/hooks/useTransactionsDB.ts` | Nenhuma alteracao necessaria - resolveCategoryLabel ja consulta PRODUCTION_TYPE_LABELS |
+
+## Impacto
+
+- **Novos recebimentos**: Vao gravar o production_type correto como categoria (ex: "Oxigenoterapia Hiperbarica", "CONSULTA", "QUIMIOTERAPIA")
+- **Registros antigos**: Os que ja estao salvos como "RECEBIMENTO_FATURAMENTO" passarao a exibir "Recebimento de Faturamento" (label legivel) em vez do codigo bruto
+- **Qualquer tipo customizado futuro**: Automaticamente resolvido, pois o sistema vai usar o production_type diretamente
 
 ## O que NAO muda
 
-- Nenhum schema de banco de dados (a tabela `productions` ja aceita `payer_type = "PARTICULAR"` com `is_package = true`)
-- Nenhuma RLS, trigger ou RPC
-- O fluxo de convenio para pacotes continua identico
-- O hook useProductionDB ja trata payment_method para PARTICULAR
-- Relatorios, billing e lista nao fazem distincao de payer_type para pacotes
-- Importacao CSV permanece inalterada
-
-## Detalhes tecnicos
-
-| Arquivo | Linhas afetadas | Tipo de mudanca |
-|---------|----------------|-----------------|
-| `src/components/production/ProductionForm.tsx` | ~423-438, ~982-985, ~999-1024, ~1672-1704, ~369-371 | Remover restricoes, ajustar condicional de render |
-| `src/components/production/PackageFields.tsx` | ~154, novo botao "Sem consulta" | Label generico, prop forceManual, botao atalho |
-| `src/utils/constants.ts` | ~65-78 | Labels sem "(Convenio)" |
-| `src/components/settings/SettingsPackagePricing.tsx` | ~50-53, ~163, ~300-315 | Opcao PARTICULAR, labels genericos |
+- Nenhum schema de banco de dados
+- Nenhuma RLS ou trigger
+- O fluxo de convenio/particular permanece identico
+- Relatorios e DRE usam `resolveCategoryLabel` que ja funciona com o PRODUCTION_TYPE_LABELS
+- Nenhum componente de UI precisa ser alterado (a resolucao e feita no hook)
