@@ -1356,7 +1356,7 @@ export default function ProductionReport() {
               Avulso + Pacotes
             </Badge>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:grid-cols-5">
             {/* Consultas - usando reportItems (já normalizados para legados) */}
             <Card className="shadow-sm border-border/60 bg-gradient-to-br from-blue-50/50 to-transparent dark:from-blue-950/20">
               <CardContent className="pt-5 pb-5">
@@ -1481,7 +1481,37 @@ export default function ProductionReport() {
                 <p className="text-[10px] text-muted-foreground mt-2 italic">Pacotes (matmed_amount)</p>
               </CardContent>
             </Card>
-          </div>
+
+            {/* Quimioterapia - produção oncológica */}
+            <Card className="shadow-sm border-border/60 bg-gradient-to-br from-rose-50/50 to-transparent dark:from-rose-950/20">
+              <CardContent className="pt-5 pb-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Quimioterapia</p>
+                    <p className="text-2xl font-bold text-foreground mt-2 tabular-nums">
+                      {(() => {
+                        const quantity = reportItems
+                          .filter((item) => item.reportType === "QUIMIOTERAPIA")
+                          .reduce((sum, item) => sum + item.quantity, 0);
+                        return quantity.toLocaleString("pt-BR");
+                      })()}
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {(() => {
+                        const value = reportItems
+                          .filter((item) => item.reportType === "QUIMIOTERAPIA")
+                          .reduce((sum, item) => sum + item.amount, 0);
+                        return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+                      })()}
+                    </p>
+                  </div>
+                  <div className="p-2.5 bg-rose-100 dark:bg-rose-900/30 rounded-xl">
+                    <Syringe className="h-5 w-5 text-rose-600 dark:text-rose-400" />
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-2 italic">Avulso QUIMIOTERAPIA</p>
+              </CardContent>
+            </Card>
         </section>
 
         {/* ══════════════════════════════════════════════════════════════════
