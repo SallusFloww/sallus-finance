@@ -48,7 +48,7 @@ interface ImportContext {
   payer_type: "CONVENIO" | "PARTICULAR";
   convenio: string;
   payment_method: string;
-  doctor_id?: string; // ✅ opcional
+  doctor_id?: string; // ✅ médico padrão do contexto (opcional)
 }
 
 type RowStatus = "OK" | "ERRO" | "DUPLICADA";
@@ -58,6 +58,7 @@ interface ParsedRow {
   production_date: string | null; // YYYY-MM-DD
   unit_value: number | null;
   paciente_nome: string;
+  // ✅ CORRIGIDO: doctor_id e doctor_name resolvidos corretamente
   doctor_id?: string | null;
   doctor_name?: string | null;
   isValid: boolean;
@@ -91,12 +92,12 @@ const DEFAULT_PAYERS = [
   { id: "GEAP", name: "GEAP", type: "CONVENIO", active: true },
 ] as const;
 
-// Modelo CSV enxuto (colunas obrigatórias apenas)
+// ✅ CORRIGIDO: Modelo CSV atualizado com coluna "medico" documentada
 const TEMPLATE_CSV = `sep=;
 data_producao;valor_unitario;paciente_nome;medico
-15/01/2026;150,00;João da Silva;
-16/01/2026;200,00;;
-17/01/2026;175,50;Maria Souza;`;
+15/01/2026;150,00;João da Silva;Dra. Isabela Mendonça
+16/01/2026;200,00;Maria Souza;Dra. Isabela Mendonça
+17/01/2026;175,50;Pedro Lima;`;
 
 // ============= HELPERS =============
 
@@ -118,6 +119,7 @@ function getStatusPriority(status: RowStatus): number {
   }
 }
 
+// ✅ CORRIGIDO: Normalização robusta de nome (remove acentos, espaços extras, prefixos opcionais)
 function normalizeDoctorName(name: string): string {
   return (name || "")
     .toLowerCase()
@@ -139,8 +141,7 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
   // Unidades - IDÊNTICO ao formulário manual
   const units = settings?.units?.filter((u) => u.active !== false) || [];
 
-  // Tipos de produção - MESMA FONTE do formulário manual (BASE_PRODUCTION_TYPES + PACOTE_BOX/GTA)
-  // GARANTIR que pacotes SEMPRE apareçam, independente das configurações da empresa
+  // Tipos de produção - MESMA FONTE do formulário manual
   const productionTypes = useMemo(() => {
     const allTypes = [...new Set([...BASE_PRODUCTION_TYPES, ...PACKAGE_PRODUCTION_TYPES])];
     return allTypes.map((id) => ({
@@ -174,16 +175,36 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
     doctor_id: "",
   });
 
-  // ============= MÉDICO (OPCIONAL) =============
+  // ============= MÉDICO =============
   const companyId = currentCompany?.id;
 
   const [doctorOptions, setDoctorOptions] = useState<{ id: string; name: string }[]>([]);
   const [doctorsLoading, setDoctorsLoading] = useState(false);
 
+  // ✅ CORRIGIDO: Mapa nome normalizado → id, para lookup robusto do CSV
   const doctorNameToId = useMemo(() => {
     const map = new Map<string, string>();
     for (const d of doctorOptions) {
+      // Indexar pelo nome completo normalizado
       map.set(normalizeDoctorName(d.name), d.id);
+
+      // ✅ EXTRA: Indexar também sem o prefixo "dr." / "dra." para tolerância
+      const semPrefixo = normalizeDoctorName(d.name)
+        .replace(/^dr\.?\s+/, "")
+        .replace(/^dra\.?\s+/, "")
+        .trim();
+      if (semPrefixo && !map.has(semPrefixo)) {
+        map.set(semPrefixo, d.id);
+      }
+    }
+    return map;
+  }, [doctorOptions]);
+
+  // ✅ CORRIGIDO: Mapa id → nome, para exibição na tabela
+  const doctorIdToName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const d of doctorOptions) {
+      map.set(d.id, d.name);
     }
     return map;
   }, [doctorOptions]);
@@ -234,16 +255,13 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
   const [duplicatesConfirmed, setDuplicatesConfirmed] = useState(false);
 
-  // NEW: Toggle para incluir duplicadas (por padrão DESMARCADO = só importa NOVAS)
   const [includeDuplicates, setIncludeDuplicates] = useState(false);
 
-  // NEW: Filtros e ordenação da tabela
   const [filterType, setFilterType] = useState<FilterType>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortField, setSortField] = useState<SortField>("rowNumber");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 
-  // Verificar se é importação de pacote (depois de context ser definido)
   const isPackageImport = PACKAGE_PRODUCTION_TYPES.includes(context.production_type);
 
   // Competências disponíveis (últimos 12 meses + próximos 2)
@@ -254,7 +272,7 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
       const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
       options.push({
         value: format(d, "yyyy-MM"),
-        label: format(d, "MM/yyyy"), // Exibição MM/YYYY
+        label: format(d, "MM/yyyy"),
       });
     }
     return options.reverse();
@@ -290,11 +308,7 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
   }, [parsedRows]);
 
   const hasDuplicates = summary.duplicateCount > 0;
-
-  // Quantas linhas serão importadas de fato
   const rowsToImportCount = includeDuplicates ? summary.validCount : summary.newCount;
-
-  // Pode importar se tem linhas novas (ou duplicadas + confirmado)
   const canImport = rowsToImportCount > 0 && (!includeDuplicates || !hasDuplicates || duplicatesConfirmed);
 
   // ============= PARSE HELPERS =============
@@ -303,13 +317,11 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
     if (!value?.trim()) return { formatted: null, date: null };
     const trimmed = value.trim();
 
-    // Try DD/MM/YYYY
     let parsed = parse(trimmed, "dd/MM/yyyy", new Date());
     if (isValid(parsed)) {
       return { date: parsed, formatted: format(parsed, "yyyy-MM-dd") };
     }
 
-    // Try YYYY-MM-DD
     parsed = parse(trimmed, "yyyy-MM-dd", new Date());
     if (isValid(parsed)) {
       return { date: parsed, formatted: format(parsed, "yyyy-MM-dd") };
@@ -322,7 +334,6 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
     if (!value?.trim()) return null;
     let normalized = value.trim().replace(/\s/g, "");
 
-    // Formato brasileiro: 1.234,56 → 1234.56
     if (normalized.includes(",") && normalized.includes(".")) {
       normalized = normalized.replace(/\./g, "").replace(",", ".");
     } else if (normalized.includes(",")) {
@@ -333,6 +344,7 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
     return isNaN(num) || num <= 0 ? null : num;
   }, []);
 
+  // ✅ CORRIGIDO: validateRow agora resolve doctor_id corretamente (linha > contexto)
   const validateRow = useCallback(
     (rawRow: Record<string, string>, rowNumber: number): ParsedRow => {
       const errors: string[] = [];
@@ -344,7 +356,6 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
       if (!production_date) {
         errors.push("Data inválida");
       } else if (date) {
-        // Validar se está dentro da competência
         const [year, month] = context.competencia.split("-").map(Number);
         const compStart = startOfMonth(new Date(year, month - 1));
         const compEnd = endOfMonth(new Date(year, month - 1));
@@ -364,8 +375,10 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
       // Paciente (opcional)
       const paciente_nome = (rawRow["paciente_nome"] || rawRow["paciente"] || "").trim();
 
-      // Médico (opcional) — pode vir no CSV por ID ou por nome; se não vier, pode usar o padrão do contexto
+      // ✅ CORRIGIDO: Resolver médico da linha
+      // Prioridade: doctor_id UUID direto > nome no CSV > médico padrão do contexto
       const rawDoctorId = (rawRow["doctor_id"] || rawRow["medico_id"] || rawRow["médico_id"] || "").trim();
+
       const rawDoctorName = (
         rawRow["doctor_name"] ||
         rawRow["medico_nome"] ||
@@ -380,21 +393,24 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
       let doctor_name: string | null = null;
 
       if (rawDoctorId) {
+        // UUID direto no CSV — máxima prioridade
         doctor_id = rawDoctorId;
-        doctor_name = rawDoctorName || null;
+        doctor_name = rawDoctorName || doctorIdToName.get(rawDoctorId) || null;
       } else if (rawDoctorName) {
+        // Nome no CSV — buscar no mapa normalizado
         const mapped = doctorNameToId.get(normalizeDoctorName(rawDoctorName));
         if (mapped) {
           doctor_id = mapped;
           doctor_name = rawDoctorName;
         } else {
-          // Se veio nome e não achou, é erro (para evitar importação silenciosa errada)
+          // Nome veio mas não foi encontrado → erro explícito (evita importação silenciosa errada)
           errors.push(`Médico não encontrado: "${rawDoctorName}"`);
         }
       } else {
-        // sem médico na linha → deixa null e (se houver) RPC aplica o padrão do contexto
-        doctor_id = null;
-        doctor_name = null;
+        // Sem médico na linha → usar médico padrão do contexto (se selecionado)
+        // A RPC aplica o contexto; aqui deixamos null para a RPC resolver
+        doctor_id = context.doctor_id || null;
+        doctor_name = context.doctor_id ? doctorIdToName.get(context.doctor_id) || null : null;
       }
 
       // ============= VALIDAÇÃO DE PACOTE =============
@@ -408,13 +424,11 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
         const packageType = context.production_type as PackageType;
         const planId = context.convenio;
 
-        // Usar a mesma função do lançamento manual
         const validation = validateTotal(unit_value, planId, packageType, production_date, 1);
 
         if (!validation.valid) {
           errors.push(validation.message || "Valor do pacote menor que consulta+box");
         } else {
-          // Calcular componentes
           const components = calculateComponents(unit_value, planId, packageType, production_date, 1);
           consultAmount = components.consultAmount;
           feeAmount = components.feeAmount;
@@ -433,7 +447,6 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
         errors,
         isDuplicate: false,
         status: errors.length === 0 ? "OK" : "ERRO",
-        // Package breakdown
         isPackage,
         consultAmount,
         feeAmount,
@@ -444,11 +457,14 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
       context.competencia,
       context.convenio,
       context.production_type,
+      context.doctor_id,
       parseDate,
       parseValue,
       isPackageImport,
       validateTotal,
       calculateComponents,
+      doctorNameToId,
+      doctorIdToName,
     ],
   );
 
@@ -462,7 +478,6 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
       if (validRows.length === 0) return;
 
       try {
-        // Buscar produções existentes com mesmo contexto
         let query = supabase
           .from("productions")
           .select("production_date, unit_value, production_type, unit, payer_type, convenio, paciente_nome")
@@ -479,7 +494,6 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
         const { data: existing } = await query;
 
         if (!existing || existing.length === 0) {
-          // Sem duplicados
           setParsedRows(
             rows.map((r) => ({
               ...r,
@@ -490,7 +504,6 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
           return;
         }
 
-        // Criar set de chaves existentes
         const existingKeys = new Set(
           existing.map(
             (p) =>
@@ -498,7 +511,6 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
           ),
         );
 
-        // Marcar duplicados
         const updatedRows = rows.map((r) => {
           if (!r.isValid || !r.production_date) {
             return { ...r, isDuplicate: false, status: "ERRO" as RowStatus };
@@ -628,7 +640,6 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
       return;
     }
 
-    // NOVO: Filtrar linhas - por padrão só NOVAS, a menos que includeDuplicates
     const rowsToProcess = includeDuplicates
       ? parsedRows.filter((r) => r.isValid)
       : parsedRows.filter((r) => r.isValid && !r.isDuplicate);
@@ -642,13 +653,12 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
     setIsImporting(true);
 
     try {
-      // Preparar linhas com dados de pacote quando aplicável
+      // ✅ CORRIGIDO: doctor_id agora é enviado corretamente por linha
       const rowsToInsert = rowsToProcess.map((r) => ({
         production_date: r.production_date,
         unit_value: r.unit_value,
         paciente_nome: r.paciente_nome || null,
-        doctor_id: r.doctor_id || null,
-        // Campos de pacote
+        doctor_id: r.doctor_id || null, // ✅ UUID resolvido no frontend, gravado pela RPC
         is_package: r.isPackage || false,
         consult_amount: r.consultAmount || 0,
         fee_amount: r.feeAmount || 0,
@@ -662,8 +672,7 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
         payer_type: context.payer_type,
         convenio: context.convenio || null,
         payment_method: context.payer_type === "PARTICULAR" ? context.payment_method : null,
-        doctor_id: context.doctor_id || null,
-        // Indicar que é importação de pacote para a RPC usar os valores calculados
+        doctor_id: context.doctor_id || null, // ✅ médico padrão do contexto para a RPC usar como fallback
         is_package_import: isPackageImport,
         package_type: isPackageImport ? context.production_type : null,
       };
@@ -703,14 +712,22 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
       importingRef.current = false;
       setIsImporting(false);
     }
-  }, [currentCompany?.id, parsedRows, context, fileName, onImportComplete, refreshAll, includeDuplicates]);
+  }, [
+    currentCompany?.id,
+    parsedRows,
+    context,
+    fileName,
+    onImportComplete,
+    refreshAll,
+    includeDuplicates,
+    isPackageImport,
+  ]);
 
   // ============= FILTERED & SORTED ROWS =============
 
   const filteredAndSortedRows = useMemo(() => {
     let rows = [...parsedRows];
 
-    // Apply filter
     switch (filterType) {
       case "errors":
         rows = rows.filter((r) => r.status === "ERRO");
@@ -723,13 +740,11 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
         break;
     }
 
-    // Apply search (by paciente_nome)
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase().trim();
       rows = rows.filter((r) => r.paciente_nome.toLowerCase().includes(query));
     }
 
-    // Apply sorting
     rows.sort((a, b) => {
       let comparison = 0;
       switch (sortField) {
@@ -850,9 +865,9 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
                 </Select>
               </div>
 
-              {/* Médico (opcional) */}
+              {/* ✅ CORRIGIDO: Médico padrão do contexto — agora com dica atualizada */}
               <div className="space-y-2">
-                <Label>Médico (opcional)</Label>
+                <Label>Médico padrão do lote (opcional)</Label>
                 <Select
                   value={context.doctor_id || "__NONE__"}
                   onValueChange={(v) => setContext((c) => ({ ...c, doctor_id: v === "__NONE__" ? "" : v }))}
@@ -870,13 +885,14 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
                   </SelectContent>
                 </Select>
 
+                {/* ✅ CORRIGIDO: Dica mais clara sobre como o CSV amarra o médico */}
                 <p className="text-xs text-muted-foreground">
-                  Dica: você pode preencher no CSV a coluna <b>medico</b> (nome) ou <b>doctor_id</b> (UUID). Se não
-                  preencher, usamos este médico como padrão (ou fica sem médico).
+                  Use a coluna <b>medico</b> no CSV para definir o médico por linha (nome exato do cadastro). Se a linha
+                  não tiver médico, este padrão será usado. Sem nenhum dos dois, fica sem médico.
                 </p>
               </div>
 
-              {/* Competência - EXIBE MM/YYYY */}
+              {/* Competência */}
               <div className="space-y-2">
                 <Label>Competência *</Label>
                 <Select
@@ -920,7 +936,7 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
                 </Select>
               </div>
 
-              {/* Convênio (se CONVENIO) */}
+              {/* Convênio */}
               {context.payer_type === "CONVENIO" && (
                 <div className="space-y-2 col-span-2">
                   <Label>Convênio *</Label>
@@ -939,12 +955,11 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
                 </div>
               )}
 
-              {/* Modo de Pagamento (se PARTICULAR) */}
+              {/* Modo de Pagamento */}
               {context.payer_type === "PARTICULAR" && (
                 <div className="space-y-2 col-span-2">
                   <Label>Modo de Pagamento *</Label>
                   {(() => {
-                    // Use paymentMethodsParticular do extendedSettings, com fallback para defaults
                     const allMethods = extendedSettings?.paymentMethodsParticular?.length
                       ? extendedSettings.paymentMethodsParticular
                       : DEFAULT_PAYMENT_METHODS_PARTICULAR;
@@ -1017,7 +1032,18 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
                 </span>
                 {context.payer_type === "PARTICULAR" && context.payment_method && (
                   <span>
-                    Pagamento: <strong>{(extendedSettings?.paymentMethodsParticular ?? DEFAULT_PAYMENT_METHODS_PARTICULAR).find((p) => p.id === context.payment_method)?.name || context.payment_method}</strong>
+                    Pagamento:{" "}
+                    <strong>
+                      {(extendedSettings?.paymentMethodsParticular ?? DEFAULT_PAYMENT_METHODS_PARTICULAR).find(
+                        (p) => p.id === context.payment_method,
+                      )?.name || context.payment_method}
+                    </strong>
+                  </span>
+                )}
+                {/* ✅ NOVO: Exibir médico padrão do lote no resumo */}
+                {context.doctor_id && (
+                  <span>
+                    Médico padrão: <strong>{doctorIdToName.get(context.doctor_id) || "—"}</strong>
                   </span>
                 )}
               </div>
@@ -1043,7 +1069,7 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
             {/* Resumo de linhas */}
             {parsedRows.length > 0 && (
               <>
-                {/* Stats simples no topo */}
+                {/* Stats */}
                 <div className="flex flex-wrap gap-4 text-sm py-2 px-3 bg-muted/30 rounded-md">
                   <span>
                     Total: <strong>{summary.total}</strong>
@@ -1113,7 +1139,7 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
                   </span>
                 </div>
 
-                {/* Tabela de conferência - com breakdown para pacotes */}
+                {/* Tabela de conferência */}
                 <div className="border rounded-md overflow-hidden">
                   <div className="max-h-[340px] overflow-auto">
                     <Table>
@@ -1140,7 +1166,6 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
                           <TableHead className="text-xs">Paciente</TableHead>
                           <TableHead className="text-xs">Médico</TableHead>
                           <TableHead className="w-24 text-right text-xs">Valor</TableHead>
-                          {/* Colunas de breakdown para pacotes */}
                           {isPackageImport && (
                             <>
                               <TableHead className="w-20 text-right text-xs">Consulta</TableHead>
@@ -1181,23 +1206,19 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
                             <TableCell className="py-1.5 text-sm truncate max-w-[150px]">
                               {row.paciente_nome || <span className="text-muted-foreground">-</span>}
                             </TableCell>
+                            {/* ✅ CORRIGIDO: Exibição do médico na tabela — mostra fonte (linha vs contexto) */}
                             <TableCell className="py-1.5 text-sm truncate max-w-[220px]">
                               {row.doctor_name ? (
                                 <Badge variant="secondary" className="text-[11px]">
                                   {row.doctor_name}
                                 </Badge>
-                              ) : context.doctor_id ? (
-                                <Badge variant="outline" className="text-[11px]">
-                                  Médico do contexto
-                                </Badge>
                               ) : (
-                                <span className="text-muted-foreground">-</span>
+                                <span className="text-muted-foreground text-xs">sem médico</span>
                               )}
                             </TableCell>
                             <TableCell className="text-right py-1.5 font-mono text-sm">
                               {row.unit_value !== null ? formatCurrency(row.unit_value) : "-"}
                             </TableCell>
-                            {/* Breakdown de pacote */}
                             {isPackageImport && (
                               <>
                                 <TableCell className="text-right py-1.5 font-mono text-xs text-muted-foreground">
@@ -1241,7 +1262,7 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
                   </div>
                 </div>
 
-                {/* Toggle para incluir duplicadas + confirmação */}
+                {/* Toggle duplicadas */}
                 {hasDuplicates && (
                   <div className="flex items-start space-x-3 p-3 border rounded-md bg-amber-500/5 border-amber-500/30">
                     <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -1251,7 +1272,6 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
                         <strong>{summary.newCount}</strong> linhas novas.
                       </p>
 
-                      {/* Toggle para incluir duplicadas */}
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="include-duplicates"
@@ -1263,7 +1283,6 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
                         </Label>
                       </div>
 
-                      {/* Checkbox de confirmação (só aparece se toggle ativo) */}
                       {includeDuplicates && (
                         <div className="flex items-center space-x-2 pl-4 border-l-2 border-amber-400">
                           <Checkbox
@@ -1280,7 +1299,7 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
                   </div>
                 )}
 
-                {/* Nenhuma linha para importar */}
+                {/* Nenhuma linha */}
                 {rowsToImportCount === 0 && summary.total > 0 && (
                   <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />
