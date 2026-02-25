@@ -1,38 +1,50 @@
 
-# Corrigir Erro ao Cancelar Producao
+
+# Tornar Medico Opcional na Producao (Corrigir Trigger)
 
 ## Problema
 
-O erro no console e:
-```
-new row for relation "productions" violates check constraint "productions_status_check"
+O banco de dados possui um trigger `check_doctor_before_insert` que **bloqueia** qualquer INSERT na tabela `productions` quando `doctor_id` e NULL:
+
+```sql
+IF NEW.doctor_id IS NULL THEN
+  RAISE EXCEPTION 'Producao sem medico vinculado nao e permitida.';
+END IF;
 ```
 
-A tabela `productions` possui uma constraint `CHECK` no campo `status` que so aceita: `PRODUZIDO`, `FATURADO`, `GLOSADO`, `RECEBIDO`. O valor `CANCELADO` nao esta na lista permitida.
+Isso faz com que producoes sem medico aparecam momentaneamente na tela (atualizacao otimista) e depois desaparecam quando o banco rejeita o INSERT.
 
 ## Solucao
 
-Uma unica migracao SQL para alterar a constraint, adicionando `CANCELADO` aos valores permitidos:
+Uma unica migracao SQL para alterar a funcao do trigger, removendo a restricao de `doctor_id` obrigatorio:
 
 ```sql
-ALTER TABLE productions DROP CONSTRAINT productions_status_check;
-ALTER TABLE productions ADD CONSTRAINT productions_status_check 
-  CHECK (status = ANY (ARRAY['PRODUZIDO','FATURADO','GLOSADO','RECEBIDO','CANCELADO']));
+CREATE OR REPLACE FUNCTION public.check_doctor_before_insert()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  -- doctor_id e opcional, permitir NULL
+  RETURN NEW;
+END;
+$$;
 ```
 
 ## O que muda
 
 | Local | Alteracao |
 |-------|-----------|
-| Migracao SQL | Atualiza constraint para incluir "CANCELADO" |
+| Migracao SQL (trigger function) | Remove a validacao que bloqueia doctor_id NULL |
 
 ## O que NAO muda
 
-- Nenhum arquivo de codigo (o frontend e hook ja estao implementados corretamente)
-- Nenhuma RLS ou trigger
+- Nenhum arquivo de codigo frontend (o formulario ja trata medico como opcional)
+- Nenhuma RLS ou outra trigger
 - Nenhum outro schema ou tabela
 - Dados existentes nao sao afetados
+- A RPC `import_productions_batch` continuara validando medico obrigatorio para importacao CSV (regra separada, dentro da propria RPC)
 
 ## Risco
 
-**Minimo**. Apenas adiciona um valor valido a constraint existente. Nenhum dado e alterado.
+**Minimo**. A coluna `doctor_id` ja aceita NULL no schema. A unica mudanca e parar de rejeitar insercoes sem medico.
+
