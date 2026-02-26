@@ -480,7 +480,7 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
       try {
         let query = supabase
           .from("productions")
-          .select("production_date, unit_value, production_type, unit, payer_type, convenio, paciente_nome, doctor_id") // ✅ inclui doctor_id para chave de duplicidade mais precisa
+          .select("production_date, unit_value, production_type, unit, payer_type, health_plan_id, paciente_nome, doctor_id") // ✅ inclui doctor_id para chave de duplicidade mais precisa
           .eq("company_id", currentCompany.id)
           .eq("competencia", context.competencia)
           .eq("unit", context.unit)
@@ -488,7 +488,7 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
           .eq("payer_type", context.payer_type);
 
         if (context.payer_type === "CONVENIO" && context.convenio) {
-          query = query.eq("convenio", context.convenio);
+          query = query.eq("health_plan_id", context.convenio);
         }
 
         const { data: existing } = await query;
