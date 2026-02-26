@@ -454,6 +454,38 @@ export type Database = {
           },
         ]
       }
+      health_plans: {
+        Row: {
+          company_id: string
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "health_plans_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       package_pricing_rules: {
         Row: {
           company_id: string
@@ -462,11 +494,11 @@ export type Database = {
           created_by: string | null
           effective_from: string
           fee_default_amount: number
+          health_plan_id: string
           id: string
           is_active: boolean
           notes: string | null
           package_type: string
-          plan_id: string
           updated_at: string
         }
         Insert: {
@@ -476,11 +508,11 @@ export type Database = {
           created_by?: string | null
           effective_from: string
           fee_default_amount?: number
+          health_plan_id: string
           id?: string
           is_active?: boolean
           notes?: string | null
           package_type: string
-          plan_id: string
           updated_at?: string
         }
         Update: {
@@ -490,14 +522,21 @@ export type Database = {
           created_by?: string | null
           effective_from?: string
           fee_default_amount?: number
+          health_plan_id?: string
           id?: string
           is_active?: boolean
           notes?: string | null
           package_type?: string
-          plan_id?: string
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_package_rule_health_plan"
+            columns: ["health_plan_id"]
+            isOneToOne: false
+            referencedRelation: "health_plans"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "package_pricing_rules_company_id_fkey"
             columns: ["company_id"]
@@ -628,7 +667,6 @@ export type Database = {
           company_id: string
           competencia: string
           consult_amount: number | null
-          convenio: string | null
           created_at: string
           created_by: string | null
           description: string
@@ -636,6 +674,7 @@ export type Database = {
           edit_logs: Json | null
           fee_amount: number | null
           glossed_value: number | null
+          health_plan_id: string
           history: Json | null
           id: string
           import_batch_id: string | null
@@ -666,7 +705,6 @@ export type Database = {
           company_id: string
           competencia: string
           consult_amount?: number | null
-          convenio?: string | null
           created_at?: string
           created_by?: string | null
           description: string
@@ -674,6 +712,7 @@ export type Database = {
           edit_logs?: Json | null
           fee_amount?: number | null
           glossed_value?: number | null
+          health_plan_id: string
           history?: Json | null
           id?: string
           import_batch_id?: string | null
@@ -704,7 +743,6 @@ export type Database = {
           company_id?: string
           competencia?: string
           consult_amount?: number | null
-          convenio?: string | null
           created_at?: string
           created_by?: string | null
           description?: string
@@ -712,6 +750,7 @@ export type Database = {
           edit_logs?: Json | null
           fee_amount?: number | null
           glossed_value?: number | null
+          health_plan_id?: string
           history?: Json | null
           id?: string
           import_batch_id?: string | null
@@ -738,6 +777,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_production_health_plan"
+            columns: ["health_plan_id"]
+            isOneToOne: false
+            referencedRelation: "health_plans"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "fk_productions_doctor"
             columns: ["doctor_id"]
@@ -1207,6 +1253,10 @@ export type Database = {
         }
         Returns: Json
       }
+      find_doctor_by_name: {
+        Args: { _company_id: string; _doctor_name: string }
+        Returns: string
+      }
       get_user_companies: { Args: { _user_id: string }; Returns: string[] }
       get_user_permissions: {
         Args: { _user_id: string }
@@ -1242,7 +1292,11 @@ export type Database = {
         Args: { _financial_entry_id: string; _receivable_id: string }
         Returns: boolean
       }
+      normalize_text: { Args: { "": string }; Returns: string }
       reset_demo_company: { Args: { _company_id: string }; Returns: boolean }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
+      unaccent: { Args: { "": string }; Returns: string }
       upsert_production_type_with_category: {
         Args: {
           _company_id: string
