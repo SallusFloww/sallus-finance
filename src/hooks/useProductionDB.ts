@@ -29,7 +29,7 @@ interface DBProduction {
   doctor_id: string | null;
 
   payer_type: string;
-  convenio: string | null;
+  health_plan_id: string | null;
   payment_method: string | null;
   production_type: string;
   description: string;
@@ -108,7 +108,7 @@ function toProduction(db: DBProduction): Production {
     doctorId: db.doctor_id || undefined,
 
     payerType: db.payer_type as "CONVENIO" | "PARTICULAR",
-    convenio: db.convenio || undefined,
+    convenio: db.health_plan_id || undefined,
     paymentMethod: db.payment_method || undefined,
     productionType: db.production_type,
     description: normalizedDescription,
@@ -181,7 +181,7 @@ export function useProductionDB() {
 
       if (fetchError) throw fetchError;
 
-      setProductions((data || []).map((d) => toProduction(d as DBProduction)));
+      setProductions((data || []).map((d) => toProduction(d as unknown as DBProduction)));
       setError(null);
     } catch (err) {
       console.error(err);
@@ -270,7 +270,7 @@ export function useProductionDB() {
         specialty: safeSpecialty ?? "SEM_ESPECIALIDADE",
         doctor_id: safeDoctorId,
         payer_type: data.payerType,
-        convenio: data.convenio || null,
+        health_plan_id: data.convenio || null,
         payment_method: data.payerType === "PARTICULAR" ? data.paymentMethod || null : null,
         production_type: data.productionType,
         description: data.description,
@@ -315,7 +315,7 @@ export function useProductionDB() {
             specialty: safeSpecialty,
             doctor_id: safeDoctorId,
             payer_type: data.payerType,
-            convenio: data.convenio || null,
+            health_plan_id: data.convenio || null,
             production_type: data.productionType,
             description: data.description,
             procedure_code: data.procedureCode || null,
@@ -339,7 +339,7 @@ export function useProductionDB() {
             return null;
           }
 
-          const fallbackProduction = toProduction(fallbackInserted as DBProduction);
+          const fallbackProduction = toProduction(fallbackInserted as unknown as DBProduction);
 
           setProductions((prev) => {
             const withoutOptimistic = prev.filter((p) => p.id !== optimisticId);
@@ -360,7 +360,7 @@ export function useProductionDB() {
         return null;
       }
 
-      const realProduction = toProduction(inserted as DBProduction);
+      const realProduction = toProduction(inserted as unknown as DBProduction);
 
       setProductions((prev) => {
         const withoutOptimistic = prev.filter((p) => p.id !== optimisticId);
@@ -419,7 +419,7 @@ export function useProductionDB() {
       if (data.competencia !== undefined) updateData.competencia = data.competencia;
       if (data.unit !== undefined) updateData.unit = data.unit;
       if (data.payerType !== undefined) updateData.payer_type = data.payerType;
-      if (data.convenio !== undefined) updateData.convenio = data.convenio || null;
+      if (data.convenio !== undefined) updateData.health_plan_id = data.convenio || null;
       if (data.paymentMethod !== undefined) updateData.payment_method = data.paymentMethod || null;
       if (data.specialty !== undefined) {
         updateData.specialty = typeof data.specialty === "string" && data.specialty.trim().length > 0
