@@ -160,7 +160,7 @@ function toReportItems(
   const items: ReportItem[] = [];
 
   for (const p of productions) {
-    const isPackage = p.isPackage || p.productionType === "PACOTE_BOX" || p.productionType === "PACOTE_GTA";
+    const isPackage = p.isPackage || p.productionType.toUpperCase() === "PACOTE_BOX" || p.productionType.toUpperCase() === "PACOTE_GTA";
     const baseItem = {
       sourceId: p.id,
       unit: p.unit,
@@ -232,7 +232,8 @@ function toReportItems(
       });
     } else {
       // Produção normal
-      const reportType = p.productionType === "BOX_PS" ? "BOX_TAXA" : p.productionType;
+      const rawType = p.productionType.toUpperCase();
+      const reportType = rawType === "BOX_PS" ? "BOX_TAXA" : rawType;
       items.push({
         ...baseItem,
         id: p.id,
