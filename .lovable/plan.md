@@ -1,71 +1,50 @@
 
+# Excluir Producoes Canceladas do Relatorio de Producao
 
-# Plano: Corrigir Build Errors + Fase 1 da Revisao Estrutural
+## Problema
 
-## Contexto dos Erros Atuais
+A funcao `filterProductions` em `useProductionDB.ts` nao exclui producoes com status `CANCELADO`. Como o `ProductionReport.tsx` depende dessa funcao para obter os dados, producoes canceladas aparecem em todos os calculos: totais, rankings, consolidado por componentes, mix assistencial, etc.
 
-A tabela `productions` no banco de dados:
-- **TEM** `health_plan_id` (NOT NULL, obrigatorio)
-- **NAO TEM** coluna `convenio`
+## Solucao
 
-O codigo TypeScript:
-- Envia `convenio` (coluna inexistente)
-- Nao envia `health_plan_id` (obrigatorio)
+Adicionar exclusao automatica de producoes canceladas no `filterProductions`, a menos que o filtro explicitamente peca por esse status.
 
-Isso causa todos os build errors atuais.
+### Arquivo: `src/hooks/useProductionDB.ts`
 
-## Fase 1: Corrigir Build Errors (Imediato)
+Na funcao `filterProductions` (linha ~605), adicionar logo no inicio do filtro:
 
-### 1.1 Migracao SQL: Tornar `health_plan_id` nullable
-
-A coluna `health_plan_id` e obrigatoria no DB mas producoes manuais de tipo PARTICULAR nao tem convenioplano de saude. Precisamos:
-
-```sql
-ALTER TABLE productions ALTER COLUMN health_plan_id DROP NOT NULL;
-ALTER TABLE productions ALTER COLUMN health_plan_id SET DEFAULT NULL;
+```typescript
+// Excluir cancelados por padrao, a menos que filtro explicito por CANCELADO
+if (p.status === "CANCELADO" && filters.status !== "CANCELADO") return false;
 ```
 
-Isso vai regenerar o `types.ts` automaticamente, tornando `health_plan_id` opcional no Insert type.
+Isso garante que:
+- Relatorio de Producao nao inclui cancelados
+- BI, rankings e consolidado ficam corretos
+- A lista de producao na pagina `/production` ainda pode mostrar cancelados quando o filtro de status for "CANCELADO" ou "Todos status" (esse ultimo precisara de ajuste separado se necessario)
+- Nenhum outro modulo e impactado (DRE, Aging, Faturamento nao usam essa funcao)
 
-### 1.2 Corrigir `useProductionDB.ts`
+### Arquivo: `src/pages/ProductionReport.tsx`
 
-- Na interface `DBProduction` (linha 32): remover `convenio` e adicionar `health_plan_id`
-- No `addProduction`: adicionar `health_plan_id: null` ao insertPayload (para producoes manuais sem convenioplano)
-- No `toProduction`: mapear `health_plan_id` se necessario
-- Nos casts `as DBProduction`: garantir compatibilidade
+Nenhuma alteracao necessaria. O relatorio ja usa `filterProductions`, que passara a excluir cancelados automaticamente.
 
-### 1.3 Corrigir `ProductionForm.tsx`
+## Consideracao sobre a pagina /production
 
-- Na bulk insert (linha 1147-1181): substituir `convenio` por `health_plan_id`
-- Quando `payerType === "CONVENIO"`, buscar o `health_plan_id` correspondente ao nome do convenio na tabela `health_plans`
-- Quando `payerType === "PARTICULAR"`, enviar `health_plan_id: null`
+A pagina de listagem de producao (`/production`) tambem usa `filterProductions`. Producoes canceladas continuarao visiveis quando o usuario selecionar status "Todos" na pagina de producao, pois o filtro `status` nao e passado nesse caso. Porem, com a mudanca proposta, "Todos" passara a excluir cancelados tambem.
 
-### 1.4 Corrigir `ProductionImportModal.tsx`
+Se for desejavel que a pagina `/production` ainda mostre cancelados em "Todos status", uma opcao e adicionar um parametro `includeCancelled` ao filtro. Mas com base no pedido atual, a prioridade e excluir cancelados do relatorio.
 
-- Na query de duplicidade (linha 483): remover `convenio` do select, usar `health_plan_id` ou outra coluna existente
-- Ajustar chaves de comparacao que referenciam `convenio`
+**Abordagem escolhida**: Adicionar `includeCancelled?: boolean` ao `ProductionFilters` para manter flexibilidade. A pagina `/production` passara `includeCancelled: true` e o relatorio nao.
 
-## Fase 2: Sobre a Revisao Estrutural Completa
+### Alteracoes detalhadas:
 
-A revisao completa pedida (tabelas `business_units`, `specialties`, FKs, migracao de dados) e um projeto de grande porte que requer:
+1. **`src/hooks/useProductionDB.ts`**:
+   - Adicionar `includeCancelled?: boolean` na interface `ProductionFilters`
+   - Na funcao `filterProductions`: excluir `CANCELADO` quando `includeCancelled` nao for `true`
 
-1. Criacao de tabelas relacionais
-2. Migracao de dados existentes (TEXT para UUID FK)
-3. Atualizacao de 20+ arquivos (hooks, forms, reports, BI, dashboards)
-4. Periodo de compatibilidade dupla (TEXT + FK)
-
-**Recomendacao**: Implementar a Fase 1 primeiro para restaurar o build funcional, validar, e depois planejar a Fase 2 em um segundo momento dedicado.
-
-## Arquivos Modificados
-
-| Arquivo | Alteracao |
-|---------|-----------|
-| Migracao SQL | `health_plan_id` DROP NOT NULL |
-| `src/hooks/useProductionDB.ts` | DBProduction sem `convenio`, com `health_plan_id`; insertPayload com `health_plan_id` |
-| `src/components/production/ProductionForm.tsx` | Bulk insert com `health_plan_id` em vez de `convenio` |
-| `src/components/production/ProductionImportModal.tsx` | Query sem `convenio`, usar `health_plan_id` |
+2. **`src/pages/Production.tsx`** (se necessario):
+   - Passar `includeCancelled: true` no filtro para manter comportamento atual da listagem
 
 ## Risco
 
-**Baixo**. As alteracoes alinham o codigo com o schema real do banco. Nenhum dado e perdido. A logica de negocio permanece a mesma.
-
+**Minimo**. Apenas adiciona uma condicao de filtro. Nenhum dado e alterado no banco.
