@@ -16,6 +16,7 @@ export interface ProductionFilters {
   convenio?: string;
   competencia?: string;
   search?: string;
+  includeCancelled?: boolean;
 }
 
 interface DBProduction {
@@ -603,6 +604,9 @@ export function useProductionDB() {
   const filterProductions = useCallback(
     (filters: ProductionFilters): Production[] => {
       return productions.filter((p) => {
+        // Excluir cancelados por padrão, a menos que includeCancelled=true ou filtro explícito por CANCELADO
+        if (p.status === "CANCELADO" && !filters.includeCancelled && filters.status !== "CANCELADO") return false;
+
         // UTC-safe date comparison: compare 'yyyy-MM-dd' strings directly
         // to avoid timezone shifts causing off-by-one-day errors in Brazil (UTC-3)
         if (filters.startDate && filters.endDate) {
