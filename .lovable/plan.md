@@ -1,50 +1,71 @@
 
-# Excluir Producoes Canceladas do Relatorio de Producao
+# Corrigir Card "Convenio Principal" Mostrando UUID
 
 ## Problema
 
-A funcao `filterProductions` em `useProductionDB.ts` nao exclui producoes com status `CANCELADO`. Como o `ProductionReport.tsx` depende dessa funcao para obter os dados, producoes canceladas aparecem em todos os calculos: totais, rankings, consolidado por componentes, mix assistencial, etc.
+O campo `p.convenio` contem o UUID do `health_plan_id` (ex: `3bbf237b-9901-4164-bde3-70f75a6be3a9`), pois no `useProductionDB.ts` linha 112 ele e mapeado assim:
+
+```
+convenio: db.health_plan_id || undefined
+```
+
+A funcao `formatConvenioDisplayName` apenas aplica title case, nao resolve UUIDs para nomes. Isso afeta:
+- Card "Convenio Principal" nos KPIs
+- Ranking por Convenio
+- Insights e alertas de concentracao
+- Leitura executiva
 
 ## Solucao
 
-Adicionar exclusao automatica de producoes canceladas no `filterProductions`, a menos que o filtro explicitamente peca por esse status.
-
-### Arquivo: `src/hooks/useProductionDB.ts`
-
-Na funcao `filterProductions` (linha ~605), adicionar logo no inicio do filtro:
-
-```typescript
-// Excluir cancelados por padrao, a menos que filtro explicito por CANCELADO
-if (p.status === "CANCELADO" && filters.status !== "CANCELADO") return false;
-```
-
-Isso garante que:
-- Relatorio de Producao nao inclui cancelados
-- BI, rankings e consolidado ficam corretos
-- A lista de producao na pagina `/production` ainda pode mostrar cancelados quando o filtro de status for "CANCELADO" ou "Todos status" (esse ultimo precisara de ajuste separado se necessario)
-- Nenhum outro modulo e impactado (DRE, Aging, Faturamento nao usam essa funcao)
+Buscar a tabela `health_plans` no `ProductionReport.tsx` e criar um mapa UUID->nome para resolver os nomes antes de exibir.
 
 ### Arquivo: `src/pages/ProductionReport.tsx`
 
-Nenhuma alteracao necessaria. O relatorio ja usa `filterProductions`, que passara a excluir cancelados automaticamente.
+**1. Adicionar state e fetch para health plans**
 
-## Consideracao sobre a pagina /production
+Apos os hooks existentes (useProductionDB, usePackagePricing), adicionar:
 
-A pagina de listagem de producao (`/production`) tambem usa `filterProductions`. Producoes canceladas continuarao visiveis quando o usuario selecionar status "Todos" na pagina de producao, pois o filtro `status` nao e passado nesse caso. Porem, com a mudanca proposta, "Todos" passara a excluir cancelados tambem.
+```typescript
+const [healthPlanMap, setHealthPlanMap] = useState<Record<string, string>>({});
 
-Se for desejavel que a pagina `/production` ainda mostre cancelados em "Todos status", uma opcao e adicionar um parametro `includeCancelled` ao filtro. Mas com base no pedido atual, a prioridade e excluir cancelados do relatorio.
+useEffect(() => {
+  if (!companyId) return;
+  supabase
+    .from("health_plans")
+    .select("id, name")
+    .eq("company_id", companyId)
+    .then(({ data }) => {
+      if (data) {
+        const map: Record<string, string> = {};
+        data.forEach((hp) => { map[hp.id] = hp.name; });
+        setHealthPlanMap(map);
+      }
+    });
+}, [companyId]);
+```
 
-**Abordagem escolhida**: Adicionar `includeCancelled?: boolean` ao `ProductionFilters` para manter flexibilidade. A pagina `/production` passara `includeCancelled: true` e o relatorio nao.
+**2. Criar helper de resolucao de nome**
 
-### Alteracoes detalhadas:
+```typescript
+const resolveConvenioName = useCallback((convenioId: string | undefined): string => {
+  if (!convenioId) return "PARTICULAR";
+  return healthPlanMap[convenioId] || convenioId;
+}, [healthPlanMap]);
+```
 
-1. **`src/hooks/useProductionDB.ts`**:
-   - Adicionar `includeCancelled?: boolean` na interface `ProductionFilters`
-   - Na funcao `filterProductions`: excluir `CANCELADO` quando `includeCancelled` nao for `true`
+**3. Usar o helper nos pontos que agrupam por convenio**
 
-2. **`src/pages/Production.tsx`** (se necessario):
-   - Passar `includeCancelled: true` no filtro para manter comportamento atual da listagem
+- `strategicKPIs` (linha ~535): trocar `p.convenio` por `resolveConvenioName(p.convenio)`
+- `convenioRanking` (linha ~684): trocar `p.convenio || "PARTICULAR"` por `resolveConvenioName(p.convenio)`
+
+Isso corrige automaticamente todos os cards, rankings e insights que dependem desses dados.
+
+## O que NAO muda
+
+- Nenhuma query de banco
+- Nenhum outro modulo (DRE, Aging, BI, Faturamento)
+- O campo `convenio` no hook continua armazenando o UUID (correto para persistencia)
 
 ## Risco
 
-**Minimo**. Apenas adiciona uma condicao de filtro. Nenhum dado e alterado no banco.
+**Minimo**. Apenas adiciona uma consulta de leitura a `health_plans` e resolve nomes antes da exibicao.
