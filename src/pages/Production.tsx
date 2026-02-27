@@ -161,6 +161,7 @@ export default function Production() {
       productionType: selectedType !== "all" ? (selectedType as ProductionType) : undefined,
       status: productionStatusFilter !== "all" ? (productionStatusFilter as ProductionStatus) : undefined,
       search: productionSearchQuery,
+      includeCancelled: true,
     });
   }, [productions, filterProductions, startDate, endDate, selectedUnit, selectedConvenio, selectedType, productionStatusFilter, productionSearchQuery]);
 
