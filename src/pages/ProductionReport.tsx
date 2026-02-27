@@ -339,6 +339,29 @@ export default function ProductionReport() {
 
   // Médicos(as) - nomes por ID (para ranking no relatório)
   const [doctorNameById, setDoctorNameById] = useState<Record<string, string>>({});
+
+  // Health Plans - mapa UUID→nome para resolver convênios
+  const [healthPlanMap, setHealthPlanMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!companyId) return;
+    supabase
+      .from("health_plans")
+      .select("id, name")
+      .eq("company_id", companyId)
+      .then(({ data }) => {
+        if (data) {
+          const map: Record<string, string> = {};
+          data.forEach((hp) => { map[hp.id] = hp.name; });
+          setHealthPlanMap(map);
+        }
+      });
+  }, [companyId]);
+
+  const resolveConvenioName = useCallback((convenioId: string | undefined): string => {
+    if (!convenioId) return "PARTICULAR";
+    return healthPlanMap[convenioId] || formatConvenioDisplayName(convenioId);
+  }, [healthPlanMap]);
   const doctorsList = useMemo(() => {
     return Object.entries(doctorNameById)
       .map(([id, name]) => ({ id, name }))
@@ -532,9 +555,8 @@ export default function ProductionReport() {
     filteredProductions.forEach((p) => {
       byType[p.productionType] = (byType[p.productionType] || 0) + p.quantity;
       byUnit[p.unit] = (byUnit[p.unit] || 0) + p.quantity;
-      if (p.convenio) {
-        byConvenio[p.convenio] = (byConvenio[p.convenio] || 0) + p.quantity;
-      }
+      const convName = resolveConvenioName(p.convenio);
+      byConvenio[convName] = (byConvenio[convName] || 0) + p.quantity;
     });
 
     const topUnit = Object.entries(byUnit).sort((a, b) => b[1] - a[1])[0];
@@ -569,7 +591,7 @@ export default function ProductionReport() {
         : null,
       mixAssistencial,
     };
-  }, [filteredProductions, totalQuantity]);
+  }, [filteredProductions, totalQuantity, resolveConvenioName]);
 
   // Ranking por unidade
   const unitRanking: UnitRanking[] = useMemo(() => {
@@ -681,7 +703,7 @@ export default function ProductionReport() {
   const convenioRanking: ConvenioRanking[] = useMemo(() => {
     const byConvenio: Record<string, number> = {};
     filteredProductions.forEach((p) => {
-      const conv = p.convenio || "PARTICULAR";
+      const conv = resolveConvenioName(p.convenio);
       byConvenio[conv] = (byConvenio[conv] || 0) + p.quantity;
     });
 
@@ -701,14 +723,14 @@ export default function ProductionReport() {
         }
 
         return {
-          name: formatConvenioDisplayName(convenio),
+          name: convenio,
           quantity: qty,
           percentage,
           riskLevel,
           riskText,
         };
       });
-  }, [filteredProductions, totalQuantity]);
+  }, [filteredProductions, totalQuantity, resolveConvenioName]);
 
   // Helper: Canonical procedure name for grouping/reports
   const canonicalProcedureName = useCallback((name: string): string => {
@@ -1045,7 +1067,7 @@ export default function ProductionReport() {
       getProductionTypeLabel(row.reportType),
       formatUnitName(row.unit),
       row.specialty ? formatSpecialtyDisplayName(row.specialty) : "Sem especialidade",
-      formatConvenioDisplayName(row.convenio),
+      resolveConvenioName(row.convenio),
       row.reportType === "MAT_MED" ? "—" : row.quantity.toString(),
       row.amount.toFixed(2),
       row.percentage.toFixed(2),
@@ -1276,7 +1298,7 @@ export default function ProductionReport() {
                     <SelectItem value="all">Todos</SelectItem>
                     {uniqueConvenios.map((convenio) => (
                       <SelectItem key={convenio} value={convenio}>
-                        {formatConvenioDisplayName(convenio)}
+                        {resolveConvenioName(convenio)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -2418,7 +2440,7 @@ export default function ProductionReport() {
                                 variant={row.convenio === "PARTICULAR" ? "secondary" : "outline"}
                                 className="text-xs"
                               >
-                                {formatConvenioDisplayName(row.convenio)}
+                                {resolveConvenioName(row.convenio)}
                               </Badge>
                             </TableCell>
                             <TableCell className="text-right font-medium text-xs">
@@ -2741,7 +2763,7 @@ export default function ProductionReport() {
                     </Badge>
                     {item.convenio && (
                       <Badge variant="outline" className="text-[10px]">
-                        {formatConvenioDisplayName(item.convenio)}
+                        {resolveConvenioName(item.convenio)}
                       </Badge>
                     )}
                   </div>
