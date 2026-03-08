@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import logoSallusFinance from "@/assets/logo-sallusfinance.svg";
 
 // Validation schemas
 const loginSchema = z.object({
