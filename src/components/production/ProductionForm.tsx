@@ -529,6 +529,9 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
     setNewTherapyType("");
     setExamTypeOpen(false);
     setTherapyTypeOpen(false);
+    setEntryMode("single");
+    setBatchRows([{ id: crypto.randomUUID(), description: "", quantity: 1, unitValue: 0, convenio: "", patientName: "" }]);
+    setDescOpen(false);
   }, [open]);
 
   // Reset specialty when unit changes and is not Centro Clínico
