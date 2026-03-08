@@ -1629,7 +1629,11 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
                 </TableHeader>
                 <TableBody>
                   {batchRows.map((row, idx) => (
-                    <TableRow key={row.id}>
+                    <TableRow key={row.id} className={cn(
+                      "transition-colors",
+                      row._justPasted && "bg-primary/5 animate-pulse",
+                      row.error && "bg-destructive/5"
+                    )}>
                       <TableCell className="p-1">
                         <Input
                           placeholder="Ex: Consulta, ECG..."
