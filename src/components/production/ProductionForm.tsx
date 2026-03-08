@@ -2169,10 +2169,13 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
           {/* Especialidade - APENAS Centro Clínico */}
           {isCentroClinico && (
             <div className="space-y-2">
-              <Label>Especialidade *</Label>
+              <Label className="flex items-center gap-1.5">
+                Especialidade *
+                <span className="text-xs text-muted-foreground font-normal">(filtra médicos)</span>
+              </Label>
               <Select
                 value={formData.specialty}
-                onValueChange={(v) => setFormData((prev) => ({ ...prev, specialty: v }))}
+                onValueChange={(v) => setFormData((prev) => ({ ...prev, specialty: v, doctorId: "" }))}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione a especialidade" />
