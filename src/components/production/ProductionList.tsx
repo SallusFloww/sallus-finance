@@ -133,6 +133,10 @@ export function ProductionList({ productions, units, onDelete, onCancel, onEdit,
   const [cancelReason, setCancelReason] = useState("");
   const [cancelSaving, setCancelSaving] = useState(false);
 
+  // Bulk confirmation state
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [bulkConfirmAction, setBulkConfirmAction] = useState<{ ids: string[]; status: ProductionStatus } | null>(null);
+
   // Seleção em lote
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
