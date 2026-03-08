@@ -11,8 +11,8 @@ import { toast } from "sonner";
  */
 export function useFinancialIntegrityMonitor() {
   const { currentCompany, profile, currentRole } = useAuth();
-  const { transactions } = useApp();
-  const { allTransactions, settings } = transactions;
+  const { transactions: txCtx } = useApp();
+  const { transactions: allTransactions, settings } = txCtx;
 
   const integrity = useFinancialIntegrity(allTransactions, settings);
   const lastAlerted = useRef<string | null>(null);
