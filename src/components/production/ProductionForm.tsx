@@ -157,7 +157,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
           .order("name", { ascending: true });
 
         if (error) {
-          console.error(error);
+          if (import.meta.env.DEV) console.error(error);
           setDoctorOptions([]);
           return;
         }
