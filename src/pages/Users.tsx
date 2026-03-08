@@ -338,7 +338,7 @@ export default function Users() {
       }
     },
     onError: (error: Error) => {
-      console.error("inviteMutation.onError:", error);
+      if (import.meta.env.DEV) console.error("inviteMutation.onError:", error);
       toast.error(error.message || "Erro ao enviar convite");
     },
   });
