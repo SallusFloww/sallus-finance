@@ -37,7 +37,7 @@ export function useMovementAllocations() {
   // Delete allocations - no-op
   const deleteAllocations = useCallback(
     async (movementId: string): Promise<boolean> => {
-      console.warn("useMovementAllocations: deleteAllocations não disponível (tabela não existe)");
+      
       return true;
     },
     []
