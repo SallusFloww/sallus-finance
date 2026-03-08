@@ -1591,8 +1591,29 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
               </div>
             </div>
 
+            {/* Paste hint */}
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <ClipboardPaste className="h-3.5 w-3.5" />
+                Cole linhas do Excel com{" "}
+                <kbd className="px-1.5 py-0.5 rounded border bg-muted font-mono text-xs">Ctrl+V</kbd>
+                {" "}— colunas aceitas:{" "}
+                <span className="font-medium text-foreground">Procedimento · Paciente · Qtde · Valor</span>
+              </p>
+              {batchRows.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setBatchRows([{ id: crypto.randomUUID(), description: "", quantity: 1, unitValue: 0, convenio: "", patientName: "" }])}
+                  className="text-xs text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  Limpar tudo
+                </button>
+              )}
+            </div>
+
             {/* Grade de linhas */}
-            <div className="border rounded-lg overflow-hidden">
+            <div className="border rounded-lg overflow-auto max-h-[380px]" data-batch-grid>
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50">
