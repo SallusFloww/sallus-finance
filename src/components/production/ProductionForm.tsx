@@ -81,7 +81,19 @@ interface ProductionFormProps {
   units: UnitConfig[];
   userName: string;
   /** P3-FIX: callback chamado após bulk insert bem-sucedido para forçar refetch mesmo se WebSocket estiver degradado */
-  onBulkInsertSuccess?: () => void;
+  onBulkInsertSuccess?: (count?: number) => void;
+  recentDescriptions?: string[];
+}
+
+interface BatchRow {
+  id: string;
+  description: string;
+  procedureCode?: string;
+  quantity: number;
+  unitValue: number;
+  convenio?: string;
+  patientName?: string;
+  error?: string;
 }
 
 export interface ProductionFormData {
