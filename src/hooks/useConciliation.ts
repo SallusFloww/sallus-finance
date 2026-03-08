@@ -406,7 +406,7 @@ export function useConciliation() {
       
       localStorage.setItem(LS_KEY_STATUSES, JSON.stringify(queue));
     } catch (e) {
-      console.error("Error saving status to localStorage:", e);
+      if (import.meta.env.DEV) console.error("Error saving status to localStorage:", e);
     }
   }, []);
 
