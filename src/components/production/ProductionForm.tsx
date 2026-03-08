@@ -1184,7 +1184,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
       const { error } = await supabase.from("productions").insert(rows);
 
       if (error) {
-        console.error("Bulk insert error:", error);
+        if (import.meta.env.DEV) console.error("Bulk insert error:", error);
         toast.error("Falha ao registrar produções. Nada foi salvo.");
         return;
       }
