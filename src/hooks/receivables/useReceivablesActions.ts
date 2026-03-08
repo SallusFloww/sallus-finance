@@ -27,6 +27,12 @@ export function createReceivablesActions(deps: ReceivablesActionsDeps) {
       return null;
     }
 
+    // Plan limit guard
+    if (checkPlanLimit) {
+      const allowed = await checkPlanLimit();
+      if (!allowed) return null;
+    }
+
     const history = [
       createHistoryEntry(
         "CRIADO",

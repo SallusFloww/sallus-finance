@@ -88,8 +88,9 @@ export function useReceivablesDB() {
         fetchReceivables,
         refreshAll,
         processingIdsRef,
+        checkPlanLimit,
       }),
-    [receivables, currentCompany, profile, fetchReceivables, refreshAll],
+    [receivables, currentCompany, profile, fetchReceivables, refreshAll, checkPlanLimit],
   );
 
   // Filter receivables
