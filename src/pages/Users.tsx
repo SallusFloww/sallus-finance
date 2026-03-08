@@ -660,10 +660,11 @@ export default function Users() {
               Clique em um perfil para filtrar
             </span>
           </div>
-          <RoleSummaryCards
+        <RoleSummaryCards
             users={users}
             selectedRole={filterRole}
             onRoleSelect={handleRoleCardClick}
+            availableRoles={roles}
           />
         </div>
 
@@ -752,6 +753,7 @@ export default function Users() {
                     <TableBody>
                       {filteredUsers.map((user) => {
                         const roleConfig = ROLE_CONFIGS[user.role_name];
+                        const isSelf = profile?.id === user.id;
                         return (
                           <TableRow key={user.id} className="group">
                             <TableCell>
@@ -763,7 +765,14 @@ export default function Users() {
                                   {(user.full_name || user.email).charAt(0).toUpperCase()}
                                 </div>
                                 <div>
-                                  <div className="font-medium">{user.full_name || "Sem nome"}</div>
+                                  <div className="font-medium flex items-center gap-2">
+                                    {user.full_name || "Sem nome"}
+                                    {isSelf && (
+                                      <Badge variant="outline" className="text-xs px-1.5 py-0 border-primary/30 text-primary">
+                                        Você
+                                      </Badge>
+                                    )}
+                                  </div>
                                   <div className="text-sm text-muted-foreground">{user.email}</div>
                                 </div>
                               </div>
@@ -772,7 +781,7 @@ export default function Users() {
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    {canManageUsers ? (
+                                    {canManageUsers && !isSelf ? (
                                       <Select
                                         value={user.role_id}
                                         onValueChange={(value) =>
@@ -823,46 +832,53 @@ export default function Users() {
                             </TableCell>
                             {canManageUsers && (
                               <TableCell>
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button 
-                                      variant="ghost" 
-                                      size="icon"
-                                      className="opacity-0 group-hover:opacity-100 transition-opacity"
-                                    >
-                                      <MoreHorizontal className="h-4 w-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    {user.is_active ? (
-                                      <DropdownMenuItem
-                                        onClick={() => toggleActiveMutation.mutate({ userId: user.id, isActive: false })}
+                                {!isSelf ? (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <button
+                                        type="button"
+                                        className="inline-flex items-center justify-center h-8 w-8 rounded-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent hover:text-accent-foreground"
                                       >
-                                        <UserX className="h-4 w-4 mr-2" />
-                                        Desativar Usuário
-                                      </DropdownMenuItem>
-                                    ) : (
-                                      <DropdownMenuItem
-                                        onClick={() => toggleActiveMutation.mutate({ userId: user.id, isActive: true })}
-                                      >
-                                        <UserCheck className="h-4 w-4 mr-2" />
-                                        Ativar Usuário
-                                      </DropdownMenuItem>
-                                    )}
-                                    {canDeleteUsers && (
-                                      <>
-                                        <DropdownMenuSeparator />
+                                        <MoreHorizontal className="h-4 w-4" />
+                                      </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      {user.is_active ? (
                                         <DropdownMenuItem
-                                          onClick={() => removeMutation.mutate(user.id)}
-                                          className="text-destructive"
+                                          onClick={() => toggleActiveMutation.mutate({ userId: user.id, isActive: false })}
                                         >
-                                          <Trash2 className="h-4 w-4 mr-2" />
-                                          Remover da Empresa
+                                          <UserX className="h-4 w-4 mr-2" />
+                                          Desativar Usuário
                                         </DropdownMenuItem>
-                                      </>
-                                    )}
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
+                                      ) : (
+                                        <DropdownMenuItem
+                                          onClick={() => toggleActiveMutation.mutate({ userId: user.id, isActive: true })}
+                                        >
+                                          <UserCheck className="h-4 w-4 mr-2" />
+                                          Ativar Usuário
+                                        </DropdownMenuItem>
+                                      )}
+                                      {canDeleteUsers && (
+                                        <>
+                                          <DropdownMenuSeparator />
+                                          <DropdownMenuItem
+                                            onClick={() => {
+                                              if (window.confirm(`Tem certeza que deseja remover ${user.full_name || user.email} da empresa?`)) {
+                                                removeMutation.mutate(user.id);
+                                              }
+                                            }}
+                                            className="text-destructive"
+                                          >
+                                            <Trash2 className="h-4 w-4 mr-2" />
+                                            Remover da Empresa
+                                          </DropdownMenuItem>
+                                        </>
+                                      )}
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">—</span>
+                                )}
                               </TableCell>
                             )}
                           </TableRow>
