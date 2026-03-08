@@ -1,7 +1,8 @@
 import { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { Loader2 } from "lucide-react";
+import { Loader2, Clock, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -14,7 +15,7 @@ export function ProtectedRoute({
   requiredPermission,
   allowNoCompany = false,
 }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading, hasPermission, currentCompany, dataLoaded } = useAuth();
+  const { isAuthenticated, isLoading, hasPermission, currentCompany, dataLoaded, signOut } = useAuth();
   const location = useLocation();
 
   // Show loading state while auth is being determined
@@ -42,16 +43,28 @@ export function ProtectedRoute({
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center max-w-md mx-auto p-6">
-          <h1 className="text-2xl font-bold text-foreground mb-2">Acesso Não Autorizado</h1>
-          <p className="text-muted-foreground mb-4">
-            Sua conta ainda não está vinculada a uma empresa. Entre em contato com o administrador para receber um convite.
+          <Clock className="h-12 w-12 mx-auto mb-4 text-warning" />
+          <h1 className="text-2xl font-bold text-foreground mb-2">Aguardando Aprovação</h1>
+          <p className="text-muted-foreground mb-6">
+            Sua conta foi criada com sucesso! Um administrador precisa aprovar seu acesso antes que você possa utilizar o sistema.
           </p>
-          <button
-            onClick={() => window.location.href = '/auth'}
-            className="text-primary hover:underline"
-          >
-            Voltar ao login
-          </button>
+          <div className="flex flex-col gap-3">
+            <Button
+              variant="outline"
+              onClick={() => window.location.reload()}
+              className="w-full"
+            >
+              Verificar novamente
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => signOut()}
+              className="w-full text-muted-foreground"
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Sair
+            </Button>
+          </div>
         </div>
       </div>
     );

@@ -626,7 +626,139 @@ export default function Auth() {
             </div>
           )}
 
-          {/* Login Form (no signup tab) */}
+          {/* Signup Form */}
+          {activeTab === "signup" && (
+            <div className="space-y-4">
+              {signupSuccess ? (
+                <div className="text-center space-y-4">
+                  <UserPlus className="h-10 w-10 mx-auto text-primary mb-2" />
+                  <h2 className="text-lg font-semibold text-foreground">Conta criada!</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Sua conta foi criada com sucesso. Faça login e aguarde a aprovação do administrador para acessar o sistema.
+                  </p>
+                  <Button
+                    className="w-full gradient-primary"
+                    onClick={() => {
+                      setActiveTab("login");
+                      setLoginForm({ email: signupForm.email, password: "" });
+                      setSignupSuccess(false);
+                      setSignupForm({ fullName: "", email: "", password: "", confirmPassword: "" });
+                    }}
+                  >
+                    <LogIn className="h-4 w-4 mr-2" />
+                    Ir para Login
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <div className="text-center mb-4">
+                    <UserPlus className="h-10 w-10 mx-auto text-primary mb-2" />
+                    <h2 className="text-lg font-semibold">Criar Conta</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Preencha seus dados. Após o cadastro, um administrador precisará aprovar seu acesso.
+                    </p>
+                  </div>
+                  <form onSubmit={handleSignup} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-name">Nome Completo</Label>
+                      <div className="relative">
+                        <UserPlus className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          id="signup-name"
+                          type="text"
+                          placeholder="Seu nome completo"
+                          value={signupForm.fullName}
+                          onChange={(e) => setSignupForm({ ...signupForm, fullName: e.target.value })}
+                          className="pl-10"
+                          autoComplete="name"
+                          disabled={isLoading}
+                        />
+                      </div>
+                      {errors.fullName && <p className="text-sm text-destructive">{errors.fullName}</p>}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-email">Email</Label>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          id="signup-email"
+                          type="email"
+                          placeholder="seu@email.com"
+                          value={signupForm.email}
+                          onChange={(e) => setSignupForm({ ...signupForm, email: e.target.value })}
+                          className="pl-10"
+                          autoComplete="email"
+                          disabled={isLoading}
+                        />
+                      </div>
+                      {errors.email && <p className="text-sm text-destructive">{errors.email}</p>}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-password">Senha</Label>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          id="signup-password"
+                          type="password"
+                          placeholder="Mínimo 8 caracteres"
+                          value={signupForm.password}
+                          onChange={(e) => setSignupForm({ ...signupForm, password: e.target.value })}
+                          className="pl-10"
+                          autoComplete="new-password"
+                          disabled={isLoading}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Mínimo 8 caracteres, 1 maiúscula, 1 minúscula, 1 número e 1 caractere especial
+                      </p>
+                      {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-confirm">Confirmar Senha</Label>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          id="signup-confirm"
+                          type="password"
+                          placeholder="Repita a senha"
+                          value={signupForm.confirmPassword}
+                          onChange={(e) => setSignupForm({ ...signupForm, confirmPassword: e.target.value })}
+                          className="pl-10"
+                          autoComplete="new-password"
+                          disabled={isLoading}
+                        />
+                      </div>
+                      {errors.confirmPassword && <p className="text-sm text-destructive">{errors.confirmPassword}</p>}
+                    </div>
+
+                    <Button type="submit" className="w-full gradient-primary" disabled={isLoading}>
+                      {isLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <UserPlus className="h-4 w-4 mr-2" />
+                      )}
+                      Criar Conta
+                    </Button>
+                  </form>
+
+                  <div className="text-center">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("login")}
+                      className="text-sm text-muted-foreground hover:text-foreground"
+                    >
+                      Já tenho uma conta
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Login Form */}
           {activeTab === "login" && (
             <div className="space-y-4">
               <form onSubmit={handleLogin} className="space-y-4">
@@ -685,9 +817,16 @@ export default function Auth() {
                 </Button>
               </form>
 
-              <div className="text-center pt-4 border-t border-border">
+              <div className="text-center pt-4 border-t border-border space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("signup")}
+                  className="text-sm text-primary hover:underline font-medium"
+                >
+                  Não tem conta? Criar conta
+                </button>
                 <p className="text-xs text-muted-foreground">
-                  Acesso restrito. Solicite um convite ao administrador do sistema.
+                  Após criar sua conta, aguarde a aprovação do administrador.
                 </p>
               </div>
             </div>
