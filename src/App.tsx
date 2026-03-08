@@ -42,6 +42,7 @@ const AdminCleanup = lazy(() => import("./pages/AdminCleanup"));
 const Conciliation = lazy(() => import("./pages/Conciliation"));
 const QA = lazy(() => import("./pages/QA"));
 const SystemOperations = lazy(() => import("./pages/SystemOperations"));
+const PlatformAdmin = lazy(() => import("./pages/PlatformAdmin"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const InviteRedirect = lazy(() => import("./pages/InviteRedirect"));
 
