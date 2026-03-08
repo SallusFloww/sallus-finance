@@ -135,15 +135,28 @@ export function useReceivablesDB() {
 
     try {
       setLoading(true);
-      const { data, error: fetchError } = await (supabase as any)
-        .from("receivables")
-        .select("*")
-        .eq("company_id", currentCompany.id)
-        .order("billing_date", { ascending: false });
+      // Paginated fetch to support >1000 records
+      let allData: any[] = [];
+      let from = 0;
+      const pageSize = 1000;
+      let hasMore = true;
 
-      if (fetchError) throw fetchError;
+      while (hasMore) {
+        const { data: page, error: fetchError } = await (supabase as any)
+          .from("receivables")
+          .select("*")
+          .eq("company_id", currentCompany.id)
+          .order("billing_date", { ascending: false })
+          .range(from, from + pageSize - 1);
 
-      setReceivables((data || []).map((d) => toReceivable(d as unknown as DBReceivable)));
+        if (fetchError) throw fetchError;
+
+        allData = allData.concat(page || []);
+        hasMore = (page?.length || 0) === pageSize;
+        from += pageSize;
+      }
+
+      setReceivables(allData.map((d) => toReceivable(d as unknown as DBReceivable)));
       setError(null);
     } catch (err) {
       setError("Erro ao carregar recebíveis");

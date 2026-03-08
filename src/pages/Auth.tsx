@@ -332,7 +332,7 @@ export default function Auth() {
       setInviteToken(null);
 
     } catch (err: any) {
-      console.error("Error accepting invite:", err);
+      // Error accepting invite logged silently
       toast.error(err.message || "Erro ao criar conta. Tente novamente.");
     } finally {
       setIsLoading(false);
