@@ -417,7 +417,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (error) {
-        console.error("Reset DEMO error:", error);
         return { ok: false, error: error.message };
       }
 
