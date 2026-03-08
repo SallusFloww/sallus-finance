@@ -738,6 +738,12 @@ export default function Users() {
               <Mail className="h-4 w-4" />
               Convites Pendentes ({pendingInvites.filter(i => !isExpired(i.expires_at)).length})
             </TabsTrigger>
+            {isAdmin() && (
+              <TabsTrigger value="registrations" className="gap-2">
+                <UserPlus className="h-4 w-4" />
+                Solicitações {pendingRegistrations.length > 0 && `(${pendingRegistrations.length})`}
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {/* Users Tab */}
