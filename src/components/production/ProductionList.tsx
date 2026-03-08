@@ -137,7 +137,7 @@ export function ProductionList({ productions, units, onDelete, onCancel, onEdit,
         .order("name", { ascending: true });
 
       if (error) {
-        console.error(error);
+        if (import.meta.env.DEV) console.error(error);
         setDoctorNameById({});
         return;
       }
