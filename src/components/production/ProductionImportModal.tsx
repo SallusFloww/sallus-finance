@@ -227,7 +227,7 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
           .order("name", { ascending: true });
 
         if (error) {
-          console.error("Erro ao buscar médicos:", error);
+          if (import.meta.env.DEV) console.error("Erro ao buscar médicos:", error);
           setDoctorOptions([]);
           return;
         }
