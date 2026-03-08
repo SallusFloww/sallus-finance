@@ -188,7 +188,9 @@ export function useTransactionsDB() {
   const filterTransactions = useCallback(
     (filters: TransactionFilters): Transaction[] => {
       return transactions.filter((t) => {
-        // HOTFIX P0: usa parseLocalDate para YYYY-MM-DD (evita UTC shift)
+        // Exclude cancelled by default (same pattern as filterProductions)
+        if (!filters.includeCancelled && t.status === "CANCELADO") return false;
+
         const transactionDate = toStartOfDay(parseLocalDate(t.date));
 
         if (filters.startDate && transactionDate < toStartOfDay(filters.startDate)) return false;
