@@ -112,6 +112,12 @@ const navSections: NavSection[] = [
         label: "System Operations",
         permission: "VIEW_AUDIT",
       },
+      {
+        to: "/admin/platform",
+        icon: Globe,
+        label: "Platform Admin",
+        permission: "VIEW_AUDIT",
+      },
     ],
   },
 ];

@@ -98,6 +98,7 @@ function AppRoutes() {
           <Route path="/admin/cleanup" element={<AdminRoute><AdminCleanup /></AdminRoute>} />
           <Route path="/qa" element={<AdminRoute><QA /></AdminRoute>} />
           <Route path="/admin/operations" element={<AdminRoute><SystemOperations /></AdminRoute>} />
+          <Route path="/admin/platform" element={<AdminRoute><PlatformAdmin /></AdminRoute>} />
 
           {/* Catch all */}
           <Route path="*" element={<NotFound />} />
