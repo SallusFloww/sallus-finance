@@ -29,7 +29,14 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Error logged silently in production
+    // Log to error_logs table
+    logErrorStandalone({
+      action: "error_boundary_catch",
+      error_message: error.message,
+      stack_trace: error.stack || errorInfo.componentStack || undefined,
+      severity: "critical",
+      page: typeof window !== "undefined" ? window.location.pathname : undefined,
+    });
 
     // Call custom error handler if provided
     if (this.props.onError) {
