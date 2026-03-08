@@ -1,71 +1,115 @@
 
-# Corrigir Card "Convenio Principal" Mostrando UUID
 
-## Problema
+# Plano de Implementacao — Correcoes da Auditoria
 
-O campo `p.convenio` contem o UUID do `health_plan_id` (ex: `3bbf237b-9901-4164-bde3-70f75a6be3a9`), pois no `useProductionDB.ts` linha 112 ele e mapeado assim:
+Este plano cobre as correcoes priorizadas por impacto e seguranca, organizadas em 5 fases para garantir estabilidade a cada passo.
 
-```
-convenio: db.health_plan_id || undefined
-```
+---
 
-A funcao `formatConvenioDisplayName` apenas aplica title case, nao resolve UUIDs para nomes. Isso afeta:
-- Card "Convenio Principal" nos KPIs
-- Ranking por Convenio
-- Insights e alertas de concentracao
-- Leitura executiva
+## FASE 1 — Seguranca (Migracao SQL)
 
-## Solucao
+Uma unica migracao SQL para:
 
-Buscar a tabela `health_plans` no `ProductionReport.tsx` e criar um mapa UUID->nome para resolver os nomes antes de exibir.
+1. **Habilitar RLS em `health_plans`** com policies SELECT (por empresa) e ALL (Admin/Gestor)
+2. **Habilitar RLS em `receivables_dupes_20260108`** e `company_financial_settings_categories_backup` (sem policies = ninguem acessa)
+3. **Corrigir RLS de `doctors`** — remover policies auto-referenciais quebradas, criar novas usando `get_user_companies()`
+4. **Criar indices de performance** nas 7 colunas mais consultadas (productions, financial_entries, receivables, health_plans, doctors)
 
-### Arquivo: `src/pages/ProductionReport.tsx`
+---
 
-**1. Adicionar state e fetch para health plans**
+## FASE 2 — Bug Fixes no Codigo
 
-Apos os hooks existentes (useProductionDB, usePackagePricing), adicionar:
+### 2.1 Remover fetch ipify.org (`useAuditLogDB.ts`)
+- Eliminar o bloco try/catch que busca IP externo (linhas 46-53)
+- Setar `ipAddress` como `null` diretamente
+- **Impacto**: Remove 200-500ms de latencia em cada acao auditada
 
+### 2.2 Corrigir `entryToTransaction` (`useTransactionsDB.ts`)
+- Derivar `financialCategory` a partir de `entry.categoria` em vez de hardcodar "OPERACIONAL"
+- Popular `paymentMethodParticular` a partir de `entry.payment_method` quando `receipt_type === "PARTICULAR"`
+- **Impacto**: Corrige DRE, breakdown por metodo de pagamento e relatorios financeiros
+
+### 2.3 Corrigir editLog inflado (`useProductionDB.ts` linha 393)
+- Em `updateProduction`, armazenar apenas os campos alterados no `previousValue` em vez de `JSON.stringify(production)` inteiro
+- **Impacto**: Previne crescimento exponencial da coluna `edit_logs`
+
+---
+
+## FASE 3 — Performance
+
+### 3.1 Remover polling 30s do `GlobalRealtimeProvider.tsx`
+- Deletar o `useEffect` com `setInterval(30000)` (linhas ~140-155)
+- Manter o listener Supabase realtime (funciona bem) e o visibilitychange como fallback
+- **Impacto**: Elimina 3 queries desnecessarias a cada 30s por aba aberta
+
+### 3.2 Remover console.logs de producao
+- `useFinancialEntries.ts` linha 131: remover `console.log("[useFinancialEntries]...")`
+- `GlobalRealtimeProvider.tsx`: envolver todos os `console.log` em `if (import.meta.env.DEV)`
+- `useProductionDB.ts` linha 188: remover `console.error(err)`
+
+---
+
+## FASE 4 — Arquitetura
+
+### 4.1 Lazy loading de rotas (`App.tsx`)
+- Converter todos os imports de pagina para `React.lazy()`
+- Envolver `AppRoutes` em `<Suspense>` com fallback de loading
+- **Impacto**: Reduz bundle inicial significativamente
+
+### 4.2 Error Boundary nas rotas (`App.tsx`)
+- Envolver o conteudo de `AppRoutes` com `<ErrorBoundary>`
+- Um erro em uma pagina nao derruba mais toda a aplicacao
+
+---
+
+## FASE 5 — Estabilizacao
+
+### 5.1 `filterTransactions` excluir cancelados por padrao (`useTransactionsDB.ts`)
+- Adicionar `includeCancelled?: boolean` ao `TransactionFilters`
+- Excluir cancelados por padrao (mesmo padrao ja aplicado em `filterProductions`)
+
+---
+
+## Resumo de Arquivos Alterados
+
+| Arquivo | Tipo de Mudanca |
+|---------|----------------|
+| Migracao SQL | RLS + indices |
+| `src/hooks/useAuditLogDB.ts` | Remover ipify fetch |
+| `src/hooks/useTransactionsDB.ts` | Fix financialCategory + paymentMethodParticular + includeCancelled |
+| `src/hooks/useProductionDB.ts` | Fix editLog inflado + remover console.error |
+| `src/contexts/GlobalRealtimeProvider.tsx` | Remover polling 30s + wrap console.logs |
+| `src/hooks/useFinancialEntries.ts` | Remover console.log |
+| `src/App.tsx` | Lazy loading + Error Boundary + Suspense |
+
+## Detalhes Tecnicos
+
+**Lazy loading pattern:**
 ```typescript
-const [healthPlanMap, setHealthPlanMap] = useState<Record<string, string>>({});
-
-useEffect(() => {
-  if (!companyId) return;
-  supabase
-    .from("health_plans")
-    .select("id, name")
-    .eq("company_id", companyId)
-    .then(({ data }) => {
-      if (data) {
-        const map: Record<string, string> = {};
-        data.forEach((hp) => { map[hp.id] = hp.name; });
-        setHealthPlanMap(map);
-      }
-    });
-}, [companyId]);
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+// ... todas as paginas
+<Suspense fallback={<LoadingFallback />}>
+  <ErrorBoundary>
+    <AppRoutes />
+  </ErrorBoundary>
+</Suspense>
 ```
 
-**2. Criar helper de resolucao de nome**
-
+**financialCategory fix:**
 ```typescript
-const resolveConvenioName = useCallback((convenioId: string | undefined): string => {
-  if (!convenioId) return "PARTICULAR";
-  return healthPlanMap[convenioId] || convenioId;
-}, [healthPlanMap]);
+// Mapear categoria DB para FinancialCategory
+financialCategory: (entry.categoria?.startsWith("NAO_OP") ? "NAO_OPERACIONAL" 
+  : entry.categoria?.startsWith("COMP") ? "COMPARTILHADO" 
+  : "OPERACIONAL") as FinancialCategory,
+paymentMethodParticular: entry.receipt_type === "PARTICULAR" ? entry.payment_method as any : undefined,
 ```
 
-**3. Usar o helper nos pontos que agrupam por convenio**
+**editLog fix:**
+```typescript
+const changedFields: Record<string, {prev: unknown, next: unknown}> = {};
+if (data.description !== undefined && data.description !== production.description) 
+  changedFields.description = {prev: production.description, next: data.description};
+// ... etc
+const editLog = { field: "multiple", previousValue: JSON.stringify(changedFields), ... };
+```
 
-- `strategicKPIs` (linha ~535): trocar `p.convenio` por `resolveConvenioName(p.convenio)`
-- `convenioRanking` (linha ~684): trocar `p.convenio || "PARTICULAR"` por `resolveConvenioName(p.convenio)`
-
-Isso corrige automaticamente todos os cards, rankings e insights que dependem desses dados.
-
-## O que NAO muda
-
-- Nenhuma query de banco
-- Nenhum outro modulo (DRE, Aging, BI, Faturamento)
-- O campo `convenio` no hook continua armazenando o UUID (correto para persistencia)
-
-## Risco
-
-**Minimo**. Apenas adiciona uma consulta de leitura a `health_plans` e resolve nomes antes da exibicao.
