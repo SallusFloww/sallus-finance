@@ -44,7 +44,7 @@ const MATMED_PRODUCTION_TYPE = "MAT_MED";
 
 const CONVENIOS = ["IPASGO", "UNIMED", "BRADESCO", "GEAP", "SUS"];
 
-// Sugestões padrão de exames
+// Sugestões padrão de exames com valores padrão
 const DEFAULT_EXAM_TYPES = [
   "Ressonância Magnética",
   "Tomografia Computadorizada",
@@ -57,6 +57,29 @@ const DEFAULT_EXAM_TYPES = [
   "Mamografia",
   "Densitometria Óssea",
 ];
+
+// Mapa de valores padrão para exames (auto-fill inteligente)
+const EXAM_DEFAULT_VALUES: Record<string, { value: number; code?: string }> = {
+  "Eletrocardiograma": { value: 80, code: "40901033" },
+  "ECG": { value: 80, code: "40901033" },
+  "Ecocardiograma": { value: 200, code: "40901041" },
+  "Holter": { value: 150, code: "40901050" },
+  "MAPA": { value: 120, code: "40901068" },
+  "Teste Ergométrico": { value: 180, code: "40901076" },
+  "Raio-X": { value: 60 },
+  "Ultrassonografia": { value: 120 },
+  "Ressonância Magnética": { value: 500 },
+  "Tomografia Computadorizada": { value: 350 },
+  "Mamografia": { value: 100 },
+  "Densitometria Óssea": { value: 90 },
+  "Endoscopia": { value: 250 },
+  "Colonoscopia": { value: 300 },
+};
+
+// Mapa de valores padrão para tipos de produção comuns
+const PRODUCTION_DEFAULT_VALUES: Record<string, number> = {
+  "CONSULTA": 120,
+};
 
 // Sugestões padrão de sessões terapêuticas (exceto Quimio que agora é tipo próprio)
 const DEFAULT_THERAPY_TYPES = [
