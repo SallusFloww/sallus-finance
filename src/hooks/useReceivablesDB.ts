@@ -1294,7 +1294,7 @@ export function useReceivablesDB() {
             .single();
 
           if (insertError) {
-            console.error(`Erro ao criar entry ${i + 1}/${entries.length}:`, insertError);
+            if (import.meta.env.DEV) console.error(`Erro ao criar entry ${i + 1}/${entries.length}:`, insertError);
             // Rollback all created entries
             for (const txId of createdTransactionIds) {
               await supabase
