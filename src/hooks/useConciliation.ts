@@ -344,7 +344,7 @@ export function useConciliation() {
             });
           flushedCount++;
         } catch (e) {
-          console.error("Error flushing status:", e);
+          if (import.meta.env.DEV) console.error("Error flushing status:", e);
         }
       }
 
