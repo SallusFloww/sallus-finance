@@ -44,7 +44,7 @@ const MATMED_PRODUCTION_TYPE = "MAT_MED";
 
 const CONVENIOS = ["IPASGO", "UNIMED", "BRADESCO", "GEAP", "SUS"];
 
-// Sugestões padrão de exames
+// Sugestões padrão de exames com valores padrão
 const DEFAULT_EXAM_TYPES = [
   "Ressonância Magnética",
   "Tomografia Computadorizada",
@@ -57,6 +57,29 @@ const DEFAULT_EXAM_TYPES = [
   "Mamografia",
   "Densitometria Óssea",
 ];
+
+// Mapa de valores padrão para exames (auto-fill inteligente)
+const EXAM_DEFAULT_VALUES: Record<string, { value: number; code?: string }> = {
+  "Eletrocardiograma": { value: 80, code: "40901033" },
+  "ECG": { value: 80, code: "40901033" },
+  "Ecocardiograma": { value: 200, code: "40901041" },
+  "Holter": { value: 150, code: "40901050" },
+  "MAPA": { value: 120, code: "40901068" },
+  "Teste Ergométrico": { value: 180, code: "40901076" },
+  "Raio-X": { value: 60 },
+  "Ultrassonografia": { value: 120 },
+  "Ressonância Magnética": { value: 500 },
+  "Tomografia Computadorizada": { value: 350 },
+  "Mamografia": { value: 100 },
+  "Densitometria Óssea": { value: 90 },
+  "Endoscopia": { value: 250 },
+  "Colonoscopia": { value: 300 },
+};
+
+// Mapa de valores padrão para tipos de produção comuns
+const PRODUCTION_DEFAULT_VALUES: Record<string, number> = {
+  "CONSULTA": 120,
+};
 
 // Sugestões padrão de sessões terapêuticas (exceto Quimio que agora é tipo próprio)
 const DEFAULT_THERAPY_TYPES = [
@@ -152,8 +175,10 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
   const { currentCompany, profile } = useAuth();
   const companyId = (currentCompany as any)?.id || (profile as any)?.company_id;
 
-  const [doctorOptions, setDoctorOptions] = useState<{ id: string; name: string }[]>([]);
+  const [doctorOptions, setDoctorOptions] = useState<{ id: string; name: string; specialty_id?: string | null }[]>([]);
   const [doctorsLoading, setDoctorsLoading] = useState(false);
+  // Track if user manually changed the value (to prevent auto-fill overwrite)
+  const [userOverrodeValue, setUserOverrodeValue] = useState(false);
 
   useEffect(() => {
     const fetchDoctors = async () => {
@@ -166,7 +191,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
         setDoctorsLoading(true);
         const { data, error } = await supabase
           .from("doctors")
-          .select("id, name, active, company_id")
+          .select("id, name, active, company_id, specialty_id")
           .eq("company_id", companyId)
           .eq("active", true)
           .order("name", { ascending: true });
@@ -181,6 +206,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
           .map((d: any) => ({
             id: String(d?.id ?? ""),
             name: String(d?.name ?? "").trim(),
+            specialty_id: d?.specialty_id ?? null,
           }))
           .filter((d: any) => Boolean(d.id) && Boolean(d.name));
 
@@ -657,12 +683,34 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
     setDescOpen(false);
   }, [open]);
 
-  // Reset specialty when unit changes and is not Centro Clínico
+  // CASCADING DEPENDENCIES: Unit → Specialty → Doctor
+  // When unit changes: clear specialty + doctor
   useEffect(() => {
-    if (!isCentroClinico && formData.specialty) {
-      setFormData((prev) => ({ ...prev, specialty: "" }));
+    if (!isCentroClinico) {
+      setFormData((prev) => {
+        const updates: any = {};
+        if (prev.specialty) updates.specialty = "";
+        if (prev.doctorId) updates.doctorId = "";
+        return Object.keys(updates).length ? { ...prev, ...updates } : prev;
+      });
     }
   }, [formData.unit, isCentroClinico]);
+
+  // When specialty changes: clear doctor (cascade)
+  useEffect(() => {
+    if (isCentroClinico && formData.specialty) {
+      // Clear doctor if current doctor doesn't match new specialty
+      const currentDoctor = doctorOptions.find(d => d.id === formData.doctorId);
+      if (currentDoctor && currentDoctor.specialty_id && currentDoctor.specialty_id !== formData.specialty) {
+        setFormData((prev) => ({ ...prev, doctorId: "" }));
+      }
+    }
+  }, [formData.specialty]);
+
+  // Reset userOverrodeValue when modal opens
+  useEffect(() => {
+    if (open) setUserOverrodeValue(false);
+  }, [open]);
 
   // When switching to a package type, reset breakdown fields (but don't force payerType)
   useEffect(() => {
@@ -856,6 +904,18 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
                             value={type}
                             onSelect={() => {
                               updatePerTypeValue("EXAME", "examType", type);
+                              // Auto-fill inteligente: valor padrão + código + descrição
+                              const defaults = EXAM_DEFAULT_VALUES[type];
+                              if (defaults && !userOverrodeValue) {
+                                updatePerTypeValue("EXAME", "totalValue", String(defaults.value));
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  description: type,
+                                  procedureCode: defaults.code || prev.procedureCode,
+                                }));
+                              } else {
+                                setFormData((prev) => ({ ...prev, description: type }));
+                              }
                               setExamTypeOpen(false);
                             }}
                           >
@@ -863,6 +923,11 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
                               className={cn("mr-2 h-4 w-4", perTypeValues["EXAME"]?.examType === type ? "opacity-100" : "opacity-0")}
                             />
                             {type}
+                            {EXAM_DEFAULT_VALUES[type] && (
+                              <span className="ml-auto text-xs text-muted-foreground">
+                                R$ {EXAM_DEFAULT_VALUES[type].value}
+                              </span>
+                            )}
                           </CommandItem>
                         ))}
                       </CommandGroup>
@@ -1067,11 +1132,21 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
                         value={et}
                         onSelect={() => {
                           updatePerTypeValue(type, "examType", et);
+                          // Auto-fill valor padrão no multi-type mode
+                          const defaults = EXAM_DEFAULT_VALUES[et];
+                          if (defaults && !userOverrodeValue) {
+                            updatePerTypeValue(type, "totalValue", String(defaults.value));
+                          }
                           setInlineExamTypeOpen((prev) => ({ ...prev, [type]: false }));
                         }}
                       >
                         <Check className={cn("mr-2 h-4 w-4", currentVal === et ? "opacity-100" : "opacity-0")} />
                         {et}
+                        {EXAM_DEFAULT_VALUES[et] && (
+                          <span className="ml-auto text-xs text-muted-foreground">
+                            R$ {EXAM_DEFAULT_VALUES[et].value}
+                          </span>
+                        )}
                       </CommandItem>
                     ))}
                   </CommandGroup>
@@ -2001,7 +2076,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
                   min="0"
                   placeholder="0,00"
                   value={singleTotalValue}
-                  onChange={(e) => updatePerTypeValue(selectedTypes[0], "totalValue", e.target.value)}
+                  onChange={(e) => { setUserOverrodeValue(true); updatePerTypeValue(selectedTypes[0], "totalValue", e.target.value); }}
                   className="text-lg font-bold text-center h-12 bg-background"
                 />
                 <p className="text-xs text-muted-foreground">
@@ -2074,7 +2149,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
               ) : (
                 <Select
                   value={formData.unit}
-                  onValueChange={(v) => setFormData((prev) => ({ ...prev, unit: v, specialty: "" }))}
+                  onValueChange={(v) => setFormData((prev) => ({ ...prev, unit: v, specialty: "", doctorId: "" }))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione" />
@@ -2104,10 +2179,13 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
           {/* Especialidade - APENAS Centro Clínico */}
           {isCentroClinico && (
             <div className="space-y-2">
-              <Label>Especialidade *</Label>
+              <Label className="flex items-center gap-1.5">
+                Especialidade *
+                <span className="text-xs text-muted-foreground font-normal">(filtra médicos)</span>
+              </Label>
               <Select
                 value={formData.specialty}
-                onValueChange={(v) => setFormData((prev) => ({ ...prev, specialty: v }))}
+                onValueChange={(v) => setFormData((prev) => ({ ...prev, specialty: v, doctorId: "" }))}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione a especialidade" />
@@ -2129,9 +2207,16 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
             </div>
           )}
 
-          {/* Médico(a) - opcional */}
+          {/* Médico(a) - filtrado por especialidade quando Centro Clínico */}
           <div className="space-y-2">
-            <Label>Médico(a) (opcional)</Label>
+            <Label>
+              Médico(a) (opcional)
+              {isCentroClinico && formData.specialty && (
+                <span className="text-xs text-muted-foreground font-normal ml-1">
+                  — filtrado por especialidade
+                </span>
+              )}
+            </Label>
             <Select
               value={formData.doctorId ? formData.doctorId : "none"}
               onValueChange={(v) => setFormData((prev) => ({ ...prev, doctorId: v === "none" ? "" : v }))}
@@ -2141,14 +2226,24 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Nenhum</SelectItem>
-                {doctorOptions.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name}
-                  </SelectItem>
-                ))}
+                {(() => {
+                  // Filtrar médicos por especialidade quando Centro Clínico + especialidade selecionada
+                  const filtered = (isCentroClinico && formData.specialty)
+                    ? doctorOptions.filter(d => !d.specialty_id || d.specialty_id === formData.specialty)
+                    : doctorOptions;
+                  return filtered.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name}
+                    </SelectItem>
+                  ));
+                })()}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">Ajuda em relatórios por profissional (sem ser obrigatório).</p>
+            <p className="text-xs text-muted-foreground">
+              {isCentroClinico && formData.specialty
+                ? "Mostrando médicos da especialidade selecionada."
+                : "Ajuda em relatórios por profissional (sem ser obrigatório)."}
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
