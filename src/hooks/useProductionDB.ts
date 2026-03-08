@@ -516,7 +516,6 @@ export function useProductionDB() {
         .eq("id", id);
 
       if (updateError) {
-        console.error(updateError);
         toast.error("Erro ao cancelar produção");
         return;
       }
