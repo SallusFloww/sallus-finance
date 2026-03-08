@@ -1327,6 +1327,76 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
   // ===================================================================
   const [newCustomType, setNewCustomType] = useState("");
 
+  // ===================================================================
+  // SHIFT+ENTER: salvar e abrir novo (single mode)
+  // ===================================================================
+  const handleSubmitAndNew = useCallback(async () => {
+    // Trigger submit without closing
+    if (entryMode !== "single") return;
+    // Quick inline submit for single non-package
+    if (isSingleNonPackage && formData.unit && selectedTypes.length > 0) {
+      const type = selectedTypes[0];
+      const typeValues = perTypeValues[type] || { quantity: "1", totalValue: "" };
+      const quantity = parseInt(typeValues.quantity) || 1;
+      const totalValue = toNum(typeValues.totalValue);
+      const unitValue = quantity > 0 ? totalValue / quantity : 0;
+
+      let description = formData.description;
+      if (type === "EXAME") description = typeValues.examType || description;
+      else if (type === "SESSAO_TERAPEUTICA") description = typeValues.therapySessionType || description;
+      else description = description || getDefaultDescription(type);
+      if (!description) description = getProductionTypeLabel(type) || type;
+
+      const [smm, syyyy] = formData.competencia.split("/");
+      const competenciaForDB = syyyy ? `${syyyy}-${smm}` : formData.competencia;
+
+      try {
+        await onSubmit({
+          productionDate: formData.productionDate,
+          competencia: competenciaForDB,
+          unit: formData.unit,
+          specialty: formData.specialty || undefined,
+          doctorId: formData.doctorId || undefined,
+          payerType: formData.payerType,
+          convenio: formData.payerType === "CONVENIO" ? formData.convenio : undefined,
+          paymentMethod: formData.payerType === "PARTICULAR" ? formData.paymentMethod : undefined,
+          productionType: type as ProductionType,
+          description,
+          procedureCode: formData.procedureCode || undefined,
+          quantity,
+          unitValue,
+          notes: formData.notes || undefined,
+          createdBy: userName,
+          examType: typeValues.examType || undefined,
+          therapySessionType: typeValues.therapySessionType || undefined,
+          isPackage: false,
+        });
+        // Reset content fields but keep context
+        setFormData(prev => ({ ...prev, description: "", procedureCode: "", notes: "" }));
+        setPerTypeValues(prev => ({
+          ...prev,
+          [type]: { ...prev[type], totalValue: "", quantity: "1" },
+        }));
+        toast.success("Registrado! Pronto para próximo lançamento.");
+      } catch (err) {
+        if (import.meta.env.DEV) console.error(err);
+      }
+    }
+  }, [entryMode, isSingleNonPackage, formData, selectedTypes, perTypeValues, onSubmit, userName]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (e.key === "Enter" && e.shiftKey && tag !== "BUTTON") {
+        e.preventDefault();
+        handleSubmitAndNew();
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open, handleSubmitAndNew]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
