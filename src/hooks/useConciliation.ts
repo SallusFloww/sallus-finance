@@ -836,7 +836,7 @@ export function useConciliation() {
         setDbNotes(prev => [newNote, ...prev]);
         return newNote;
       } catch (error) {
-        console.error("Failed to persist note:", error);
+        if (import.meta.env.DEV) console.error("Failed to persist note:", error);
         toast.warning("Modo offline para notas", {
           description: "A nota foi salva localmente e será sincronizada.",
         });
