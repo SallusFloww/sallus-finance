@@ -96,6 +96,7 @@ interface BatchRow {
   convenio?: string;
   patientName?: string;
   error?: string;
+  _justPasted?: boolean;
 }
 
 export interface ProductionFormData {
