@@ -1,1 +1,7 @@
 project_id = "vmukhcosthdzibpcdvcw"
+
+[functions.health-check]
+verify_jwt = false
+
+[functions.daily-backup]
+verify_jwt = false
