@@ -283,7 +283,52 @@ export default function Users() {
     enabled: !!currentCompany?.id,
   });
 
-  // Send invite mutation (via edge function with robust error handling)
+  // Fetch pending registrations (self-registered users awaiting approval)
+  const { data: pendingRegistrations = [], isLoading: isLoadingRegistrations } = useQuery({
+    queryKey: ["pending-registrations", currentCompany?.id],
+    queryFn: async () => {
+      if (!currentCompany?.id) return [];
+      
+      const { data, error } = await (supabase as any).rpc("get_pending_registrations", {
+        _company_id: currentCompany.id,
+      });
+
+      if (error) {
+        console.error("Error fetching pending registrations:", error);
+        return [];
+      }
+
+      return (data || []) as PendingRegistration[];
+    },
+    enabled: !!currentCompany?.id && isAdmin(),
+  });
+
+  // Approve registration mutation
+  const approveRegistrationMutation = useMutation({
+    mutationFn: async ({ userId, roleId }: { userId: string; roleId: string }) => {
+      if (!currentCompany?.id) throw new Error("Empresa não selecionada");
+
+      const { data, error } = await (supabase as any).rpc("approve_user_registration", {
+        _user_id: userId,
+        _company_id: currentCompany.id,
+        _role_id: roleId,
+      });
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pending-registrations"] });
+      queryClient.invalidateQueries({ queryKey: ["company-users"] });
+      setApprovalDialog({ open: false, user: null, roleId: "" });
+      toast.success("Usuário aprovado com sucesso!");
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Erro ao aprovar usuário");
+    },
+  });
+
+
   const inviteMutation = useMutation({
     mutationFn: async (data: { email: string; fullName: string; roleId: string }) => {
       if (!currentCompany?.id) throw new Error("Empresa não selecionada");
