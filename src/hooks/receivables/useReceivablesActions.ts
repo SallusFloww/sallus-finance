@@ -378,6 +378,11 @@ export function createReceivablesActions(deps: ReceivablesActionsDeps) {
     id: string, glossType: GlossType, glossReason: string, glossAmount: number,
     actualReceiptDate: string, userName: string, initiateAppealFlag: boolean = false,
   ) => {
+    if (!currentCompany?.id || !profile?.id) {
+      toast.error("Usuário não autenticado");
+      return null;
+    }
+
     const receivable = receivables.find((r) => r.id === id);
     if (!receivable || receivable.status !== "FATURADO") {
       toast.error("Apenas recebíveis FATURADO podem ser glosados");
@@ -400,6 +405,44 @@ export function createReceivablesActions(deps: ReceivablesActionsDeps) {
       history.push(createHistoryEntry("RECURSO_INICIADO", `Recurso iniciado para o valor de R$ ${glossAmount.toFixed(2)}`, userName, glossAmount));
     }
 
+    // P0 FIX: Create financial entry for partial gloss net received amount
+    let createdTransactionId: string | null = null;
+    if (glossType === "PARCIAL" && netReceivedAmount > 0) {
+      const descricao = `Recebimento parcial (glosa) • ${receivable.source} • ${receivable.description}`.substring(0, 200);
+
+      const { data: insertedEntry, error: insertError } = await supabase
+        .from("financial_entries")
+        .insert([{
+          company_id: currentCompany.id,
+          created_by: profile.id,
+          type: "entrada" as const,
+          status: "recebido" as const,
+          valor: netReceivedAmount,
+          data_prevista: actualReceiptDate,
+          data_recebimento: actualReceiptDate,
+          descricao,
+          categoria: "RECEBIMENTO_FATURAMENTO",
+          unit_id: receivable.unit || null,
+          receipt_type: receivable.source === "PARTICULAR" ? "PARTICULAR" : "CONVENIO",
+          payment_method: "TRANSFER",
+          operadora: receivable.source !== "PARTICULAR" ? receivable.source : null,
+          observacao: `Origem: receivable_id=${id} | Glosa parcial: R$ ${glossAmount.toFixed(2)} | Competência: ${receivable.competencia || "N/A"}`,
+        }])
+        .select()
+        .single();
+
+      if (insertError) {
+        if (import.meta.env.DEV) console.error("Erro ao criar movimentação para glosa parcial:", insertError);
+        toast.error("Erro ao criar movimentação no caixa para valor líquido");
+        return null;
+      }
+
+      createdTransactionId = insertedEntry.id;
+      history.push(
+        createHistoryEntry("RECEBIDO", `Movimentação criada para valor líquido: R$ ${netReceivedAmount.toFixed(2)}`, userName, netReceivedAmount, createdTransactionId),
+      );
+    }
+
     const { error: updateError } = await (supabase as any)
       .from("receivables")
       .update({
@@ -410,15 +453,29 @@ export function createReceivablesActions(deps: ReceivablesActionsDeps) {
         appeal_status: initiateAppealFlag ? "EM_RECURSO" : "NAO_INICIADO",
         appeal_amount: initiateAppealFlag ? glossAmount : null,
         appeal_start_date: initiateAppealFlag ? now : null,
+        linked_transaction_id: createdTransactionId || receivable.linkedTransactionId || null,
         updated_at: now, history: JSON.parse(JSON.stringify(history)),
       })
       .eq("id", id);
 
-    if (updateError) { toast.error("Erro ao registrar glosa"); return null; }
+    if (updateError) {
+      // Rollback financial entry if receivable update fails
+      if (createdTransactionId) {
+        await supabase.from("financial_entries").update({
+          status: "cancelado" as const, cancelled_at: now, cancelled_by: profile.id,
+          cancel_reason: `Rollback automático: falha ao atualizar receivable ${id} após glosa parcial`,
+        }).eq("id", createdTransactionId);
+      }
+      toast.error("Erro ao registrar glosa");
+      return null;
+    }
 
     await fetchReceivables();
-    toast.success("Glosa registrada");
-    return { id };
+    refreshAll();
+    toast.success(createdTransactionId
+      ? `Glosa registrada — Movimentação de R$ ${netReceivedAmount.toFixed(2)} criada no caixa`
+      : "Glosa registrada");
+    return { id, transactionId: createdTransactionId };
   };
 
   // Initiate appeal
