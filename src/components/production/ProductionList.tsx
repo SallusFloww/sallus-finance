@@ -996,6 +996,21 @@ export function ProductionList({ productions, units, onDelete, onCancel, onEdit,
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Bulk confirmation dialog */}
+        <ConfirmationDialog
+          open={bulkConfirmOpen}
+          onOpenChange={setBulkConfirmOpen}
+          action="generic"
+          title={`Confirmar alteração em lote`}
+          description={`Deseja alterar o status de ${bulkConfirmAction?.ids.length || 0} registro(s) para "${bulkConfirmAction?.status || ""}"? Esta ação não pode ser desfeita facilmente.`}
+          onConfirm={() => {
+            if (bulkConfirmAction && onBulkStatusChange) {
+              onBulkStatusChange(bulkConfirmAction.ids, bulkConfirmAction.status).then(clearSelect);
+            }
+            setBulkConfirmAction(null);
+          }}
+        />
       </>
     </TooltipProvider>
   );
