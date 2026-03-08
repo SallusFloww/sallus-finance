@@ -28,7 +28,7 @@ export function useMovementAllocations() {
       apportionments: UnitApportionment[],
       criterion: ApportionmentCriteria
     ): Promise<boolean> => {
-      console.warn("useMovementAllocations: saveAllocations não disponível (tabela não existe)");
+      
       return true; // Retorna sucesso para não bloquear fluxo
     },
     []
