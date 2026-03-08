@@ -149,6 +149,39 @@ export default function Auth() {
     }
   }, [isAuthenticated, authLoading, navigate, activeTab]);
 
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrors({});
+
+    const result = signupSchema.safeParse(signupForm);
+    if (!result.success) {
+      const fieldErrors: Record<string, string> = {};
+      result.error.errors.forEach((err) => {
+        if (err.path[0]) {
+          fieldErrors[err.path[0] as string] = err.message;
+        }
+      });
+      setErrors(fieldErrors);
+      return;
+    }
+
+    setIsLoading(true);
+    const { error } = await signUp(signupForm.email, signupForm.password, signupForm.fullName);
+    setIsLoading(false);
+
+    if (error) {
+      if (error.message.includes("already registered")) {
+        toast.error("Este email já está cadastrado. Faça login.");
+      } else {
+        toast.error(error.message || "Erro ao criar conta");
+      }
+      return;
+    }
+
+    setSignupSuccess(true);
+    toast.success("Conta criada! Faça login e aguarde a aprovação do administrador.");
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
