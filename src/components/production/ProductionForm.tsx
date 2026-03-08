@@ -2139,7 +2139,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
               ) : (
                 <Select
                   value={formData.unit}
-                  onValueChange={(v) => setFormData((prev) => ({ ...prev, unit: v, specialty: "" }))}
+                  onValueChange={(v) => setFormData((prev) => ({ ...prev, unit: v, specialty: "", doctorId: "" }))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione" />
