@@ -312,7 +312,7 @@ export default function Auth() {
         throw new Error(acceptResult?.error || "Erro desconhecido ao processar convite");
       }
 
-      console.log("Invite accepted successfully:", acceptResult);
+      // Invite accepted successfully
 
       // Verificar se usuário já existia (precisa fazer login com senha existente)
       if (acceptResult.userExists) {
