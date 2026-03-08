@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { format, parseISO } from "date-fns";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { formatCurrency } from "@/utils/formatters";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
