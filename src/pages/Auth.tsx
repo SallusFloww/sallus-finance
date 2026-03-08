@@ -46,7 +46,17 @@ const invitePasswordSchema = z.object({
   path: ["confirmPassword"],
 });
 
-type AuthMode = "login" | "forgot" | "reset" | "invite";
+type AuthMode = "login" | "signup" | "forgot" | "reset" | "invite";
+
+const signupSchema = z.object({
+  fullName: z.string().trim().min(2, "Nome deve ter pelo menos 2 caracteres").max(100, "Nome muito longo"),
+  email: z.string().trim().email("Email inválido").max(255, "Email muito longo"),
+  password: passwordSchema,
+  confirmPassword: z.string(),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Senhas não conferem",
+  path: ["confirmPassword"],
+});
 
 interface InviteData {
   id: string;
