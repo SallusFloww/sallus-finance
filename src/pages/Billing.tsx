@@ -363,7 +363,7 @@ export default function Billing() {
           toast.success(`Recebimento registrado! ${entries.length} movimentação(ões) criada(s) no Caixa.`);
         }
       } catch (error) {
-        console.error("Erro ao marcar como recebido (múltiplas datas):", error);
+        if (import.meta.env.DEV) console.error("Erro ao marcar como recebido (múltiplas datas):", error);
         toast.error("Erro ao registrar recebimento");
       } finally {
         setReceiveDialogOpen(false);
