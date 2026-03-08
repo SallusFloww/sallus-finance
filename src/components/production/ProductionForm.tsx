@@ -490,7 +490,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
       const CHUNK = 10;
       for (let i = 0; i < validRows.length; i += CHUNK) {
         const chunk = validRows.slice(i, i + CHUNK);
-        await Promise.all(chunk.map(row =>
+        await Promise.all(chunk.map(({ _justPasted, error, ...row }) =>
           onSubmit({
             productionDate: formData.productionDate,
             competencia: formData.competencia,
