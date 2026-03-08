@@ -238,48 +238,36 @@ export function createReceivablesActions(deps: ReceivablesActionsDeps) {
         return { id, transactionId: existing[0].id };
       }
 
+      // Single consolidated query instead of 3 separate N+1 queries
       let inferredSpecialty: string | null = null;
       let specialtyNote = "";
-
-      const { data: prodSpecs, error: prodSpecError } = await supabase
-        .from("productions")
-        .select("specialty")
-        .eq("company_id", currentCompany.id)
-        .eq("linked_receivable_id", id);
-
-      if (!prodSpecError && Array.isArray(prodSpecs)) {
-        const cleaned = prodSpecs
-          .map((p: any) => (typeof p.specialty === "string" ? p.specialty.trim() : ""))
-          .filter((s: string) => s.length > 0 && s !== "SEM_ESPECIALIDADE");
-        const unique = Array.from(new Set(cleaned));
-        if (unique.length === 1) {
-          inferredSpecialty = unique[0];
-        } else if (unique.length > 1) {
-          inferredSpecialty = null;
-          specialtyNote = ` | Especialidade: múltiplas (${unique.join(", ").substring(0, 120)})`;
-        }
-      }
-
       let inferredCategory: string = "RECEBIMENTO_FATURAMENTO";
       let typeNote = "";
 
-      const { data: prodTypes, error: prodTypeErr } = await supabase
+      const { data: linkedProds, error: linkedProdErr } = await supabase
         .from("productions")
-        .select("production_type")
+        .select("specialty, production_type")
         .eq("company_id", currentCompany.id)
         .eq("linked_receivable_id", id);
 
-      if (!prodTypeErr && Array.isArray(prodTypes)) {
-        const cleanedTypes = prodTypes
+      if (!linkedProdErr && Array.isArray(linkedProds)) {
+        // Specialty inference
+        const cleanedSpecs = linkedProds
+          .map((p: any) => (typeof p.specialty === "string" ? p.specialty.trim() : ""))
+          .filter((s: string) => s.length > 0 && s !== "SEM_ESPECIALIDADE");
+        const uniqueSpecs = Array.from(new Set(cleanedSpecs));
+        if (uniqueSpecs.length === 1) {
+          inferredSpecialty = uniqueSpecs[0];
+        } else if (uniqueSpecs.length > 1) {
+          inferredSpecialty = null;
+          specialtyNote = ` | Especialidade: múltiplas (${uniqueSpecs.join(", ").substring(0, 120)})`;
+        }
+
+        // Category inference
+        const cleanedTypes = linkedProds
           .map((p: any) => (typeof p.production_type === "string" ? p.production_type.trim() : ""))
           .filter((t: string) => t.length > 0);
         const uniqueTypes = Array.from(new Set(cleanedTypes));
-
-        const { data: settingsData } = await supabase
-          .from("company_financial_settings")
-          .select("categories")
-          .eq("company_id", currentCompany.id)
-          .maybeSingle();
 
         if (uniqueTypes.length === 1) {
           inferredCategory = uniqueTypes[0];
@@ -293,13 +281,9 @@ export function createReceivablesActions(deps: ReceivablesActionsDeps) {
 
       let readableTypePrefix = "";
       if (inferredCategory === "RECEBIMENTO_FATURAMENTO") {
-        const { data: prodTypesForLabel } = await supabase
-          .from("productions")
-          .select("production_type")
-          .eq("company_id", currentCompany.id)
-          .eq("linked_receivable_id", id);
-        if (Array.isArray(prodTypesForLabel) && prodTypesForLabel.length > 0) {
-          const types = Array.from(new Set(prodTypesForLabel.map((p: any) => p.production_type).filter(Boolean)));
+        // Reuse data from the consolidated query above
+        if (Array.isArray(linkedProds) && linkedProds.length > 0) {
+          const types = Array.from(new Set(linkedProds.map((p: any) => p.production_type).filter(Boolean)));
           if (types.length === 1) {
             readableTypePrefix = `${PROD_LABELS[types[0] as string] || types[0]} • `;
           } else if (types.length > 1) {
