@@ -212,8 +212,23 @@ export default function Production() {
     await updateProduction(id, data, user.name);
   };
 
-  // Status change inline
+  // Status change inline — with transition validation
+  const lastStatusChangeRef = React.useRef<number>(0);
   const handleStatusChange = async (id: string, newStatus: ProductionStatus) => {
+    // Rate limit: min 500ms between status changes
+    const now = Date.now();
+    if (now - lastStatusChangeRef.current < 500) {
+      toast.warning("Aguarde antes de alterar outro status.");
+      return;
+    }
+    lastStatusChangeRef.current = now;
+
+    const production = filteredProductions.find(p => p.id === id);
+    if (!production) return;
+    if (!isValidTransition(production.status, newStatus)) {
+      toast.error(getTransitionError(production.status, newStatus));
+      return;
+    }
     await updateProduction(id, { status: newStatus }, user.name);
   };
 
