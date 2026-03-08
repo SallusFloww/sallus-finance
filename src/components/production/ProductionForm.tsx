@@ -904,6 +904,18 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
                             value={type}
                             onSelect={() => {
                               updatePerTypeValue("EXAME", "examType", type);
+                              // Auto-fill inteligente: valor padrão + código + descrição
+                              const defaults = EXAM_DEFAULT_VALUES[type];
+                              if (defaults && !userOverrodeValue) {
+                                updatePerTypeValue("EXAME", "totalValue", String(defaults.value));
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  description: type,
+                                  procedureCode: defaults.code || prev.procedureCode,
+                                }));
+                              } else {
+                                setFormData((prev) => ({ ...prev, description: type }));
+                              }
                               setExamTypeOpen(false);
                             }}
                           >
@@ -911,6 +923,11 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
                               className={cn("mr-2 h-4 w-4", perTypeValues["EXAME"]?.examType === type ? "opacity-100" : "opacity-0")}
                             />
                             {type}
+                            {EXAM_DEFAULT_VALUES[type] && (
+                              <span className="ml-auto text-xs text-muted-foreground">
+                                R$ {EXAM_DEFAULT_VALUES[type].value}
+                              </span>
+                            )}
                           </CommandItem>
                         ))}
                       </CommandGroup>
