@@ -1043,7 +1043,7 @@ export function useReceivablesDB() {
           .limit(1);
 
         if (existingErr) {
-          console.error(`Erro ao verificar entry para receivable ${receivable.id}:`, existingErr);
+          if (import.meta.env.DEV) console.error(`Erro ao verificar entry para receivable ${receivable.id}:`, existingErr);
           errors++;
           continue;
         }
