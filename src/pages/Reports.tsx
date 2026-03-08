@@ -170,18 +170,20 @@ export default function Reports() {
   const unitAnalysisDetailed = useMemo(() => {
     const incomeTransactions = reportTransactions.filter((t) => t.type === "INCOME");
 
-    // [AUDIT_FIN_REPORT] Log all transactions for debugging
-    console.log("[AUDIT_FIN_REPORT] records_count =", reportTransactions.length);
-    if (reportTransactions.length > 0) {
-      console.log("[AUDIT_FIN_REPORT] sample_record =", {
-        unit: reportTransactions[0]?.unit,
-        specialty: reportTransactions[0]?.specialty,
-        specialty_resolved: resolveSpecialtyId(reportTransactions[0]?.specialty),
-        category: reportTransactions[0]?.category,
-        type: reportTransactions[0]?.type,
-        status: reportTransactions[0]?.status,
-        amount: reportTransactions[0]?.amount,
-      });
+    // [AUDIT_FIN_REPORT] Debug logs (DEV only)
+    if (import.meta.env.DEV) {
+      console.log("[AUDIT_FIN_REPORT] records_count =", reportTransactions.length);
+      if (reportTransactions.length > 0) {
+        console.log("[AUDIT_FIN_REPORT] sample_record =", {
+          unit: reportTransactions[0]?.unit,
+          specialty: reportTransactions[0]?.specialty,
+          specialty_resolved: resolveSpecialtyId(reportTransactions[0]?.specialty),
+          category: reportTransactions[0]?.category,
+          type: reportTransactions[0]?.type,
+          status: reportTransactions[0]?.status,
+          amount: reportTransactions[0]?.amount,
+        });
+      }
     }
 
     return activeUnits
