@@ -1315,6 +1315,10 @@ export type Database = {
       }
     }
     Functions: {
+      approve_user_registration: {
+        Args: { _company_id: string; _role_id: string; _user_id: string }
+        Returns: boolean
+      }
       cleanup_company_data_by_window: {
         Args: {
           p_confirm_text?: string
@@ -1332,6 +1336,15 @@ export type Database = {
         Returns: string
       }
       get_company_plan_limits: { Args: { _company_id: string }; Returns: Json }
+      get_pending_registrations: {
+        Args: { _company_id: string }
+        Returns: {
+          created_at: string
+          email: string
+          full_name: string
+          user_id: string
+        }[]
+      }
       get_user_companies: { Args: { _user_id: string }; Returns: string[] }
       get_user_permissions: {
         Args: { _user_id: string }
