@@ -1312,7 +1312,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
 
       toast.success(`${selectedTypes.length} produções registradas com sucesso`);
       // P3-FIX: forçar refetch explícito caso WebSocket esteja degradado
-      onBulkInsertSuccess?.();
+      onBulkInsertSuccess?.(selectedTypes.length);
       onOpenChange(false);
     } catch (err) {
       if (import.meta.env.DEV) console.error("Unexpected error:", err);
