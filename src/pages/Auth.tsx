@@ -359,7 +359,7 @@ export default function Auth() {
           {/* Header */}
           <div className="mb-8 text-center">
             <img 
-              src="/src/assets/logo-sallusfinance.svg" 
+              src={logoSallusFinance} 
               alt="Sallus Finance" 
               className="mx-auto mb-4 h-16 w-auto"
               onError={(e) => {
