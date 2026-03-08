@@ -250,7 +250,7 @@ export function useConciliation() {
         await flushOfflineQueue(statusMap, notes);
 
       } catch (error) {
-        console.error("Failed to load conciliation data, using local mode:", error);
+        if (import.meta.env.DEV) console.error("Failed to load conciliation data, using local mode:", error);
         setIsOfflineMode(true);
         
         // Load from localStorage
