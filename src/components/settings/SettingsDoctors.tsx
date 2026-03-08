@@ -61,7 +61,7 @@ export function SettingsDoctors() {
 
       setDoctors((data as DoctorRow[]) ?? []);
     } catch (err: any) {
-      console.error(err);
+      if (import.meta.env.DEV) console.error(err);
       toast.error("Erro ao carregar médicos(as).");
     } finally {
       setLoading(false);
@@ -116,7 +116,7 @@ export function SettingsDoctors() {
       cancelEdit();
       fetchDoctors();
     } catch (err: any) {
-      console.error(err);
+      if (import.meta.env.DEV) console.error(err);
       toast.error("Erro ao salvar edição.");
     } finally {
       setLoading(false);
@@ -157,7 +157,7 @@ export function SettingsDoctors() {
       setNewName("");
       fetchDoctors();
     } catch (err: any) {
-      console.error(err);
+      if (import.meta.env.DEV) console.error(err);
       toast.error("Erro ao cadastrar médico(a).");
     } finally {
       setLoading(false);
@@ -171,7 +171,7 @@ export function SettingsDoctors() {
 
       setDoctors((prev) => prev.map((d) => (d.id === id ? { ...d, active: next } : d)));
     } catch (err: any) {
-      console.error(err);
+      if (import.meta.env.DEV) console.error(err);
       toast.error("Erro ao alterar status.");
     }
   };

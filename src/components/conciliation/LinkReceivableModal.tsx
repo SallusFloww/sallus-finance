@@ -163,7 +163,7 @@ export function LinkReceivableModal({
       onLinked();
       onOpenChange(false);
     } catch (err) {
-      console.error("Erro ao vincular:", err);
+      if (import.meta.env.DEV) console.error("Erro ao vincular:", err);
       toast.error("Erro ao criar vínculo");
     } finally {
       setLinking(false);

@@ -55,7 +55,7 @@ export async function secureInvoke<T = unknown>(
       errorMessage.includes("não autorizado");
 
     if (is401) {
-      console.log("Token may be expired, attempting refresh...");
+      if (import.meta.env.DEV) console.log("Token may be expired, attempting refresh...");
       
       const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
       

@@ -195,43 +195,45 @@ export default function Reports() {
 
         // [AUDIT_FIN_REPORT] Log unit totals
         if (unit.id === "CENTRO_CLINICO") {
-          console.log("[AUDIT_FIN_REPORT] totals_by_unit =", {
-            unit: unit.id,
-            incomeCount: count,
-            totalIncome: totalValue,
-          });
+          if (import.meta.env.DEV) {
+            console.log("[AUDIT_FIN_REPORT] totals_by_unit =", {
+              unit: unit.id,
+              incomeCount: count,
+              totalIncome: totalValue,
+            });
           
-          // Log specialty distribution for Centro Clinico using resolved IDs
-          const specialtyMap: Record<string, number> = {};
-          let nullEmptyCount = 0;
-          unitIncomeTransactions.forEach((t) => {
-            const resolvedId = resolveSpecialtyId(t.specialty);
-            if (resolvedId === "SEM_ESPECIALIDADE") {
-              nullEmptyCount++;
-            }
-            specialtyMap[resolvedId] = (specialtyMap[resolvedId] || 0) + t.amount;
-          });
-          console.log("[AUDIT_FIN_REPORT] specialty_null_empty_count =", nullEmptyCount);
-          console.log("[AUDIT_FIN_REPORT] totals_by_specialty_for_unit('CENTRO_CLINICO') =", specialtyMap);
+            // Log specialty distribution for Centro Clinico using resolved IDs
+            const specialtyMap: Record<string, number> = {};
+            let nullEmptyCount = 0;
+            unitIncomeTransactions.forEach((t) => {
+              const resolvedId = resolveSpecialtyId(t.specialty);
+              if (resolvedId === "SEM_ESPECIALIDADE") {
+                nullEmptyCount++;
+              }
+              specialtyMap[resolvedId] = (specialtyMap[resolvedId] || 0) + t.amount;
+            });
+            console.log("[AUDIT_FIN_REPORT] specialty_null_empty_count =", nullEmptyCount);
+            console.log("[AUDIT_FIN_REPORT] totals_by_specialty_for_unit('CENTRO_CLINICO') =", specialtyMap);
           
-          // Validate: sum of specialties should match unit total
-          const specialtySum = Object.values(specialtyMap).reduce((a, b) => a + b, 0);
-          console.log("[AUDIT_FIN_REPORT] validation =", {
-            unitTotal: totalValue,
-            specialtySum,
-            match: Math.abs(totalValue - specialtySum) < 0.01,
-          });
+            // Validate: sum of specialties should match unit total
+            const specialtySum = Object.values(specialtyMap).reduce((a, b) => a + b, 0);
+            console.log("[AUDIT_FIN_REPORT] validation =", {
+              unitTotal: totalValue,
+              specialtySum,
+              match: Math.abs(totalValue - specialtySum) < 0.01,
+            });
           
-          // Log all transactions with their specialty for debug
-          console.log("[AUDIT_FIN_REPORT] all_centro_clinico_transactions =", 
-            unitIncomeTransactions.map(t => ({
-              id: t.id?.substring(0, 8),
-              specialty_raw: t.specialty,
-              specialty_resolved: resolveSpecialtyId(t.specialty),
-              amount: t.amount,
-              status: t.status,
-            }))
-          );
+            // Log all transactions with their specialty for debug
+            console.log("[AUDIT_FIN_REPORT] all_centro_clinico_transactions =", 
+              unitIncomeTransactions.map(t => ({
+                id: t.id?.substring(0, 8),
+                specialty_raw: t.specialty,
+                specialty_resolved: resolveSpecialtyId(t.specialty),
+                amount: t.amount,
+                status: t.status,
+              }))
+            );
+          }
         }
 
         // Saídas da unidade
