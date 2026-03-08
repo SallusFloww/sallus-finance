@@ -105,6 +105,12 @@ const navSections: NavSection[] = [
         label: "Limpeza de dados",
         permission: "VIEW_AUDIT",
       },
+      {
+        to: "/admin/operations",
+        icon: Server,
+        label: "System Operations",
+        permission: "VIEW_AUDIT",
+      },
     ],
   },
 ];
