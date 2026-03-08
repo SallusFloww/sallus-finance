@@ -152,8 +152,10 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
   const { currentCompany, profile } = useAuth();
   const companyId = (currentCompany as any)?.id || (profile as any)?.company_id;
 
-  const [doctorOptions, setDoctorOptions] = useState<{ id: string; name: string }[]>([]);
+  const [doctorOptions, setDoctorOptions] = useState<{ id: string; name: string; specialty_id?: string | null }[]>([]);
   const [doctorsLoading, setDoctorsLoading] = useState(false);
+  // Track if user manually changed the value (to prevent auto-fill overwrite)
+  const [userOverrodeValue, setUserOverrodeValue] = useState(false);
 
   useEffect(() => {
     const fetchDoctors = async () => {
@@ -166,7 +168,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
         setDoctorsLoading(true);
         const { data, error } = await supabase
           .from("doctors")
-          .select("id, name, active, company_id")
+          .select("id, name, active, company_id, specialty_id")
           .eq("company_id", companyId)
           .eq("active", true)
           .order("name", { ascending: true });
@@ -181,6 +183,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
           .map((d: any) => ({
             id: String(d?.id ?? ""),
             name: String(d?.name ?? "").trim(),
+            specialty_id: d?.specialty_id ?? null,
           }))
           .filter((d: any) => Boolean(d.id) && Boolean(d.name));
 
