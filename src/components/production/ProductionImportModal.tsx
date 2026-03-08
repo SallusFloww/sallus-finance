@@ -241,7 +241,7 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
 
         setDoctorOptions(normalized);
       } catch (err) {
-        console.error("Erro ao buscar médicos:", err);
+        if (import.meta.env.DEV) console.error("Erro ao buscar médicos:", err);
         setDoctorOptions([]);
       } finally {
         setDoctorsLoading(false);
