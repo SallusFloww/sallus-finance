@@ -122,7 +122,7 @@ interface PendingRegistration {
 }
 
 export default function Users() {
-  const { currentCompany, hasPermission, profile } = useAuth();
+  const { currentCompany, hasPermission, profile, isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("users");
@@ -133,6 +133,13 @@ export default function Users() {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null);
+  
+  // Approval dialog state
+  const [approvalDialog, setApprovalDialog] = useState<{ open: boolean; user: PendingRegistration | null; roleId: string }>({
+    open: false,
+    user: null,
+    roleId: "",
+  });
   
   // Filters state
   const [searchTerm, setSearchTerm] = useState("");
