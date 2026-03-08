@@ -41,6 +41,7 @@ const AdminDiagnostics = lazy(() => import("./pages/AdminDiagnostics"));
 const AdminCleanup = lazy(() => import("./pages/AdminCleanup"));
 const Conciliation = lazy(() => import("./pages/Conciliation"));
 const QA = lazy(() => import("./pages/QA"));
+const SystemOperations = lazy(() => import("./pages/SystemOperations"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const InviteRedirect = lazy(() => import("./pages/InviteRedirect"));
 
@@ -95,6 +96,7 @@ function AppRoutes() {
           <Route path="/admin/diagnostics" element={<AdminRoute><AdminDiagnostics /></AdminRoute>} />
           <Route path="/admin/cleanup" element={<AdminRoute><AdminCleanup /></AdminRoute>} />
           <Route path="/qa" element={<AdminRoute><QA /></AdminRoute>} />
+          <Route path="/admin/operations" element={<AdminRoute><SystemOperations /></AdminRoute>} />
 
           {/* Catch all */}
           <Route path="*" element={<NotFound />} />

@@ -20,6 +20,7 @@ import {
   Users,
   CheckSquare,
   Trash2,
+  Server,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -102,6 +103,12 @@ const navSections: NavSection[] = [
         to: "/admin/cleanup",
         icon: Trash2,
         label: "Limpeza de dados",
+        permission: "VIEW_AUDIT",
+      },
+      {
+        to: "/admin/operations",
+        icon: Server,
+        label: "System Operations",
         permission: "VIEW_AUDIT",
       },
     ],
