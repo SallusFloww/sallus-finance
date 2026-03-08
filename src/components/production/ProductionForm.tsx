@@ -1408,6 +1408,233 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
           <DialogDescription>Volume assistencial realizado. Não impacta Caixa, DRE ou Score.</DialogDescription>
         </DialogHeader>
 
+        {/* Toggle Único / Lote */}
+        <div className="flex items-center gap-1 p-1 rounded-lg bg-muted/50 w-fit">
+          <button
+            onClick={() => setEntryMode("single")}
+            className={cn(
+              "text-xs px-3 py-1.5 rounded-md transition-colors",
+              entryMode === "single"
+                ? "bg-background shadow-sm font-medium"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Único
+          </button>
+          <button
+            onClick={() => setEntryMode("batch")}
+            className={cn(
+              "text-xs px-3 py-1.5 rounded-md transition-colors flex items-center gap-1",
+              entryMode === "batch"
+                ? "bg-background shadow-sm font-medium"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Layers className="h-3 w-3" />
+            Lote
+          </button>
+        </div>
+
+        {/* ============================================================ */}
+        {/* BATCH MODE                                                    */}
+        {/* ============================================================ */}
+        {entryMode === "batch" && (
+          <div className="space-y-4 py-2">
+            {/* Contexto compartilhado */}
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <Label className="text-xs">Data (todas)</Label>
+                <Input type="date" value={formData.productionDate} onChange={(e) => setFormData(prev => ({ ...prev, productionDate: e.target.value }))} className="h-8 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Unidade (todas)</Label>
+                <Select value={formData.unit} onValueChange={(v) => setFormData(prev => ({ ...prev, unit: v }))}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    {activeUnits.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Tipo (todas)</Label>
+                <Select value={selectedTypes[0] || ""} onValueChange={(v) => { setSelectedTypes([v]); setPerTypeValues({ [v]: { quantity: "1", totalValue: "" } }); }}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    {(extendedSettings?.productionTypes || [])
+                      .filter((t: any) => t.active !== false)
+                      .map((t: any) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Grade de linhas */}
+            <div className="border rounded-lg overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead className="text-xs">Procedimento</TableHead>
+                    <TableHead className="text-xs w-[80px]">Cód.</TableHead>
+                    <TableHead className="text-xs">Paciente</TableHead>
+                    <TableHead className="text-xs w-[110px]">Convênio</TableHead>
+                    <TableHead className="text-xs w-[60px]">Qtde</TableHead>
+                    <TableHead className="text-xs w-[90px]">Valor Unit.</TableHead>
+                    <TableHead className="text-xs w-[80px]">Total</TableHead>
+                    <TableHead className="w-[60px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {batchRows.map((row, idx) => (
+                    <TableRow key={row.id}>
+                      <TableCell className="p-1">
+                        <Input
+                          placeholder="Ex: Consulta, ECG..."
+                          value={row.description}
+                          onChange={(e) => updateBatchRow(row.id, "description", e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Tab" && idx === batchRows.length - 1 && !e.shiftKey) {
+                              e.preventDefault();
+                              addBatchRow();
+                            }
+                          }}
+                          className={cn(
+                            "h-7 text-xs border-0 bg-transparent focus:bg-background px-1",
+                            row.error && "border border-rose-300 rounded"
+                          )}
+                        />
+                      </TableCell>
+                      <TableCell className="p-1">
+                        <Input
+                          placeholder="TUSS"
+                          value={row.procedureCode || ""}
+                          onChange={(e) => updateBatchRow(row.id, "procedureCode", e.target.value)}
+                          className="h-7 text-xs border-0 bg-transparent focus:bg-background px-1"
+                        />
+                      </TableCell>
+                      <TableCell className="p-1">
+                        <Input
+                          placeholder="Nome"
+                          value={row.patientName || ""}
+                          onChange={(e) => updateBatchRow(row.id, "patientName", e.target.value)}
+                          className="h-7 text-xs border-0 bg-transparent focus:bg-background px-1"
+                        />
+                      </TableCell>
+                      <TableCell className="p-1">
+                        <Select value={row.convenio || "PARTICULAR"} onValueChange={(v) => updateBatchRow(row.id, "convenio", v)}>
+                          <SelectTrigger className="h-7 text-xs border-0 bg-transparent">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="PARTICULAR">Particular</SelectItem>
+                            {(extendedSettings?.payers || [])
+                              .filter((p: any) => p.active !== false)
+                              .map((p: any) => (
+                                <SelectItem key={p.id || p.name} value={p.name || p.id}>{p.name}</SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell className="p-1">
+                        <Input
+                          type="number"
+                          min={1}
+                          value={row.quantity}
+                          onChange={(e) => updateBatchRow(row.id, "quantity", Math.max(1, Number(e.target.value) || 1))}
+                          className="h-7 text-xs border-0 bg-transparent focus:bg-background text-center px-1"
+                        />
+                      </TableCell>
+                      <TableCell className="p-1">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min={0}
+                          value={row.unitValue || ""}
+                          onChange={(e) => updateBatchRow(row.id, "unitValue", parseFloat(e.target.value) || 0)}
+                          className={cn(
+                            "h-7 text-xs border-0 bg-transparent focus:bg-background text-right px-1",
+                            row.error && "border border-rose-300 rounded"
+                          )}
+                        />
+                      </TableCell>
+                      <TableCell className="p-1 text-xs text-right font-medium">
+                        {row.unitValue > 0 ? formatCurrency(row.quantity * row.unitValue) : "—"}
+                      </TableCell>
+                      <TableCell className="p-1">
+                        <div className="flex items-center gap-0.5">
+                          <button
+                            onClick={() => duplicateBatchRow(row.id)}
+                            title="Duplicar"
+                            className="p-0.5 rounded hover:bg-muted text-muted-foreground"
+                          >
+                            <Copy className="h-3 w-3" />
+                          </button>
+                          {batchRows.length > 1 && (
+                            <button
+                              onClick={() => removeBatchRow(row.id)}
+                              title="Remover"
+                              className="p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+
+                  {/* Footer row */}
+                  <TableRow className="bg-muted/30">
+                    <TableCell colSpan={4} className="p-1">
+                      <button onClick={addBatchRow} className="flex items-center gap-1 text-xs text-primary hover:underline px-1">
+                        <Plus className="h-3 w-3" />
+                        Adicionar linha
+                        <span className="text-muted-foreground ml-1">(ou Tab na última célula)</span>
+                      </button>
+                    </TableCell>
+                    <TableCell className="p-1 text-xs text-center font-medium">
+                      {batchRows.reduce((a, r) => a + r.quantity, 0)}
+                    </TableCell>
+                    <TableCell className="p-1" />
+                    <TableCell className="p-1 text-xs text-right font-bold">
+                      {formatCurrency(batchRows.reduce((a, r) => a + r.quantity * r.unitValue, 0))}
+                    </TableCell>
+                    <TableCell className="p-1" />
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Rodapé do lote */}
+            <div className="flex items-center justify-between pt-2">
+              <span className="text-xs text-muted-foreground">
+                {batchRows.filter(r => r.description.trim()).length} de{" "}
+                {batchRows.length} linhas preenchidas
+              </span>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+                  Cancelar
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleBatchSubmit}
+                  disabled={batchSaving || batchRows.filter(r => r.description.trim()).length === 0}
+                  className="gap-2"
+                >
+                  {batchSaving ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> Salvando...</>
+                  ) : (
+                    <><CheckCircle className="h-4 w-4" /> Confirmar {batchRows.filter(r => r.description.trim()).length} lançamento(s)</>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================ */}
+        {/* SINGLE MODE (existing form)                                   */}
+        {/* ============================================================ */}
+        {entryMode === "single" && (
         <div className="space-y-4 py-4">
           {/* ============================================================ */}
           {/* TIPO DE PRODUÇÃO — Multi-select checkboxes                   */}
