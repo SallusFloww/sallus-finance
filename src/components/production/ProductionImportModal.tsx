@@ -530,7 +530,7 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
 
         setParsedRows(updatedRows);
       } catch (err) {
-        console.error("Erro ao verificar duplicados:", err);
+        if (import.meta.env.DEV) console.error("Erro ao verificar duplicados:", err);
       }
     },
     [currentCompany?.id, context],
