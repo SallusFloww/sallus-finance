@@ -74,11 +74,7 @@ const navSections: NavSection[] = [
   {
     title: "📈 Executivo",
     items: [
-      // ✅ NOVO: BI v2 (PowerBI-like)
-      { to: "/bi-v2", icon: BarChart3, label: "BI v2", badge: "BETA", permission: "VIEW_BI" },
-
-      // BI atual
-      { to: "/bi", icon: BarChart3, label: "BI", badge: "NOVO", permission: "VIEW_BI" },
+      { to: "/bi", icon: BarChart3, label: "BI", permission: "VIEW_BI" },
 
       { to: "/executive-report", icon: PieChart, label: "Relatório Executivo", permission: "VIEW_REPORTS" },
       { to: "/monthly-report", icon: FileText, label: "Rel. Mensal", badge: "PDF", permission: "VIEW_REPORTS" },
