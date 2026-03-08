@@ -309,7 +309,7 @@ export function useProductionDB() {
         .single();
 
       if (insertError) {
-        console.error("createProduction insertError:", insertError);
+        if (import.meta.env.DEV) console.error("createProduction insertError:", insertError);
 
         const errorMsg = insertError.message || "";
 

@@ -708,7 +708,7 @@ export function ProductionImportModal({ open, onOpenChange, onImportComplete }: 
       onImportComplete();
       resetAndClose();
     } catch (err: any) {
-      console.error("Erro na importação:", err);
+      if (import.meta.env.DEV) console.error("Erro na importação:", err);
       toast.error(err.message || "Erro ao importar produções");
     } finally {
       importingRef.current = false;
