@@ -232,8 +232,17 @@ export default function Production() {
     await updateProduction(id, { status: newStatus }, user.name);
   };
 
-  // Bulk status change
+  // Bulk status change — with validation (confirmation is handled in ProductionList)
   const handleBulkStatusChange = async (ids: string[], status: ProductionStatus) => {
+    // Validate all transitions before proceeding
+    const invalid = ids.filter(id => {
+      const p = filteredProductions.find(prod => prod.id === id);
+      return p && !isValidTransition(p.status, status);
+    });
+    if (invalid.length > 0) {
+      toast.error(`${invalid.length} registro(s) com transição inválida. Operação cancelada.`);
+      return;
+    }
     for (let i = 0; i < ids.length; i += 20) {
       const chunk = ids.slice(i, i + 20);
       await Promise.all(chunk.map(id => updateProduction(id, { status }, user.name)));

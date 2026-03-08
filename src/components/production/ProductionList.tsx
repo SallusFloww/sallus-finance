@@ -397,14 +397,20 @@ export function ProductionList({ productions, units, onDelete, onCancel, onEdit,
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => onBulkStatusChange([...selectedIds], "FATURADO").then(clearSelect)}
+                  onClick={() => {
+                    setBulkConfirmAction({ ids: [...selectedIds], status: "FATURADO" });
+                    setBulkConfirmOpen(true);
+                  }}
                 >
                   Faturar todos
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => onBulkStatusChange([...selectedIds], "RECEBIDO").then(clearSelect)}
+                  onClick={() => {
+                    setBulkConfirmAction({ ids: [...selectedIds], status: "RECEBIDO" });
+                    setBulkConfirmOpen(true);
+                  }}
                 >
                   Marcar recebidos
                 </Button>
