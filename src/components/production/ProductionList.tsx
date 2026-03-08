@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -31,6 +32,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Production, ProductionStatus, ProductionType, UnitConfig } from "@/types";
 import { formatCurrency } from "@/utils/formatters";
 import { cn } from "@/lib/utils";
@@ -95,6 +97,20 @@ const getProductionTypeLabel = (type: string): string => {
   return PRODUCTION_TYPE_LABELS[type] || type;
 };
 
+// Mapa de transições de status válidas
+const STATUS_TRANSITIONS: Partial<Record<ProductionStatus, { label: string; next: ProductionStatus; color: string }[]>> = {
+  PRODUZIDO: [
+    { label: "✅ Marcar como Faturado", next: "FATURADO", color: "text-blue-600" },
+  ],
+  FATURADO: [
+    { label: "💰 Marcar como Recebido", next: "RECEBIDO", color: "text-emerald-600" },
+    { label: "⚠️ Registrar Glosa", next: "GLOSADO", color: "text-rose-600" },
+  ],
+  GLOSADO: [
+    { label: "↩️ Voltar para Faturado", next: "FATURADO", color: "text-blue-600" },
+  ],
+};
+
 interface ProductionListProps {
   productions: Production[];
   units: UnitConfig[];
@@ -102,9 +118,11 @@ interface ProductionListProps {
   onCancel?: (id: string, reason?: string) => Promise<void>;
   onEdit?: (id: string, data: Partial<Production>) => Promise<void>;
   onViewHistory?: (production: Production) => void;
+  onStatusChange?: (id: string, newStatus: ProductionStatus) => Promise<void>;
+  onBulkStatusChange?: (ids: string[], status: ProductionStatus) => Promise<void>;
 }
 
-export function ProductionList({ productions, units, onDelete, onCancel, onEdit, onViewHistory }: ProductionListProps) {
+export function ProductionList({ productions, units, onDelete, onCancel, onEdit, onViewHistory, onStatusChange, onBulkStatusChange }: ProductionListProps) {
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingProduction, setEditingProduction] = useState<Production | null>(null);
@@ -114,7 +132,24 @@ export function ProductionList({ productions, units, onDelete, onCancel, onEdit,
   const [cancelReason, setCancelReason] = useState("");
   const [cancelSaving, setCancelSaving] = useState(false);
 
-  // Médicos(as) - exibição na lista (nome a partir de doctorId)
+  // Seleção em lote
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleSelect = (id: string) =>
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const selectAll = () =>
+    setSelectedIds(new Set(
+      filteredProductions.filter(p => p.status !== "CANCELADO").map(p => p.id)
+    ));
+
+  const clearSelect = () => setSelectedIds(new Set());
+
+  // Médicos(as)
   const { currentCompany, profile } = useAuth();
   const { extendedSettings } = useCompanySettings();
   const companyId = (currentCompany as any)?.id || (profile as any)?.company_id;
@@ -122,7 +157,6 @@ export function ProductionList({ productions, units, onDelete, onCancel, onEdit,
   const [doctorNameById, setDoctorNameById] = useState<Record<string, string>>({});
   const [doctorFilter, setDoctorFilter] = useState<string>("ALL");
 
-  // Carrega nomes de médicos da empresa (inclui inativos para histórico)
   useEffect(() => {
     const fetchDoctorNames = async () => {
       if (!companyId) {
@@ -157,16 +191,18 @@ export function ProductionList({ productions, units, onDelete, onCancel, onEdit,
     if (!doctorId) return null;
     return doctorNameById[doctorId] || "Médico não encontrado";
   };
+
   const filteredProductions = useMemo(() => {
     if (!doctorFilter || doctorFilter === "ALL") return productions;
-
-    // Especial: somente sem médico
     if (doctorFilter === "NONE") {
       return productions.filter((p) => !(p as any).doctorId);
     }
-
     return productions.filter((p) => String((p as any).doctorId || "") === doctorFilter);
   }, [productions, doctorFilter]);
+
+  const allSelected =
+    selectedIds.size > 0 &&
+    selectedIds.size === filteredProductions.filter(p => p.status !== "CANCELADO").length;
 
   const [selectedProduction, setSelectedProduction] = useState<Production | null>(null);
 
@@ -269,8 +305,7 @@ export function ProductionList({ productions, units, onDelete, onCancel, onEdit,
     );
   }
 
-  // AUDIT_FIX: Calculate totals using effectiveQty for packages
-  // Produções canceladas são excluídas dos totais
+  // Totals
   const totals = filteredProductions.reduce(
     (acc, p) => {
       if (p.status === "CANCELADO") return acc;
@@ -346,10 +381,46 @@ export function ProductionList({ productions, units, onDelete, onCancel, onEdit,
             <strong className="text-foreground">{productions.length}</strong>
           </p>
         </div>
+
+        {/* Barra de ações em lote */}
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-3 p-3 rounded-lg border border-primary/30 bg-primary/5 mb-3 animate-fade-in">
+            <span className="text-sm font-medium text-foreground">{selectedIds.size} selecionados</span>
+            <div className="flex-1" />
+            {onBulkStatusChange && (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onBulkStatusChange([...selectedIds], "FATURADO").then(clearSelect)}
+                >
+                  Faturar todos
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onBulkStatusChange([...selectedIds], "RECEBIDO").then(clearSelect)}
+                >
+                  Marcar recebidos
+                </Button>
+              </>
+            )}
+            <Button size="sm" variant="ghost" onClick={clearSelect}>
+              Cancelar seleção
+            </Button>
+          </div>
+        )}
+
         <div className="rounded-lg border overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
+                <TableHead className="w-[40px]">
+                  <Checkbox
+                    checked={allSelected}
+                    onCheckedChange={(v) => v ? selectAll() : clearSelect()}
+                  />
+                </TableHead>
                 <TableHead className="w-[90px]">Data</TableHead>
                 <TableHead>Procedimento/Exame</TableHead>
                 <TableHead>Unidade</TableHead>
@@ -368,10 +439,18 @@ export function ProductionList({ productions, units, onDelete, onCancel, onEdit,
                 const hasLinkedReceivable = production.linkedReceivableIds && production.linkedReceivableIds.length > 0;
                 const isAlreadyBilled = production.status !== "PRODUZIDO";
                 const isCancelled = production.status === "CANCELADO";
+                const transitions = STATUS_TRANSITIONS[production.status];
 
                 return (
                   <TableRow key={production.id} className={cn("group", isCancelled && "opacity-50")}>
-
+                    <TableCell>
+                      {!isCancelled && (
+                        <Checkbox
+                          checked={selectedIds.has(production.id)}
+                          onCheckedChange={() => toggleSelect(production.id)}
+                        />
+                      )}
+                    </TableCell>
                     <TableCell className="font-medium">
                       <div>
                         <p className="text-sm">{format(parseISO(production.productionDate), "dd/MM/yy")}</p>
@@ -418,7 +497,6 @@ export function ProductionList({ productions, units, onDelete, onCancel, onEdit,
                       })()}
                     </TableCell>
                     <TableCell className="text-center">
-                      {/* AUDIT_FIX: Exibir effectiveQty para pacotes */}
                       {(() => {
                         const isPackage =
                           production.isPackage ||
@@ -431,19 +509,53 @@ export function ProductionList({ productions, units, onDelete, onCancel, onEdit,
                       })()}
                     </TableCell>
                     <TableCell className="text-center">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span>
-                            <Badge variant="outline" className={cn("gap-1 cursor-help", statusConfig.color)}>
-                              <StatusIcon className="h-3 w-3" />
-                              {statusConfig.label}
-                            </Badge>
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-[200px]">
-                          <p className="text-xs">{statusConfig.description}</p>
-                        </TooltipContent>
-                      </Tooltip>
+                      {(() => {
+                        if (!transitions || isCancelled || !onStatusChange) {
+                          return (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span>
+                                  <Badge variant="outline" className={cn("gap-1 cursor-help", statusConfig.color)}>
+                                    <StatusIcon className="h-3 w-3" />
+                                    {statusConfig.label}
+                                  </Badge>
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="max-w-[200px]">
+                                <p className="text-xs">{statusConfig.description}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          );
+                        }
+
+                        return (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button className="inline-flex">
+                                <Badge variant="outline" className={cn("gap-1 cursor-pointer hover:opacity-80 transition-opacity", statusConfig.color)}>
+                                  <StatusIcon className="h-3 w-3" />
+                                  {statusConfig.label}
+                                </Badge>
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-52 p-2" align="center" onOpenAutoFocus={(e) => e.preventDefault()}>
+                              <p className="text-xs font-medium text-muted-foreground mb-2 px-1">Alterar status</p>
+                              {transitions.map((t) => (
+                                <button
+                                  key={t.next}
+                                  onClick={() => onStatusChange(production.id, t.next)}
+                                  className={cn(
+                                    "w-full text-left text-xs px-2 py-1.5 rounded hover:bg-muted transition-colors",
+                                    t.color
+                                  )}
+                                >
+                                  {t.label}
+                                </button>
+                              ))}
+                            </PopoverContent>
+                          </Popover>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell>
                       {hasLinkedReceivable ? (
@@ -545,8 +657,9 @@ export function ProductionList({ productions, units, onDelete, onCancel, onEdit,
                 );
               })}
 
-              {/* Totals row - quantity focused */}
+              {/* Totals row */}
               <TableRow className="bg-muted/30 font-medium">
+                <TableCell />
                 <TableCell colSpan={5} className="text-right">
                   Totais ({totals.records} registros)
                 </TableCell>
@@ -575,7 +688,6 @@ export function ProductionList({ productions, units, onDelete, onCancel, onEdit,
               </DialogDescription>
             </DialogHeader>
 
-            {/* Production Summary */}
             {selectedProduction && (
               <div className="p-3 rounded-lg bg-muted/50 border space-y-1 text-sm">
                 <div className="flex justify-between">
