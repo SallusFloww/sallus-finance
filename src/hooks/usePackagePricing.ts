@@ -92,7 +92,7 @@ export function usePackagePricing() {
       const mapped = rows.map(mapDBToRule);
       setRules(mapped);
     } catch (err: any) {
-      console.error("Error fetching package pricing rules:", err);
+      if (import.meta.env.DEV) console.error("Error fetching package pricing rules:", err);
       setError(err.message);
     } finally {
       setLoading(false);
