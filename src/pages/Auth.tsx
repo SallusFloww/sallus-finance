@@ -70,7 +70,7 @@ interface InviteData {
 export default function Auth() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { signIn, resetPassword, updatePassword, isAuthenticated, isLoading: authLoading, reloadUserData } = useAuth();
+  const { signIn, signUp, resetPassword, updatePassword, isAuthenticated, isLoading: authLoading, reloadUserData } = useAuth();
 
   const [activeTab, setActiveTab] = useState<AuthMode>("login");
   const [isLoading, setIsLoading] = useState(false);
