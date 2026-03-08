@@ -1109,7 +1109,7 @@ export function useReceivablesDB() {
 
         fixed++;
       } catch (err: any) {
-        console.error(`Erro ao reconciliar receivable ${receivable.id}:`, err);
+        if (import.meta.env.DEV) console.error(`Erro ao reconciliar receivable ${receivable.id}:`, err);
         errors++;
       }
     }
