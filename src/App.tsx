@@ -34,7 +34,6 @@ const BillingReport = lazy(() => import("./pages/BillingReport"));
 const AgingReport = lazy(() => import("./pages/AgingReport"));
 const ExecutiveReport = lazy(() => import("./pages/ExecutiveReport"));
 const MonthlyReport = lazy(() => import("./pages/MonthlyReport"));
-const BI = lazy(() => import("./pages/BI"));
 const BIV2 = lazy(() => import("./pages/BIV2"));
 const Users = lazy(() => import("./pages/Users"));
 const AdminDiagnostics = lazy(() => import("./pages/AdminDiagnostics"));
@@ -84,8 +83,7 @@ function AppRoutes() {
           <Route path="/aging-report" element={<ProtectedRoute requiredPermission="VIEW_RECEIVABLES"><AgingReport /></ProtectedRoute>} />
           <Route path="/executive-report" element={<ProtectedRoute requiredPermission="VIEW_REPORTS"><ExecutiveReport /></ProtectedRoute>} />
           <Route path="/monthly-report" element={<ProtectedRoute requiredPermission="VIEW_REPORTS"><MonthlyReport /></ProtectedRoute>} />
-          <Route path="/bi" element={<ProtectedRoute requiredPermission="VIEW_BI"><BI /></ProtectedRoute>} />
-          <Route path="/bi-v2" element={<ProtectedRoute requiredPermission="VIEW_BI"><BIV2 /></ProtectedRoute>} />
+          <Route path="/bi" element={<ProtectedRoute requiredPermission="VIEW_BI"><BIV2 /></ProtectedRoute>} />
           <Route path="/conciliation" element={<ProtectedRoute requiredPermission="VIEW_RECEIVABLES"><Conciliation /></ProtectedRoute>} />
 
           {/* Redirect */}
