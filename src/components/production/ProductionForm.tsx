@@ -2197,9 +2197,16 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
             </div>
           )}
 
-          {/* Médico(a) - opcional */}
+          {/* Médico(a) - filtrado por especialidade quando Centro Clínico */}
           <div className="space-y-2">
-            <Label>Médico(a) (opcional)</Label>
+            <Label>
+              Médico(a) (opcional)
+              {isCentroClinico && formData.specialty && (
+                <span className="text-xs text-muted-foreground font-normal ml-1">
+                  — filtrado por especialidade
+                </span>
+              )}
+            </Label>
             <Select
               value={formData.doctorId ? formData.doctorId : "none"}
               onValueChange={(v) => setFormData((prev) => ({ ...prev, doctorId: v === "none" ? "" : v }))}
@@ -2209,14 +2216,24 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Nenhum</SelectItem>
-                {doctorOptions.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name}
-                  </SelectItem>
-                ))}
+                {(() => {
+                  // Filtrar médicos por especialidade quando Centro Clínico + especialidade selecionada
+                  const filtered = (isCentroClinico && formData.specialty)
+                    ? doctorOptions.filter(d => !d.specialty_id || d.specialty_id === formData.specialty)
+                    : doctorOptions;
+                  return filtered.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name}
+                    </SelectItem>
+                  ));
+                })()}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">Ajuda em relatórios por profissional (sem ser obrigatório).</p>
+            <p className="text-xs text-muted-foreground">
+              {isCentroClinico && formData.specialty
+                ? "Mostrando médicos da especialidade selecionada."
+                : "Ajuda em relatórios por profissional (sem ser obrigatório)."}
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
