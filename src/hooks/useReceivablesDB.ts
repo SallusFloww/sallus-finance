@@ -1092,7 +1092,7 @@ export function useReceivablesDB() {
 
         if (insertError || !insertedEntry) {
           const msg = (insertError as any)?.message || "erro desconhecido";
-          console.error(`Erro ao criar entry para receivable ${receivable.id}: ${msg}`, insertError);
+          if (import.meta.env.DEV) console.error(`Erro ao criar entry para receivable ${receivable.id}: ${msg}`, insertError);
           errors++;
           continue;
         }
