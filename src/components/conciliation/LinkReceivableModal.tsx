@@ -73,7 +73,7 @@ export function LinkReceivableModal({
       setReceivables(data || []);
       setFetched(true);
     } catch (err) {
-      console.error("Erro ao buscar receivables:", err);
+      if (import.meta.env.DEV) console.error("Erro ao buscar receivables:", err);
       toast.error("Erro ao carregar faturamentos disponíveis");
     } finally {
       setLoading(false);
@@ -163,7 +163,7 @@ export function LinkReceivableModal({
       onLinked();
       onOpenChange(false);
     } catch (err) {
-      console.error("Erro ao vincular:", err);
+      if (import.meta.env.DEV) console.error("Erro ao vincular:", err);
       toast.error("Erro ao criar vínculo");
     } finally {
       setLinking(false);

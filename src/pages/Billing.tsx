@@ -335,7 +335,7 @@ export default function Billing() {
       await refetchReceivables();
       await fetchCaixaTotal();
     } catch (err) {
-      console.error("Erro inesperado na reconciliação:", err);
+      if (import.meta.env.DEV) console.error("Erro inesperado na reconciliação:", err);
       toast.error("Erro inesperado na reconciliação");
     } finally {
       setReconciling(false);
@@ -363,7 +363,7 @@ export default function Billing() {
           toast.success(`Recebimento registrado! ${entries.length} movimentação(ões) criada(s) no Caixa.`);
         }
       } catch (error) {
-        console.error("Erro ao marcar como recebido (múltiplas datas):", error);
+        if (import.meta.env.DEV) console.error("Erro ao marcar como recebido (múltiplas datas):", error);
         toast.error("Erro ao registrar recebimento");
       } finally {
         setReceiveDialogOpen(false);
@@ -395,7 +395,7 @@ export default function Billing() {
         toast.success("Recebimento registrado! Movimentação criada automaticamente no Caixa.");
       }
     } catch (error) {
-      console.error("Erro ao marcar como recebido:", error);
+      if (import.meta.env.DEV) console.error("Erro ao marcar como recebido:", error);
       toast.error("Erro ao registrar recebimento");
     } finally {
       setReceiveDialogOpen(false);

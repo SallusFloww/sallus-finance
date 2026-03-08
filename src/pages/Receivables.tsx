@@ -243,7 +243,7 @@ export default function Receivables() {
         toast.success("Recebimento registrado! Movimentação criada automaticamente no Caixa.");
       }
     } catch (error) {
-      console.error("Erro ao marcar como recebido:", error);
+      if (import.meta.env.DEV) console.error("Erro ao marcar como recebido:", error);
       toast.error("Erro ao registrar recebimento");
     } finally {
       setReceiveDialogOpen(false);

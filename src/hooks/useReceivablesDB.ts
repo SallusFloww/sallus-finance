@@ -554,7 +554,7 @@ export function useReceivablesDB() {
           .single();
 
         if (insertError) {
-          console.error("Erro ao criar movimentação:", insertError);
+          if (import.meta.env.DEV) console.error("Erro ao criar movimentação:", insertError);
           toast.error("Erro ao criar movimentação no caixa");
           return null;
         }
@@ -589,7 +589,7 @@ export function useReceivablesDB() {
 
         if (updateError) {
           // ROLLBACK: Cancelar a movimentação criada se falhar ao atualizar o receivable
-          console.error("Erro ao atualizar receivable, aplicando rollback:", updateError);
+          if (import.meta.env.DEV) console.error("Erro ao atualizar receivable, aplicando rollback:", updateError);
 
           await supabase
             .from("financial_entries")
@@ -612,7 +612,7 @@ export function useReceivablesDB() {
         // Sucesso completo
         return { id, transactionId: createdTransactionId };
       } catch (error) {
-        console.error("Erro inesperado em markAsReceived:", error);
+        if (import.meta.env.DEV) console.error("Erro inesperado em markAsReceived:", error);
 
         // ROLLBACK em caso de erro inesperado
         if (createdTransactionId) {
@@ -1043,7 +1043,7 @@ export function useReceivablesDB() {
           .limit(1);
 
         if (existingErr) {
-          console.error(`Erro ao verificar entry para receivable ${receivable.id}:`, existingErr);
+          if (import.meta.env.DEV) console.error(`Erro ao verificar entry para receivable ${receivable.id}:`, existingErr);
           errors++;
           continue;
         }
@@ -1092,7 +1092,7 @@ export function useReceivablesDB() {
 
         if (insertError || !insertedEntry) {
           const msg = (insertError as any)?.message || "erro desconhecido";
-          console.error(`Erro ao criar entry para receivable ${receivable.id}: ${msg}`, insertError);
+          if (import.meta.env.DEV) console.error(`Erro ao criar entry para receivable ${receivable.id}: ${msg}`, insertError);
           errors++;
           continue;
         }
@@ -1109,7 +1109,7 @@ export function useReceivablesDB() {
 
         fixed++;
       } catch (err: any) {
-        console.error(`Erro ao reconciliar receivable ${receivable.id}:`, err);
+        if (import.meta.env.DEV) console.error(`Erro ao reconciliar receivable ${receivable.id}:`, err);
         errors++;
       }
     }
@@ -1294,7 +1294,7 @@ export function useReceivablesDB() {
             .single();
 
           if (insertError) {
-            console.error(`Erro ao criar entry ${i + 1}/${entries.length}:`, insertError);
+            if (import.meta.env.DEV) console.error(`Erro ao criar entry ${i + 1}/${entries.length}:`, insertError);
             // Rollback all created entries
             for (const txId of createdTransactionIds) {
               await supabase
@@ -1361,7 +1361,7 @@ export function useReceivablesDB() {
         refreshAll();
         return { id, transactionIds: createdTransactionIds };
       } catch (error) {
-        console.error("Erro inesperado em markAsReceivedMultipleDates:", error);
+        if (import.meta.env.DEV) console.error("Erro inesperado em markAsReceivedMultipleDates:", error);
         for (const txId of createdTransactionIds) {
           await supabase
             .from("financial_entries")

@@ -336,7 +336,7 @@ export function FinancialEntryForm({ editingEntry, onClose }: FinancialEntryForm
         onClose?.();
       }
     } catch (error) {
-      console.error("Erro ao salvar movimentação:", error);
+      if (import.meta.env.DEV) console.error("Erro ao salvar movimentação:", error);
       setValidationError("Não foi possível salvar. Tente novamente.");
     } finally {
       setLoading(false);

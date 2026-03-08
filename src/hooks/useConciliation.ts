@@ -250,7 +250,7 @@ export function useConciliation() {
         await flushOfflineQueue(statusMap, notes);
 
       } catch (error) {
-        console.error("Failed to load conciliation data, using local mode:", error);
+        if (import.meta.env.DEV) console.error("Failed to load conciliation data, using local mode:", error);
         setIsOfflineMode(true);
         
         // Load from localStorage
@@ -292,7 +292,7 @@ export function useConciliation() {
         })));
       }
     } catch (e) {
-      console.error("Error loading from localStorage:", e);
+      if (import.meta.env.DEV) console.error("Error loading from localStorage:", e);
     }
   }, []);
 
@@ -344,7 +344,7 @@ export function useConciliation() {
             });
           flushedCount++;
         } catch (e) {
-          console.error("Error flushing status:", e);
+          if (import.meta.env.DEV) console.error("Error flushing status:", e);
         }
       }
 
@@ -367,7 +367,7 @@ export function useConciliation() {
             });
           flushedCount++;
         } catch (e) {
-          console.error("Error flushing note:", e);
+          if (import.meta.env.DEV) console.error("Error flushing note:", e);
         }
       }
 
@@ -384,7 +384,7 @@ export function useConciliation() {
       }
 
     } catch (e) {
-      console.error("Error flushing offline queue:", e);
+      if (import.meta.env.DEV) console.error("Error flushing offline queue:", e);
     } finally {
       flushingRef.current = false;
     }
@@ -406,7 +406,7 @@ export function useConciliation() {
       
       localStorage.setItem(LS_KEY_STATUSES, JSON.stringify(queue));
     } catch (e) {
-      console.error("Error saving status to localStorage:", e);
+      if (import.meta.env.DEV) console.error("Error saving status to localStorage:", e);
     }
   }, []);
 
@@ -417,7 +417,7 @@ export function useConciliation() {
       queue.push(note);
       localStorage.setItem(LS_KEY_NOTES, JSON.stringify(queue));
     } catch (e) {
-      console.error("Error saving note to localStorage:", e);
+      if (import.meta.env.DEV) console.error("Error saving note to localStorage:", e);
     }
   }, []);
 
@@ -836,7 +836,7 @@ export function useConciliation() {
         setDbNotes(prev => [newNote, ...prev]);
         return newNote;
       } catch (error) {
-        console.error("Failed to persist note:", error);
+        if (import.meta.env.DEV) console.error("Failed to persist note:", error);
         toast.warning("Modo offline para notas", {
           description: "A nota foi salva localmente e será sincronizada.",
         });
@@ -887,7 +887,7 @@ export function useConciliation() {
         setDbStatuses(prev => ({ ...prev, [itemId]: status }));
         return;
       } catch (error) {
-        console.error("Failed to persist status:", error);
+        if (import.meta.env.DEV) console.error("Failed to persist status:", error);
         toast.warning("Modo offline para status", {
           description: "O status foi salvo localmente e será sincronizado.",
         });
