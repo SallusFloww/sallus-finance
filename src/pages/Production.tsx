@@ -53,6 +53,7 @@ import { ProductionStats, ProductionForm, ProductionList, ProductionFormData, Pr
 import { ProductionStatus, ProductionType } from "@/types";
 import { toast } from "sonner";
 import { formatUnitDisplayName, formatConvenioDisplayName } from "@/utils/formatters";
+import { isValidTransition, getTransitionError } from "@/utils/productionStatusTransitions";
 
 // Labels para tipos de produção
 const PRODUCTION_TYPE_LABELS: Record<string, string> = {
