@@ -1,71 +1,34 @@
 
-# Corrigir Card "Convenio Principal" Mostrando UUID
 
-## Problema
+## Plan: Fix Users Page to be 100% Functional
 
-O campo `p.convenio` contem o UUID do `health_plan_id` (ex: `3bbf237b-9901-4164-bde3-70f75a6be3a9`), pois no `useProductionDB.ts` linha 112 ele e mapeado assim:
+### Issues Identified
 
-```
-convenio: db.health_plan_id || undefined
-```
+1. **Console Warning (Ref on DropdownMenu):** `DropdownMenuTrigger asChild` wrapping a `Button` in the actions column is generating a React ref warning. The `Button` component likely needs `forwardRef` or the trigger needs adjustment.
 
-A funcao `formatConvenioDisplayName` apenas aplica title case, nao resolve UUIDs para nomes. Isso afeta:
-- Card "Convenio Principal" nos KPIs
-- Ranking por Convenio
-- Insights e alertas de concentracao
-- Leitura executiva
+2. **Visualizador role missing from RoleSummaryCards:** `RoleSummaryCards.tsx` hardcodes `Admin, Gestor, Operacional, Financeiro, Leitura` but the DB system role is `Visualizador`. Users with this role won't appear in the count cards.
 
-## Solucao
+3. **Role mismatch between summary cards and DB:** The summary cards show 5 hardcoded roles, but the actual system roles from the database may only include 3-4 (e.g., Admin, Gestor, Visualizador). Cards for non-existent roles show "0 usuarios" unnecessarily.
 
-Buscar a tabela `health_plans` no `ProductionReport.tsx` e criar um mapa UUID->nome para resolver os nomes antes de exibir.
+4. **Self-action protection missing:** An admin can deactivate or remove themselves, which would lock them out.
 
-### Arquivo: `src/pages/ProductionReport.tsx`
+### Changes
 
-**1. Adicionar state e fetch para health plans**
+**1. `src/components/users/RoleSummaryCards.tsx`**
+- Add `Visualizador` to `ROLE_SUMMARY_CONFIG` (same config as Leitura)
+- Make the grid dynamic: only render cards for roles that actually exist in the fetched system roles, instead of hardcoding all 5
 
-Apos os hooks existentes (useProductionDB, usePackagePricing), adicionar:
+**2. `src/pages/Users.tsx`**
+- Pass `roles` (from DB) to `RoleSummaryCards` so it only shows relevant role cards
+- Fix DropdownMenu ref warning: wrap the trigger button properly or use `asChild` correctly
+- Add self-protection: prevent current user from deactivating/removing themselves
+- Add confirmation dialog for destructive actions (deactivate/remove user)
 
-```typescript
-const [healthPlanMap, setHealthPlanMap] = useState<Record<string, string>>({});
+**3. `src/components/users/RoleSummaryCards.tsx`**
+- Accept a `roles` prop to filter which cards to show
+- Map `Visualizador` -> Leitura display config
 
-useEffect(() => {
-  if (!companyId) return;
-  supabase
-    .from("health_plans")
-    .select("id, name")
-    .eq("company_id", companyId)
-    .then(({ data }) => {
-      if (data) {
-        const map: Record<string, string> = {};
-        data.forEach((hp) => { map[hp.id] = hp.name; });
-        setHealthPlanMap(map);
-      }
-    });
-}, [companyId]);
-```
+**4. Minor UX Polish**
+- Show "Você" badge next to the current user's row
+- Disable role dropdown for the current user (prevent self-demotion)
 
-**2. Criar helper de resolucao de nome**
-
-```typescript
-const resolveConvenioName = useCallback((convenioId: string | undefined): string => {
-  if (!convenioId) return "PARTICULAR";
-  return healthPlanMap[convenioId] || convenioId;
-}, [healthPlanMap]);
-```
-
-**3. Usar o helper nos pontos que agrupam por convenio**
-
-- `strategicKPIs` (linha ~535): trocar `p.convenio` por `resolveConvenioName(p.convenio)`
-- `convenioRanking` (linha ~684): trocar `p.convenio || "PARTICULAR"` por `resolveConvenioName(p.convenio)`
-
-Isso corrige automaticamente todos os cards, rankings e insights que dependem desses dados.
-
-## O que NAO muda
-
-- Nenhuma query de banco
-- Nenhum outro modulo (DRE, Aging, BI, Faturamento)
-- O campo `convenio` no hook continua armazenando o UUID (correto para persistencia)
-
-## Risco
-
-**Minimo**. Apenas adiciona uma consulta de leitura a `health_plans` e resolve nomes antes da exibicao.
