@@ -1,5 +1,7 @@
-import { useState, useEffect, useMemo } from "react";
-import { format } from "date-fns";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { format, parseISO } from "date-fns";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { formatCurrency } from "@/utils/formatters";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,7 +21,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { ProductionType, UnitConfig, BASE_PRODUCTION_TYPES } from "@/types";
 import { toast } from "sonner";
-import { Activity, Check, ChevronsUpDown, Plus, Calculator, Package, AlertCircle, Info, Layers } from "lucide-react";
+import { Activity, Check, ChevronsUpDown, Plus, Calculator, Package, AlertCircle, Info, Layers, Copy, Trash2, Loader2, History as HistoryIcon, CheckCircle } from "lucide-react";
 import { SPECIALTIES, DEFAULT_PAYMENT_METHODS_PARTICULAR, PAYMENT_METHOD_PARTICULAR_LABELS } from "@/utils/constants";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -81,7 +83,19 @@ interface ProductionFormProps {
   units: UnitConfig[];
   userName: string;
   /** P3-FIX: callback chamado após bulk insert bem-sucedido para forçar refetch mesmo se WebSocket estiver degradado */
-  onBulkInsertSuccess?: () => void;
+  onBulkInsertSuccess?: (count?: number) => void;
+  recentDescriptions?: string[];
+}
+
+interface BatchRow {
+  id: string;
+  description: string;
+  procedureCode?: string;
+  quantity: number;
+  unitValue: number;
+  convenio?: string;
+  patientName?: string;
+  error?: string;
 }
 
 export interface ProductionFormData {
@@ -116,7 +130,7 @@ export interface ProductionFormData {
   matmedQty?: number;
 }
 
-export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, onBulkInsertSuccess }: ProductionFormProps) {
+export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, onBulkInsertSuccess, recentDescriptions }: ProductionFormProps) {
   const currentMonth = format(new Date(), "MM/yyyy");
 
   // Use database-backed settings for suggestions
@@ -279,6 +293,112 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
   const [inlineNewTherapyType, setInlineNewTherapyType] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
+  // ===================================================================
+  // BATCH MODE STATE
+  // ===================================================================
+  const [entryMode, setEntryMode] = useState<"single" | "batch">("single");
+  const [batchRows, setBatchRows] = useState<BatchRow[]>([
+    { id: crypto.randomUUID(), description: "", quantity: 1, unitValue: 0, convenio: "", patientName: "" }
+  ]);
+  const [batchSaving, setBatchSaving] = useState(false);
+
+  // Autocomplete for description
+  const [descOpen, setDescOpen] = useState(false);
+
+  const addBatchRow = () => {
+    const last = batchRows[batchRows.length - 1];
+    setBatchRows(prev => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        description: "",
+        quantity: 1,
+        unitValue: last?.unitValue ?? 0,
+        convenio: last?.convenio ?? "",
+        patientName: "",
+      }
+    ]);
+  };
+
+  const updateBatchRow = (id: string, field: keyof BatchRow, value: any) =>
+    setBatchRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value, error: undefined } : r));
+
+  const removeBatchRow = (id: string) =>
+    setBatchRows(prev => prev.filter(r => r.id !== id));
+
+  const duplicateBatchRow = (id: string) => {
+    const row = batchRows.find(r => r.id === id);
+    if (!row) return;
+    const newRow = { ...row, id: crypto.randomUUID(), patientName: "" };
+    setBatchRows(prev => {
+      const idx = prev.findIndex(r => r.id === id);
+      const next = [...prev];
+      next.splice(idx + 1, 0, newRow);
+      return next;
+    });
+  };
+
+  const handleBatchSubmit = async () => {
+    const validRows = batchRows.filter(r => r.description.trim() !== "");
+
+    if (!validRows.length) {
+      toast.error("Preencha ao menos uma linha");
+      return;
+    }
+
+    if (!formData.unit) {
+      toast.error("Selecione a unidade");
+      return;
+    }
+
+    const withError = batchRows.map(r => {
+      if (!r.description.trim()) return r;
+      if (r.unitValue <= 0) return { ...r, error: "Valor obrigatório" };
+      return r;
+    });
+
+    if (withError.some(r => r.error)) {
+      setBatchRows(withError);
+      toast.error("Corrija as linhas marcadas antes de confirmar");
+      return;
+    }
+
+    setBatchSaving(true);
+    try {
+      const productionType = selectedTypes[0] || "CONSULTA";
+      const CHUNK = 10;
+      for (let i = 0; i < validRows.length; i += CHUNK) {
+        const chunk = validRows.slice(i, i + CHUNK);
+        await Promise.all(chunk.map(row =>
+          onSubmit({
+            productionDate: formData.productionDate,
+            competencia: formData.competencia,
+            unit: formData.unit,
+            productionType: productionType as ProductionType,
+            description: row.description.trim(),
+            procedureCode: row.procedureCode?.trim() || undefined,
+            quantity: row.quantity,
+            unitValue: row.unitValue,
+            payerType: (row.convenio && row.convenio !== "PARTICULAR") ? "CONVENIO" : "PARTICULAR",
+            convenio: (row.convenio && row.convenio !== "PARTICULAR") ? row.convenio : undefined,
+            createdBy: userName,
+            ...(row.patientName?.trim() ? { pacienteNome: row.patientName.trim() } : {}),
+          })
+        ));
+      }
+
+      toast.success(`${validRows.length} produções registradas com sucesso!`);
+      onOpenChange(false);
+      setBatchRows([{ id: crypto.randomUUID(), description: "", quantity: 1, unitValue: 0, convenio: "", patientName: "" }]);
+      onBulkInsertSuccess?.(validRows.length);
+    } catch (err) {
+      toast.error("Erro ao salvar lote. Verifique os dados e tente novamente.");
+      if (import.meta.env.DEV) console.error(err);
+    } finally {
+      setBatchSaving(false);
+    }
+  };
+
   // Derived flags
   const isSinglePackage =
     selectedTypes.length === 1 && PACKAGE_PRODUCTION_TYPES.includes(selectedTypes[0]);
@@ -411,6 +531,9 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
     setNewTherapyType("");
     setExamTypeOpen(false);
     setTherapyTypeOpen(false);
+    setEntryMode("single");
+    setBatchRows([{ id: crypto.randomUUID(), description: "", quantity: 1, unitValue: 0, convenio: "", patientName: "" }]);
+    setDescOpen(false);
   }, [open]);
 
   // Reset specialty when unit changes and is not Centro Clínico
@@ -1191,7 +1314,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
 
       toast.success(`${selectedTypes.length} produções registradas com sucesso`);
       // P3-FIX: forçar refetch explícito caso WebSocket esteja degradado
-      onBulkInsertSuccess?.();
+      onBulkInsertSuccess?.(selectedTypes.length);
       onOpenChange(false);
     } catch (err) {
       if (import.meta.env.DEV) console.error("Unexpected error:", err);
@@ -1206,6 +1329,76 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
   // ===================================================================
   const [newCustomType, setNewCustomType] = useState("");
 
+  // ===================================================================
+  // SHIFT+ENTER: salvar e abrir novo (single mode)
+  // ===================================================================
+  const handleSubmitAndNew = useCallback(async () => {
+    // Trigger submit without closing
+    if (entryMode !== "single") return;
+    // Quick inline submit for single non-package
+    if (isSingleNonPackage && formData.unit && selectedTypes.length > 0) {
+      const type = selectedTypes[0];
+      const typeValues = perTypeValues[type] || { quantity: "1", totalValue: "" };
+      const quantity = parseInt(typeValues.quantity) || 1;
+      const totalValue = toNum(typeValues.totalValue);
+      const unitValue = quantity > 0 ? totalValue / quantity : 0;
+
+      let description = formData.description;
+      if (type === "EXAME") description = typeValues.examType || description;
+      else if (type === "SESSAO_TERAPEUTICA") description = typeValues.therapySessionType || description;
+      else description = description || getDefaultDescription(type);
+      if (!description) description = getProductionTypeLabel(type) || type;
+
+      const [smm, syyyy] = formData.competencia.split("/");
+      const competenciaForDB = syyyy ? `${syyyy}-${smm}` : formData.competencia;
+
+      try {
+        await onSubmit({
+          productionDate: formData.productionDate,
+          competencia: competenciaForDB,
+          unit: formData.unit,
+          specialty: formData.specialty || undefined,
+          doctorId: formData.doctorId || undefined,
+          payerType: formData.payerType,
+          convenio: formData.payerType === "CONVENIO" ? formData.convenio : undefined,
+          paymentMethod: formData.payerType === "PARTICULAR" ? formData.paymentMethod : undefined,
+          productionType: type as ProductionType,
+          description,
+          procedureCode: formData.procedureCode || undefined,
+          quantity,
+          unitValue,
+          notes: formData.notes || undefined,
+          createdBy: userName,
+          examType: typeValues.examType || undefined,
+          therapySessionType: typeValues.therapySessionType || undefined,
+          isPackage: false,
+        });
+        // Reset content fields but keep context
+        setFormData(prev => ({ ...prev, description: "", procedureCode: "", notes: "" }));
+        setPerTypeValues(prev => ({
+          ...prev,
+          [type]: { ...prev[type], totalValue: "", quantity: "1" },
+        }));
+        toast.success("Registrado! Pronto para próximo lançamento.");
+      } catch (err) {
+        if (import.meta.env.DEV) console.error(err);
+      }
+    }
+  }, [entryMode, isSingleNonPackage, formData, selectedTypes, perTypeValues, onSubmit, userName]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (e.key === "Enter" && e.shiftKey && tag !== "BUTTON") {
+        e.preventDefault();
+        handleSubmitAndNew();
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open, handleSubmitAndNew]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
@@ -1217,6 +1410,233 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
           <DialogDescription>Volume assistencial realizado. Não impacta Caixa, DRE ou Score.</DialogDescription>
         </DialogHeader>
 
+        {/* Toggle Único / Lote */}
+        <div className="flex items-center gap-1 p-1 rounded-lg bg-muted/50 w-fit">
+          <button
+            onClick={() => setEntryMode("single")}
+            className={cn(
+              "text-xs px-3 py-1.5 rounded-md transition-colors",
+              entryMode === "single"
+                ? "bg-background shadow-sm font-medium"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Único
+          </button>
+          <button
+            onClick={() => setEntryMode("batch")}
+            className={cn(
+              "text-xs px-3 py-1.5 rounded-md transition-colors flex items-center gap-1",
+              entryMode === "batch"
+                ? "bg-background shadow-sm font-medium"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Layers className="h-3 w-3" />
+            Lote
+          </button>
+        </div>
+
+        {/* ============================================================ */}
+        {/* BATCH MODE                                                    */}
+        {/* ============================================================ */}
+        {entryMode === "batch" && (
+          <div className="space-y-4 py-2">
+            {/* Contexto compartilhado */}
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <Label className="text-xs">Data (todas)</Label>
+                <Input type="date" value={formData.productionDate} onChange={(e) => setFormData(prev => ({ ...prev, productionDate: e.target.value }))} className="h-8 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Unidade (todas)</Label>
+                <Select value={formData.unit} onValueChange={(v) => setFormData(prev => ({ ...prev, unit: v }))}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    {activeUnits.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Tipo (todas)</Label>
+                <Select value={selectedTypes[0] || ""} onValueChange={(v) => { setSelectedTypes([v]); setPerTypeValues({ [v]: { quantity: "1", totalValue: "" } }); }}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    {(extendedSettings?.productionTypes || [])
+                      .filter((t: any) => t.active !== false)
+                      .map((t: any) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Grade de linhas */}
+            <div className="border rounded-lg overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead className="text-xs">Procedimento</TableHead>
+                    <TableHead className="text-xs w-[80px]">Cód.</TableHead>
+                    <TableHead className="text-xs">Paciente</TableHead>
+                    <TableHead className="text-xs w-[110px]">Convênio</TableHead>
+                    <TableHead className="text-xs w-[60px]">Qtde</TableHead>
+                    <TableHead className="text-xs w-[90px]">Valor Unit.</TableHead>
+                    <TableHead className="text-xs w-[80px]">Total</TableHead>
+                    <TableHead className="w-[60px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {batchRows.map((row, idx) => (
+                    <TableRow key={row.id}>
+                      <TableCell className="p-1">
+                        <Input
+                          placeholder="Ex: Consulta, ECG..."
+                          value={row.description}
+                          onChange={(e) => updateBatchRow(row.id, "description", e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Tab" && idx === batchRows.length - 1 && !e.shiftKey) {
+                              e.preventDefault();
+                              addBatchRow();
+                            }
+                          }}
+                          className={cn(
+                            "h-7 text-xs border-0 bg-transparent focus:bg-background px-1",
+                            row.error && "border border-rose-300 rounded"
+                          )}
+                        />
+                      </TableCell>
+                      <TableCell className="p-1">
+                        <Input
+                          placeholder="TUSS"
+                          value={row.procedureCode || ""}
+                          onChange={(e) => updateBatchRow(row.id, "procedureCode", e.target.value)}
+                          className="h-7 text-xs border-0 bg-transparent focus:bg-background px-1"
+                        />
+                      </TableCell>
+                      <TableCell className="p-1">
+                        <Input
+                          placeholder="Nome"
+                          value={row.patientName || ""}
+                          onChange={(e) => updateBatchRow(row.id, "patientName", e.target.value)}
+                          className="h-7 text-xs border-0 bg-transparent focus:bg-background px-1"
+                        />
+                      </TableCell>
+                      <TableCell className="p-1">
+                        <Select value={row.convenio || "PARTICULAR"} onValueChange={(v) => updateBatchRow(row.id, "convenio", v)}>
+                          <SelectTrigger className="h-7 text-xs border-0 bg-transparent">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="PARTICULAR">Particular</SelectItem>
+                            {(extendedSettings?.payers || [])
+                              .filter((p: any) => p.active !== false)
+                              .map((p: any) => (
+                                <SelectItem key={p.id || p.name} value={p.name || p.id}>{p.name}</SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell className="p-1">
+                        <Input
+                          type="number"
+                          min={1}
+                          value={row.quantity}
+                          onChange={(e) => updateBatchRow(row.id, "quantity", Math.max(1, Number(e.target.value) || 1))}
+                          className="h-7 text-xs border-0 bg-transparent focus:bg-background text-center px-1"
+                        />
+                      </TableCell>
+                      <TableCell className="p-1">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min={0}
+                          value={row.unitValue || ""}
+                          onChange={(e) => updateBatchRow(row.id, "unitValue", parseFloat(e.target.value) || 0)}
+                          className={cn(
+                            "h-7 text-xs border-0 bg-transparent focus:bg-background text-right px-1",
+                            row.error && "border border-rose-300 rounded"
+                          )}
+                        />
+                      </TableCell>
+                      <TableCell className="p-1 text-xs text-right font-medium">
+                        {row.unitValue > 0 ? formatCurrency(row.quantity * row.unitValue) : "—"}
+                      </TableCell>
+                      <TableCell className="p-1">
+                        <div className="flex items-center gap-0.5">
+                          <button
+                            onClick={() => duplicateBatchRow(row.id)}
+                            title="Duplicar"
+                            className="p-0.5 rounded hover:bg-muted text-muted-foreground"
+                          >
+                            <Copy className="h-3 w-3" />
+                          </button>
+                          {batchRows.length > 1 && (
+                            <button
+                              onClick={() => removeBatchRow(row.id)}
+                              title="Remover"
+                              className="p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+
+                  {/* Footer row */}
+                  <TableRow className="bg-muted/30">
+                    <TableCell colSpan={4} className="p-1">
+                      <button onClick={addBatchRow} className="flex items-center gap-1 text-xs text-primary hover:underline px-1">
+                        <Plus className="h-3 w-3" />
+                        Adicionar linha
+                        <span className="text-muted-foreground ml-1">(ou Tab na última célula)</span>
+                      </button>
+                    </TableCell>
+                    <TableCell className="p-1 text-xs text-center font-medium">
+                      {batchRows.reduce((a, r) => a + r.quantity, 0)}
+                    </TableCell>
+                    <TableCell className="p-1" />
+                    <TableCell className="p-1 text-xs text-right font-bold">
+                      {formatCurrency(batchRows.reduce((a, r) => a + r.quantity * r.unitValue, 0))}
+                    </TableCell>
+                    <TableCell className="p-1" />
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Rodapé do lote */}
+            <div className="flex items-center justify-between pt-2">
+              <span className="text-xs text-muted-foreground">
+                {batchRows.filter(r => r.description.trim()).length} de{" "}
+                {batchRows.length} linhas preenchidas
+              </span>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+                  Cancelar
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleBatchSubmit}
+                  disabled={batchSaving || batchRows.filter(r => r.description.trim()).length === 0}
+                  className="gap-2"
+                >
+                  {batchSaving ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> Salvando...</>
+                  ) : (
+                    <><CheckCircle className="h-4 w-4" /> Confirmar {batchRows.filter(r => r.description.trim()).length} lançamento(s)</>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================ */}
+        {/* SINGLE MODE (existing form)                                   */}
+        {/* ============================================================ */}
+        {entryMode === "single" && (
         <div className="space-y-4 py-4">
           {/* ============================================================ */}
           {/* TIPO DE PRODUÇÃO — Multi-select checkboxes                   */}
@@ -1730,15 +2150,25 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
             />
           </div>
         </div>
+        )}
 
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button onClick={handleSubmit} className="gradient-primary" disabled={submitting}>
-            {submitting ? "Registrando..." : isMultiType ? `Registrar ${selectedTypes.length} produções` : "Registrar"}
-          </Button>
+        {/* Footer for single mode */}
+        {entryMode === "single" && (
+        <DialogFooter className="gap-2 sm:gap-0 flex-col">
+          <div className="flex items-center gap-2 w-full sm:justify-end">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSubmit} className="gradient-primary" disabled={submitting}>
+              {submitting ? "Registrando..." : isMultiType ? `Registrar ${selectedTypes.length} produções` : "Registrar"}
+            </Button>
+          </div>
+          <p className="text-[10px] text-muted-foreground text-center sm:text-right w-full">
+            <kbd className="px-1 py-0.5 rounded border bg-muted text-[10px]">Shift + Enter</kbd>
+            {" "}salva e abre novo mantendo data, unidade e convênio
+          </p>
         </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );

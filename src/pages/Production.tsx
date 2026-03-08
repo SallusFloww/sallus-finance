@@ -41,6 +41,7 @@ import {
   Search,
   Filter,
   Upload,
+  CheckCircle,
 } from "lucide-react";
 import { useProductionDB } from "@/hooks/useProductionDB";
 import { useApp } from "@/contexts/AppContext";
@@ -124,6 +125,9 @@ export default function Production() {
   const [isProductionFormOpen, setIsProductionFormOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
+  // Feedback visual pós-lançamento
+  const [justAdded, setJustAdded] = useState<{ count: number; label: string } | null>(null);
+
   // Filtros
   const [startDate, setStartDate] = useState<string>(
     format(startOfMonth(new Date()), "yyyy-MM-dd")
@@ -151,7 +155,19 @@ export default function Production() {
     return Array.from(types).sort();
   }, [productions]);
 
-  // Dados filtrados - IMPORTANT: include 'productions' in deps to react to realtime updates
+  // Autocomplete de procedimentos
+  const recentDescriptions = useMemo(() => {
+    const freq: Record<string, number> = {};
+    productions.forEach(p => {
+      if (p.description) freq[p.description] = (freq[p.description] || 0) + 1;
+    });
+    return Object.entries(freq)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20)
+      .map(([desc]) => desc);
+  }, [productions]);
+
+  // Dados filtrados
   const filteredProductions = useMemo(() => {
     return filterProductions({
       startDate: startDate ? parseISO(startDate) : undefined,
@@ -172,14 +188,15 @@ export default function Production() {
     return getProductionStats(start, end);
   }, [getProductionStats, startDate, endDate]);
 
-  // Handlers de produção (toast is handled inside addProduction)
+  // Handlers de produção
   const handleAddProduction = async (data: ProductionFormData) => {
     await addProduction({
       ...data,
-      // Cast packageType para o tipo correto
       packageType: data.packageType as "PACOTE_BOX" | "PACOTE_GTA" | undefined,
       estimatedValue: data.quantity * data.unitValue,
     });
+    setJustAdded({ count: 1, label: data.description });
+    setTimeout(() => setJustAdded(null), 3500);
   };
 
   const handleDeleteProduction = (id: string) => {
@@ -194,12 +211,26 @@ export default function Production() {
     await updateProduction(id, data, user.name);
   };
 
+  // Status change inline
+  const handleStatusChange = async (id: string, newStatus: ProductionStatus) => {
+    await updateProduction(id, { status: newStatus }, user.name);
+  };
+
+  // Bulk status change
+  const handleBulkStatusChange = async (ids: string[], status: ProductionStatus) => {
+    for (let i = 0; i < ids.length; i += 20) {
+      const chunk = ids.slice(i, i + 20);
+      await Promise.all(chunk.map(id => updateProduction(id, { status }, user.name)));
+    }
+    toast.success(`${ids.length} registros atualizados`);
+  };
+
   // Total de quantidade
   const totalQuantity = useMemo(() => {
     return filteredProductions.filter(p => p.status !== "CANCELADO").reduce((sum, p) => sum + p.quantity, 0);
   }, [filteredProductions]);
 
-  // KPIs Operacionais (sem valores financeiros)
+  // KPIs Operacionais
   const operationalStats = useMemo(() => {
     const byType: Record<string, number> = {};
     const byUnit: Record<string, number> = {};
@@ -215,7 +246,6 @@ export default function Production() {
       }
     });
 
-    // Top 3 tipos
     const topTypes = Object.entries(byType)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3)
@@ -257,7 +287,6 @@ export default function Production() {
   const operationalAlerts = useMemo(() => {
     const alerts: OperationalAlert[] = [];
 
-    // Concentração em convênio (>60%)
     if (operationalStats.convenioConcentration > 60 && operationalStats.topConvenio) {
       alerts.push({
         type: "concentration",
@@ -267,7 +296,6 @@ export default function Production() {
       });
     }
 
-    // Produções não faturadas
     const unbilledCount = filteredProductions.filter(p => p.status === "PRODUZIDO").length;
     if (unbilledCount > 0) {
       alerts.push({
@@ -321,10 +349,6 @@ export default function Production() {
   return (
     <DashboardLayout>
       <div className="space-y-4 animate-fade-in">
-        {/* Badge Visual Temporário para Validação */}
-        <div className="bg-green-500 text-white text-center py-2 px-4 rounded-lg font-bold text-sm">
-          ✅ PRODUÇÃO OPERACIONAL (rota /production)
-        </div>
 
         {/* Header - Ação Principal em Destaque */}
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -352,7 +376,7 @@ export default function Production() {
           </div>
         </div>
 
-        {/* Alerta de Produções Não Faturadas (destaque operacional) */}
+        {/* Alerta de Produções Não Faturadas */}
         {operationalAlerts.filter(a => a.type === "unbilled").map((alert, idx) => (
           <Alert key={idx} className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20 py-2">
             <FileWarning className="h-4 w-4 text-amber-600" />
@@ -409,6 +433,28 @@ export default function Production() {
                   <SelectItem value="CANCELADO">Cancelado</SelectItem>
                 </SelectContent>
               </Select>
+              <Select value={selectedConvenio} onValueChange={setSelectedConvenio}>
+                <SelectTrigger className="h-9 w-[130px]">
+                  <SelectValue placeholder="Convênio" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos conv.</SelectItem>
+                  {uniqueConvenios.map((c) => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={selectedType} onValueChange={setSelectedType}>
+                <SelectTrigger className="h-9 w-[130px]">
+                  <SelectValue placeholder="Tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos tipos</SelectItem>
+                  {uniqueProductionTypes.map((t) => (
+                    <SelectItem key={t} value={t}>{getProductionTypeLabel(t)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Select value={selectedUnit} onValueChange={setSelectedUnit}>
                 <SelectTrigger className="h-9 w-[130px]">
                   <SelectValue placeholder="Unidade" />
@@ -426,7 +472,7 @@ export default function Production() {
           </div>
         </Card>
 
-        {/* Resumo Operacional Inline (compacto, em segundo plano) */}
+        {/* Resumo Operacional Inline */}
         <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground px-1">
           <span className="flex items-center gap-1">
             <Activity className="h-4 w-4 text-primary" />
@@ -454,6 +500,19 @@ export default function Production() {
           )}
         </div>
 
+        {/* Feedback visual pós-lançamento */}
+        {justAdded && (
+          <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 animate-fade-in">
+            <CheckCircle className="h-5 w-5 text-emerald-600 shrink-0" />
+            <span className="text-sm text-foreground">
+              <strong className="text-emerald-700">
+                {justAdded.count === 1 ? justAdded.label : `${justAdded.count} lançamentos`}
+              </strong>
+              {" "}registrado{justAdded.count > 1 ? "s" : ""} com sucesso
+            </span>
+          </div>
+        )}
+
         {/* LISTA OPERACIONAL - Foco Principal */}
         <ProductionList 
           productions={filteredProductions}
@@ -461,9 +520,11 @@ export default function Production() {
           onDelete={handleDeleteProduction}
           onCancel={handleCancelProduction}
           onEdit={handleEditProduction}
+          onStatusChange={handleStatusChange}
+          onBulkStatusChange={handleBulkStatusChange}
         />
 
-        {/* CTA Faturamento (simples) */}
+        {/* CTA Faturamento */}
         {filteredProductions.filter(p => p.status === "PRODUZIDO").length > 0 && (
           <div className="flex items-center justify-between gap-4 p-3 rounded-lg border border-dashed border-primary/30 bg-primary/5">
             <span className="text-sm text-muted-foreground">
@@ -506,7 +567,14 @@ export default function Production() {
         onSubmit={handleAddProduction}
         units={settings.units}
         userName={user?.name || "Sistema"}
-        onBulkInsertSuccess={refetchProductions}
+        recentDescriptions={recentDescriptions}
+        onBulkInsertSuccess={(count) => {
+          if (count && count > 1) {
+            setJustAdded({ count, label: `${count} produções` });
+            setTimeout(() => setJustAdded(null), 3500);
+          }
+          refetchProductions();
+        }}
       />
 
       {/* Modal de Importação CSV */}

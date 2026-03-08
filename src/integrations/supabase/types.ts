@@ -65,6 +65,8 @@ export type Database = {
           id: string
           is_demo: boolean
           name: string
+          owner_user_id: string | null
+          plan: string
           status: string
           updated_at: string
         }
@@ -74,6 +76,8 @@ export type Database = {
           id?: string
           is_demo?: boolean
           name: string
+          owner_user_id?: string | null
+          plan?: string
           status?: string
           updated_at?: string
         }
@@ -83,6 +87,8 @@ export type Database = {
           id?: string
           is_demo?: boolean
           name?: string
+          owner_user_id?: string | null
+          plan?: string
           status?: string
           updated_at?: string
         }
@@ -216,6 +222,44 @@ export type Database = {
             foreignKeyName: "company_settings_company_id_fkey"
             columns: ["company_id"]
             isOneToOne: true
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      company_usage_metrics: {
+        Row: {
+          company_id: string
+          created_at: string | null
+          financial_volume: number | null
+          id: string
+          metric_date: string
+          total_records: number | null
+          total_users: number | null
+        }
+        Insert: {
+          company_id: string
+          created_at?: string | null
+          financial_volume?: number | null
+          id?: string
+          metric_date?: string
+          total_records?: number | null
+          total_users?: number | null
+        }
+        Update: {
+          company_id?: string
+          created_at?: string | null
+          financial_volume?: number | null
+          id?: string
+          metric_date?: string
+          total_records?: number | null
+          total_users?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_usage_metrics_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
             referencedRelation: "companies"
             referencedColumns: ["id"]
           },
@@ -367,6 +411,50 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      error_logs: {
+        Row: {
+          action: string
+          company_id: string | null
+          created_at: string | null
+          error_message: string
+          id: string
+          page: string | null
+          severity: string | null
+          stack_trace: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          company_id?: string | null
+          created_at?: string | null
+          error_message: string
+          id?: string
+          page?: string | null
+          severity?: string | null
+          stack_trace?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          company_id?: string | null
+          created_at?: string | null
+          error_message?: string
+          id?: string
+          page?: string | null
+          severity?: string | null
+          stack_trace?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "error_logs_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       financial_entries: {
         Row: {
@@ -940,102 +1028,6 @@ export type Database = {
           },
         ]
       }
-      receivables_dupes_20260108: {
-        Row: {
-          actual_receipt_date: string | null
-          appeal_amount: number | null
-          appeal_recovered_amount: number | null
-          appeal_resolved_date: string | null
-          appeal_start_date: string | null
-          appeal_status: string | null
-          appeal_transaction_id: string | null
-          billed_amount: number | null
-          billing_date: string | null
-          company_id: string | null
-          competencia: string | null
-          created_at: string | null
-          created_by: string | null
-          description: string | null
-          edit_logs: Json | null
-          expected_receipt_days: number | null
-          gloss_reason: string | null
-          gloss_type: string | null
-          glossed_amount: number | null
-          history: Json | null
-          id: string | null
-          linked_transaction_id: string | null
-          notes: string | null
-          received_amount: number | null
-          source: string | null
-          status: string | null
-          unit: string | null
-          updated_at: string | null
-          updated_by: string | null
-        }
-        Insert: {
-          actual_receipt_date?: string | null
-          appeal_amount?: number | null
-          appeal_recovered_amount?: number | null
-          appeal_resolved_date?: string | null
-          appeal_start_date?: string | null
-          appeal_status?: string | null
-          appeal_transaction_id?: string | null
-          billed_amount?: number | null
-          billing_date?: string | null
-          company_id?: string | null
-          competencia?: string | null
-          created_at?: string | null
-          created_by?: string | null
-          description?: string | null
-          edit_logs?: Json | null
-          expected_receipt_days?: number | null
-          gloss_reason?: string | null
-          gloss_type?: string | null
-          glossed_amount?: number | null
-          history?: Json | null
-          id?: string | null
-          linked_transaction_id?: string | null
-          notes?: string | null
-          received_amount?: number | null
-          source?: string | null
-          status?: string | null
-          unit?: string | null
-          updated_at?: string | null
-          updated_by?: string | null
-        }
-        Update: {
-          actual_receipt_date?: string | null
-          appeal_amount?: number | null
-          appeal_recovered_amount?: number | null
-          appeal_resolved_date?: string | null
-          appeal_start_date?: string | null
-          appeal_status?: string | null
-          appeal_transaction_id?: string | null
-          billed_amount?: number | null
-          billing_date?: string | null
-          company_id?: string | null
-          competencia?: string | null
-          created_at?: string | null
-          created_by?: string | null
-          description?: string | null
-          edit_logs?: Json | null
-          expected_receipt_days?: number | null
-          gloss_reason?: string | null
-          gloss_type?: string | null
-          glossed_amount?: number | null
-          history?: Json | null
-          id?: string | null
-          linked_transaction_id?: string | null
-          notes?: string | null
-          received_amount?: number | null
-          source?: string | null
-          status?: string | null
-          unit?: string | null
-          updated_at?: string | null
-          updated_by?: string | null
-        }
-        Relationships: []
-      }
       role_permissions: {
         Row: {
           created_at: string
@@ -1131,6 +1123,57 @@ export type Database = {
           message?: string
           resolved?: boolean
           severity?: string
+        }
+        Relationships: []
+      }
+      system_backups: {
+        Row: {
+          backup_date: string | null
+          created_at: string | null
+          id: string
+          status: string | null
+          table_name: string
+          total_records: number | null
+        }
+        Insert: {
+          backup_date?: string | null
+          created_at?: string | null
+          id?: string
+          status?: string | null
+          table_name: string
+          total_records?: number | null
+        }
+        Update: {
+          backup_date?: string | null
+          created_at?: string | null
+          id?: string
+          status?: string | null
+          table_name?: string
+          total_records?: number | null
+        }
+        Relationships: []
+      }
+      system_metrics: {
+        Row: {
+          context: Json | null
+          created_at: string | null
+          id: string
+          metric_name: string
+          value: number | null
+        }
+        Insert: {
+          context?: Json | null
+          created_at?: string | null
+          id?: string
+          metric_name: string
+          value?: number | null
+        }
+        Update: {
+          context?: Json | null
+          created_at?: string | null
+          id?: string
+          metric_name?: string
+          value?: number | null
         }
         Relationships: []
       }
@@ -1280,10 +1323,15 @@ export type Database = {
         }
         Returns: Json
       }
+      create_default_company_for_user: {
+        Args: { _user_email: string; _user_id: string; _user_name: string }
+        Returns: Json
+      }
       find_doctor_by_name: {
         Args: { _company_id: string; _doctor_name: string }
         Returns: string
       }
+      get_company_plan_limits: { Args: { _company_id: string }; Returns: Json }
       get_user_companies: { Args: { _user_id: string }; Returns: string[] }
       get_user_permissions: {
         Args: { _user_id: string }
