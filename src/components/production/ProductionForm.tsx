@@ -660,12 +660,34 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
     setDescOpen(false);
   }, [open]);
 
-  // Reset specialty when unit changes and is not Centro Clínico
+  // CASCADING DEPENDENCIES: Unit → Specialty → Doctor
+  // When unit changes: clear specialty + doctor
   useEffect(() => {
-    if (!isCentroClinico && formData.specialty) {
-      setFormData((prev) => ({ ...prev, specialty: "" }));
+    if (!isCentroClinico) {
+      setFormData((prev) => {
+        const updates: any = {};
+        if (prev.specialty) updates.specialty = "";
+        if (prev.doctorId) updates.doctorId = "";
+        return Object.keys(updates).length ? { ...prev, ...updates } : prev;
+      });
     }
   }, [formData.unit, isCentroClinico]);
+
+  // When specialty changes: clear doctor (cascade)
+  useEffect(() => {
+    if (isCentroClinico && formData.specialty) {
+      // Clear doctor if current doctor doesn't match new specialty
+      const currentDoctor = doctorOptions.find(d => d.id === formData.doctorId);
+      if (currentDoctor && currentDoctor.specialty_id && currentDoctor.specialty_id !== formData.specialty) {
+        setFormData((prev) => ({ ...prev, doctorId: "" }));
+      }
+    }
+  }, [formData.specialty]);
+
+  // Reset userOverrodeValue when modal opens
+  useEffect(() => {
+    if (open) setUserOverrodeValue(false);
+  }, [open]);
 
   // When switching to a package type, reset breakdown fields (but don't force payerType)
   useEffect(() => {
