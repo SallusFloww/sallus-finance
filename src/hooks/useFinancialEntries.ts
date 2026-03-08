@@ -128,7 +128,6 @@ export function useFinancialEntries() {
 
   // Fetch inicial e reativo à versão global
   useEffect(() => {
-    console.log("[useFinancialEntries] globalVersion mudou para:", globalVersion, "- disparando fetchEntries...");
     fetchEntries();
   }, [fetchEntries, globalVersion]);
 

@@ -49,11 +49,16 @@ function entryToTransaction(entry: FinancialEntry): Transaction {
     date: entry.data_prevista,
     type: entry.type === "entrada" ? "INCOME" : "EXPENSE",
     amount: entry.valor,
-    financialCategory: "OPERACIONAL" as FinancialCategory,
+    financialCategory: (
+      entry.categoria?.startsWith("NAO_OP") ? "NAO_OPERACIONAL"
+        : entry.categoria?.startsWith("COMP") ? "COMPARTILHADO"
+        : "OPERACIONAL"
+    ) as FinancialCategory,
     unit: entry.unit_id || "",
     specialty: entry.specialty || undefined,
     category: resolveCategoryLabel(entry.categoria),
     paymentMethod: (entry.payment_method as any) || "PIX",
+    paymentMethodParticular: entry.receipt_type === "PARTICULAR" ? (entry.payment_method as any) : undefined,
     status: entry.status === "recebido" 
       ? "REALIZADO" 
       : entry.status === "cancelado" 

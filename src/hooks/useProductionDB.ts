@@ -185,7 +185,6 @@ export function useProductionDB() {
       setProductions((data || []).map((d) => toProduction(d as unknown as DBProduction)));
       setError(null);
     } catch (err) {
-      console.error(err);
       setError("Erro ao carregar produções");
     } finally {
       setLoading(false);

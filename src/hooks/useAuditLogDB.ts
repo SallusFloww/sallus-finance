@@ -50,7 +50,7 @@ export function useAuditLogDB() {
             module: params.module || null,
             details: params.details || null,
             user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
-            ip_address: ipAddress,
+            ip_address: null,
           },
         ]);
 
