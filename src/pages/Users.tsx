@@ -660,10 +660,11 @@ export default function Users() {
               Clique em um perfil para filtrar
             </span>
           </div>
-          <RoleSummaryCards
+        <RoleSummaryCards
             users={users}
             selectedRole={filterRole}
             onRoleSelect={handleRoleCardClick}
+            availableRoles={roles}
           />
         </div>
 

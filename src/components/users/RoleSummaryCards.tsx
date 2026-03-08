@@ -60,6 +60,15 @@ const ROLE_SUMMARY_CONFIG: Record<string, {
     iconBgClass: "bg-role-financeiro text-role-financeiro-foreground",
     badgeClass: "bg-role-financeiro/10 text-role-financeiro border-role-financeiro/20",
   },
+  Visualizador: {
+    name: "Visualizador",
+    icon: Eye,
+    description: "Somente visualização",
+    permissions: ["Visualiza dados básicos", "Consulta relatórios", "Sem permissão de edição"],
+    colorClass: "border-role-leitura/30 hover:border-role-leitura/60 hover:shadow-md",
+    iconBgClass: "bg-role-leitura text-role-leitura-foreground",
+    badgeClass: "bg-role-leitura/10 text-role-leitura border-role-leitura/20",
+  },
   Leitura: {
     name: "Leitura",
     icon: Eye,
@@ -90,7 +99,6 @@ function RoleSummaryCard({ roleName, count, isHighlighted, onClick }: RoleSummar
               isHighlighted && "ring-2 ring-ring ring-offset-2 shadow-lg"
             )}
           >
-            {/* Icon */}
             <div className={cn(
               "h-12 w-12 rounded-xl flex items-center justify-center mb-3 shadow-sm",
               config.iconBgClass
@@ -98,17 +106,14 @@ function RoleSummaryCard({ roleName, count, isHighlighted, onClick }: RoleSummar
               <Icon className="h-6 w-6" />
             </div>
 
-            {/* Title */}
             <h3 className="font-semibold text-foreground text-center">
               {config.name}
             </h3>
 
-            {/* Description */}
             <p className="text-xs text-muted-foreground text-center mt-1 line-clamp-2">
               {config.description}
             </p>
 
-            {/* Count badge */}
             <Badge 
               variant="outline" 
               className={cn("mt-3 text-sm font-bold", config.badgeClass)}
@@ -137,16 +142,18 @@ interface RoleSummaryCardsProps {
   users: Array<{ role_name: string }>;
   selectedRole?: string;
   onRoleSelect?: (role: string | undefined) => void;
+  /** System roles from DB — only these will be shown */
+  availableRoles?: Array<{ name: string }>;
 }
 
-export function RoleSummaryCards({ users, selectedRole, onRoleSelect }: RoleSummaryCardsProps) {
-  const roleCounts: Record<string, number> = {
-    Admin: 0,
-    Gestor: 0,
-    Operacional: 0,
-    Financeiro: 0,
-    Leitura: 0,
-  };
+export function RoleSummaryCards({ users, selectedRole, onRoleSelect, availableRoles }: RoleSummaryCardsProps) {
+  // Determine which roles to show: from DB if provided, otherwise fallback to all known
+  const roleNames = availableRoles && availableRoles.length > 0
+    ? availableRoles.map(r => r.name).filter(name => ROLE_SUMMARY_CONFIG[name])
+    : Object.keys(ROLE_SUMMARY_CONFIG).filter(name => name !== "Leitura"); // avoid duplicate with Visualizador
+
+  const roleCounts: Record<string, number> = {};
+  roleNames.forEach(name => { roleCounts[name] = 0; });
 
   users.forEach(user => {
     if (roleCounts[user.role_name] !== undefined) {
@@ -160,9 +167,15 @@ export function RoleSummaryCards({ users, selectedRole, onRoleSelect }: RoleSumm
     }
   };
 
+  const gridCols = roleNames.length <= 3 
+    ? "grid-cols-2 sm:grid-cols-3" 
+    : roleNames.length <= 4 
+      ? "grid-cols-2 sm:grid-cols-4" 
+      : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5";
+
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-      {Object.keys(ROLE_SUMMARY_CONFIG).map(role => (
+    <div className={cn("grid gap-3", gridCols)}>
+      {roleNames.map(role => (
         <RoleSummaryCard
           key={role}
           roleName={role}
