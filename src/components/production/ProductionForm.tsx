@@ -1132,11 +1132,21 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
                         value={et}
                         onSelect={() => {
                           updatePerTypeValue(type, "examType", et);
+                          // Auto-fill valor padrão no multi-type mode
+                          const defaults = EXAM_DEFAULT_VALUES[et];
+                          if (defaults && !userOverrodeValue) {
+                            updatePerTypeValue(type, "totalValue", String(defaults.value));
+                          }
                           setInlineExamTypeOpen((prev) => ({ ...prev, [type]: false }));
                         }}
                       >
                         <Check className={cn("mr-2 h-4 w-4", currentVal === et ? "opacity-100" : "opacity-0")} />
                         {et}
+                        {EXAM_DEFAULT_VALUES[et] && (
+                          <span className="ml-auto text-xs text-muted-foreground">
+                            R$ {EXAM_DEFAULT_VALUES[et].value}
+                          </span>
+                        )}
                       </CommandItem>
                     ))}
                   </CommandGroup>
