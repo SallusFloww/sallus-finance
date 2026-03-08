@@ -335,7 +335,7 @@ export default function Billing() {
       await refetchReceivables();
       await fetchCaixaTotal();
     } catch (err) {
-      console.error("Erro inesperado na reconciliação:", err);
+      if (import.meta.env.DEV) console.error("Erro inesperado na reconciliação:", err);
       toast.error("Erro inesperado na reconciliação");
     } finally {
       setReconciling(false);
