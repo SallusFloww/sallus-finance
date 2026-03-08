@@ -554,7 +554,7 @@ export function useReceivablesDB() {
           .single();
 
         if (insertError) {
-          console.error("Erro ao criar movimentação:", insertError);
+          if (import.meta.env.DEV) console.error("Erro ao criar movimentação:", insertError);
           toast.error("Erro ao criar movimentação no caixa");
           return null;
         }
