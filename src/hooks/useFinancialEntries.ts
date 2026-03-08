@@ -109,15 +109,28 @@ export function useFinancialEntries() {
       setLoading(true);
       setError(null);
 
-      const { data, error: fetchError } = await supabase
-        .from("financial_entries")
-        .select("*")
-        .eq("company_id", currentCompanyId)
-        .order("data_prevista", { ascending: false });
+      // Paginated fetch to support >1000 records
+      let allData: any[] = [];
+      let from = 0;
+      const pageSize = 1000;
+      let hasMore = true;
 
-      if (fetchError) throw fetchError;
+      while (hasMore) {
+        const { data: page, error: fetchError } = await supabase
+          .from("financial_entries")
+          .select("*")
+          .eq("company_id", currentCompanyId)
+          .order("data_prevista", { ascending: false })
+          .range(from, from + pageSize - 1);
 
-      setEntries(data || []);
+        if (fetchError) throw fetchError;
+
+        allData = allData.concat(page || []);
+        hasMore = (page?.length || 0) === pageSize;
+        from += pageSize;
+      }
+
+      setEntries(allData);
     } catch (err) {
       setError("Erro ao carregar movimentações financeiras");
       toast.error("Erro ao carregar movimentações");

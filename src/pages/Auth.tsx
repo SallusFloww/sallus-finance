@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import logoSallusFinance from "@/assets/logo-sallusfinance.svg";
 
 // Validation schemas
 const loginSchema = z.object({
@@ -311,7 +312,7 @@ export default function Auth() {
         throw new Error(acceptResult?.error || "Erro desconhecido ao processar convite");
       }
 
-      console.log("Invite accepted successfully:", acceptResult);
+      // Invite accepted successfully
 
       // Verificar se usuário já existia (precisa fazer login com senha existente)
       if (acceptResult.userExists) {
@@ -331,7 +332,7 @@ export default function Auth() {
       setInviteToken(null);
 
     } catch (err: any) {
-      console.error("Error accepting invite:", err);
+      // Error accepting invite logged silently
       toast.error(err.message || "Erro ao criar conta. Tente novamente.");
     } finally {
       setIsLoading(false);
@@ -358,7 +359,7 @@ export default function Auth() {
           {/* Header */}
           <div className="mb-8 text-center">
             <img 
-              src="/src/assets/logo-sallusfinance.svg" 
+              src={logoSallusFinance} 
               alt="Sallus Finance" 
               className="mx-auto mb-4 h-16 w-auto"
               onError={(e) => {

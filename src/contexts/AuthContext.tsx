@@ -417,7 +417,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (error) {
-        console.error("Reset DEMO error:", error);
         return { ok: false, error: error.message };
       }
 
@@ -428,7 +427,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       return { ok: true };
     } catch (err) {
-      console.error("Reset DEMO exception:", err);
       return { ok: false, error: "Erro inesperado ao resetar DEMO" };
     }
   }, [state.user, state.currentCompany, isAdmin, isDemo]);
