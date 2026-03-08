@@ -132,7 +132,7 @@ export function SettingsProductionTypes({
 
     setAddingType(true);
     try {
-      console.log('[ADD_PROD_TYPE] calling RPC', { companyId, name: trimmed, description: newDescription.trim() });
+      if (import.meta.env.DEV) console.log('[ADD_PROD_TYPE] calling RPC', { companyId, name: trimmed, description: newDescription.trim() });
 
       const { data, error } = await (supabase.rpc as any)('upsert_production_type_with_category', {
         _company_id: companyId,
