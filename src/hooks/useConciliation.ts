@@ -384,7 +384,7 @@ export function useConciliation() {
       }
 
     } catch (e) {
-      console.error("Error flushing offline queue:", e);
+      if (import.meta.env.DEV) console.error("Error flushing offline queue:", e);
     } finally {
       flushingRef.current = false;
     }
