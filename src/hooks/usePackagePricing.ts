@@ -232,7 +232,7 @@ export function usePackagePricing() {
         toast.success("Regra de pacote criada com sucesso");
         return newRule;
       } catch (err: any) {
-        console.error("Error adding package pricing rule:", err);
+        if (import.meta.env.DEV) console.error("Error adding package pricing rule:", err);
         toast.error("Erro ao criar regra: " + err.message);
         return null;
       }
