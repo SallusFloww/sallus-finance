@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -53,6 +53,7 @@ import { ProductionStats, ProductionForm, ProductionList, ProductionFormData, Pr
 import { ProductionStatus, ProductionType } from "@/types";
 import { toast } from "sonner";
 import { formatUnitDisplayName, formatConvenioDisplayName } from "@/utils/formatters";
+import { isValidTransition, getTransitionError } from "@/utils/productionStatusTransitions";
 
 // Labels para tipos de produção
 const PRODUCTION_TYPE_LABELS: Record<string, string> = {
@@ -211,13 +212,37 @@ export default function Production() {
     await updateProduction(id, data, user.name);
   };
 
-  // Status change inline
+  // Status change inline — with transition validation
+  const lastStatusChangeRef = React.useRef<number>(0);
   const handleStatusChange = async (id: string, newStatus: ProductionStatus) => {
+    // Rate limit: min 500ms between status changes
+    const now = Date.now();
+    if (now - lastStatusChangeRef.current < 500) {
+      toast.warning("Aguarde antes de alterar outro status.");
+      return;
+    }
+    lastStatusChangeRef.current = now;
+
+    const production = filteredProductions.find(p => p.id === id);
+    if (!production) return;
+    if (!isValidTransition(production.status, newStatus)) {
+      toast.error(getTransitionError(production.status, newStatus));
+      return;
+    }
     await updateProduction(id, { status: newStatus }, user.name);
   };
 
-  // Bulk status change
+  // Bulk status change — with validation (confirmation is handled in ProductionList)
   const handleBulkStatusChange = async (ids: string[], status: ProductionStatus) => {
+    // Validate all transitions before proceeding
+    const invalid = ids.filter(id => {
+      const p = filteredProductions.find(prod => prod.id === id);
+      return p && !isValidTransition(p.status, status);
+    });
+    if (invalid.length > 0) {
+      toast.error(`${invalid.length} registro(s) com transição inválida. Operação cancelada.`);
+      return;
+    }
     for (let i = 0; i < ids.length; i += 20) {
       const chunk = ids.slice(i, i + 20);
       await Promise.all(chunk.map(id => updateProduction(id, { status }, user.name)));

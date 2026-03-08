@@ -40,6 +40,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCompanySettings } from "@/hooks/useCompanySettings";
 import { toast } from "sonner";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 
 const STATUS_CONFIG: Record<
   ProductionStatus,
@@ -131,6 +132,10 @@ export function ProductionList({ productions, units, onDelete, onCancel, onEdit,
   const [cancellingProduction, setCancellingProduction] = useState<Production | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelSaving, setCancelSaving] = useState(false);
+
+  // Bulk confirmation state
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [bulkConfirmAction, setBulkConfirmAction] = useState<{ ids: string[]; status: ProductionStatus } | null>(null);
 
   // Seleção em lote
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -392,14 +397,20 @@ export function ProductionList({ productions, units, onDelete, onCancel, onEdit,
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => onBulkStatusChange([...selectedIds], "FATURADO").then(clearSelect)}
+                  onClick={() => {
+                    setBulkConfirmAction({ ids: [...selectedIds], status: "FATURADO" });
+                    setBulkConfirmOpen(true);
+                  }}
                 >
                   Faturar todos
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => onBulkStatusChange([...selectedIds], "RECEBIDO").then(clearSelect)}
+                  onClick={() => {
+                    setBulkConfirmAction({ ids: [...selectedIds], status: "RECEBIDO" });
+                    setBulkConfirmOpen(true);
+                  }}
                 >
                   Marcar recebidos
                 </Button>
@@ -985,6 +996,21 @@ export function ProductionList({ productions, units, onDelete, onCancel, onEdit,
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Bulk confirmation dialog */}
+        <ConfirmationDialog
+          open={bulkConfirmOpen}
+          onOpenChange={setBulkConfirmOpen}
+          action="generic"
+          title={`Confirmar alteração em lote`}
+          description={`Deseja alterar o status de ${bulkConfirmAction?.ids.length || 0} registro(s) para "${bulkConfirmAction?.status || ""}"? Esta ação não pode ser desfeita facilmente.`}
+          onConfirm={() => {
+            if (bulkConfirmAction && onBulkStatusChange) {
+              onBulkStatusChange(bulkConfirmAction.ids, bulkConfirmAction.status).then(clearSelect);
+            }
+            setBulkConfirmAction(null);
+          }}
+        />
       </>
     </TooltipProvider>
   );
