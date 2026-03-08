@@ -125,8 +125,7 @@ const mobileNavItems: NavItem[] = [
   { to: "/receivables", icon: Banknote, label: "Receber", permission: "VIEW_RECEIVABLES" },
   { to: "/dre", icon: Receipt, label: "DRE" },
 
-  // ✅ opcional: BI v2 no mobile também (se quiser, mantém; se não quiser, pode remover)
-  { to: "/bi-v2", icon: BarChart3, label: "BI v2", permission: "VIEW_BI" },
+  { to: "/bi", icon: BarChart3, label: "BI", permission: "VIEW_BI" },
 
   { to: "/settings", icon: Settings, label: "Config", permission: "VIEW_SETTINGS" },
 ];

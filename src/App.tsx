@@ -83,8 +83,7 @@ function AppRoutes() {
           <Route path="/aging-report" element={<ProtectedRoute requiredPermission="VIEW_RECEIVABLES"><AgingReport /></ProtectedRoute>} />
           <Route path="/executive-report" element={<ProtectedRoute requiredPermission="VIEW_REPORTS"><ExecutiveReport /></ProtectedRoute>} />
           <Route path="/monthly-report" element={<ProtectedRoute requiredPermission="VIEW_REPORTS"><MonthlyReport /></ProtectedRoute>} />
-          <Route path="/bi" element={<ProtectedRoute requiredPermission="VIEW_BI"><BI /></ProtectedRoute>} />
-          <Route path="/bi-v2" element={<ProtectedRoute requiredPermission="VIEW_BI"><BIV2 /></ProtectedRoute>} />
+          <Route path="/bi" element={<ProtectedRoute requiredPermission="VIEW_BI"><BIV2 /></ProtectedRoute>} />
           <Route path="/conciliation" element={<ProtectedRoute requiredPermission="VIEW_RECEIVABLES"><Conciliation /></ProtectedRoute>} />
 
           {/* Redirect */}
