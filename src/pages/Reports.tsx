@@ -1,20 +1,5 @@
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
-import { Download, FileText, CalendarIcon, FileSpreadsheet, CheckCircle2, XCircle, Filter, TrendingUp, Users, CreditCard, Building2, AlertTriangle, Trophy, FileBarChart, Lightbulb, Clock, User, Eye } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { useApp } from "@/contexts/AppContext";
 import { formatCurrency, formatDate, getStartOfMonth, getEndOfMonth } from "@/utils/formatters";
