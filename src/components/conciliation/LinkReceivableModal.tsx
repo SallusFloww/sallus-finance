@@ -73,7 +73,7 @@ export function LinkReceivableModal({
       setReceivables(data || []);
       setFetched(true);
     } catch (err) {
-      console.error("Erro ao buscar receivables:", err);
+      if (import.meta.env.DEV) console.error("Erro ao buscar receivables:", err);
       toast.error("Erro ao carregar faturamentos disponíveis");
     } finally {
       setLoading(false);
