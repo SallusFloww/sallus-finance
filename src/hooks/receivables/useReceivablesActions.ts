@@ -10,10 +10,11 @@ export interface ReceivablesActionsDeps {
   fetchReceivables: () => Promise<void>;
   refreshAll: () => void;
   processingIdsRef: React.MutableRefObject<Set<string>>;
+  checkPlanLimit?: () => Promise<boolean>;
 }
 
 export function createReceivablesActions(deps: ReceivablesActionsDeps) {
-  const { receivables, currentCompany, profile, fetchReceivables, refreshAll, processingIdsRef } = deps;
+  const { receivables, currentCompany, profile, fetchReceivables, refreshAll, processingIdsRef, checkPlanLimit } = deps;
 
   // Add receivable
   const addReceivable = async (
