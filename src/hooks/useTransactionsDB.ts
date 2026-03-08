@@ -128,9 +128,29 @@ export function useTransactionsDB() {
     [entries]
   );
 
+  // Plan limits guard
+  const checkPlanLimit = useCallback(async (): Promise<boolean> => {
+    if (!currentCompany?.id) return false;
+    try {
+      const { data } = await (supabase as any).rpc("get_company_plan_limits", {
+        _company_id: currentCompany.id,
+      });
+      if (data && data.current_records >= data.max_records) {
+        toast.error(`Limite do plano ${data.plan} atingido (${data.max_records} registros). Faça upgrade.`);
+        return false;
+      }
+      return true;
+    } catch {
+      return true; // allow on error
+    }
+  }, [currentCompany?.id]);
+
   // Add transaction
   const addTransaction = useCallback(
     async (transaction: Omit<Transaction, "id" | "createdAt">) => {
+      const allowed = await checkPlanLimit();
+      if (!allowed) return null;
+
       const entry = transactionToEntry(transaction);
       const result = await addEntry(entry);
       if (result) {
@@ -138,7 +158,7 @@ export function useTransactionsDB() {
       }
       return null;
     },
-    [addEntry]
+    [addEntry, checkPlanLimit]
   );
 
   // Update transaction

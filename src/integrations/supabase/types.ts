@@ -1107,6 +1107,33 @@ export type Database = {
           },
         ]
       }
+      system_alerts: {
+        Row: {
+          context: Json | null
+          created_at: string
+          id: string
+          message: string
+          resolved: boolean
+          severity: string
+        }
+        Insert: {
+          context?: Json | null
+          created_at?: string
+          id?: string
+          message: string
+          resolved?: boolean
+          severity?: string
+        }
+        Update: {
+          context?: Json | null
+          created_at?: string
+          id?: string
+          message?: string
+          resolved?: boolean
+          severity?: string
+        }
+        Relationships: []
+      }
       user_company_roles: {
         Row: {
           company_id: string

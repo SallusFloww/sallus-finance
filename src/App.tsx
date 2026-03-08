@@ -42,6 +42,7 @@ const AdminCleanup = lazy(() => import("./pages/AdminCleanup"));
 const Conciliation = lazy(() => import("./pages/Conciliation"));
 const QA = lazy(() => import("./pages/QA"));
 const SystemOperations = lazy(() => import("./pages/SystemOperations"));
+const PlatformAdmin = lazy(() => import("./pages/PlatformAdmin"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const InviteRedirect = lazy(() => import("./pages/InviteRedirect"));
 
@@ -97,6 +98,7 @@ function AppRoutes() {
           <Route path="/admin/cleanup" element={<AdminRoute><AdminCleanup /></AdminRoute>} />
           <Route path="/qa" element={<AdminRoute><QA /></AdminRoute>} />
           <Route path="/admin/operations" element={<AdminRoute><SystemOperations /></AdminRoute>} />
+          <Route path="/admin/platform" element={<AdminRoute><PlatformAdmin /></AdminRoute>} />
 
           {/* Catch all */}
           <Route path="*" element={<NotFound />} />

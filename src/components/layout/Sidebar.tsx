@@ -21,6 +21,7 @@ import {
   CheckSquare,
   Trash2,
   Server,
+  Globe,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -109,6 +110,12 @@ const navSections: NavSection[] = [
         to: "/admin/operations",
         icon: Server,
         label: "System Operations",
+        permission: "VIEW_AUDIT",
+      },
+      {
+        to: "/admin/platform",
+        icon: Globe,
+        label: "Platform Admin",
         permission: "VIEW_AUDIT",
       },
     ],

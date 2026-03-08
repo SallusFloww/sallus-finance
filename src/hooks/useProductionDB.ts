@@ -208,12 +208,32 @@ export function useProductionDB() {
     fetchProductions();
   }, [fetchProductions, globalVersion]);
 
+  // Plan limits guard
+  const checkPlanLimit = useCallback(async (): Promise<boolean> => {
+    if (!currentCompany?.id) return false;
+    try {
+      const { data } = await (supabase as any).rpc("get_company_plan_limits", {
+        _company_id: currentCompany.id,
+      });
+      if (data && data.current_records >= data.max_records) {
+        toast.error(`Limite do plano ${data.plan} atingido (${data.max_records} registros). Faça upgrade.`);
+        return false;
+      }
+      return true;
+    } catch {
+      return true;
+    }
+  }, [currentCompany?.id]);
+
   const addProduction = useCallback(
     async (data: Omit<Production, "id" | "createdAt" | "status" | "history">): Promise<Production | null> => {
       if (!currentCompany?.id || !profile?.id) {
         toast.error("Usuário não autenticado");
         return null;
       }
+
+      const allowed = await checkPlanLimit();
+      if (!allowed) return null;
 
       const totalValue = data.quantity * data.unitValue;
 

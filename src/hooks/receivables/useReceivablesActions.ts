@@ -10,10 +10,11 @@ export interface ReceivablesActionsDeps {
   fetchReceivables: () => Promise<void>;
   refreshAll: () => void;
   processingIdsRef: React.MutableRefObject<Set<string>>;
+  checkPlanLimit?: () => Promise<boolean>;
 }
 
 export function createReceivablesActions(deps: ReceivablesActionsDeps) {
-  const { receivables, currentCompany, profile, fetchReceivables, refreshAll, processingIdsRef } = deps;
+  const { receivables, currentCompany, profile, fetchReceivables, refreshAll, processingIdsRef, checkPlanLimit } = deps;
 
   // Add receivable
   const addReceivable = async (
@@ -24,6 +25,12 @@ export function createReceivablesActions(deps: ReceivablesActionsDeps) {
     if (!currentCompany?.id || !profile?.id) {
       toast.error("Usuário não autenticado");
       return null;
+    }
+
+    // Plan limit guard
+    if (checkPlanLimit) {
+      const allowed = await checkPlanLimit();
+      if (!allowed) return null;
     }
 
     const history = [

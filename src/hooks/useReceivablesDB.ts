@@ -61,6 +61,23 @@ export function useReceivablesDB() {
     fetchReceivables();
   }, [fetchReceivables, globalVersion]);
 
+  // Plan limits guard
+  const checkPlanLimit = useCallback(async (): Promise<boolean> => {
+    if (!currentCompany?.id) return false;
+    try {
+      const { data } = await (supabase as any).rpc("get_company_plan_limits", {
+        _company_id: currentCompany.id,
+      });
+      if (data && data.current_records >= data.max_records) {
+        toast.error(`Limite do plano ${data.plan} atingido (${data.max_records} registros). Faça upgrade.`);
+        return false;
+      }
+      return true;
+    } catch {
+      return true;
+    }
+  }, [currentCompany?.id]);
+
   // Create actions from factory
   const actions = useMemo(
     () =>
@@ -71,8 +88,9 @@ export function useReceivablesDB() {
         fetchReceivables,
         refreshAll,
         processingIdsRef,
+        checkPlanLimit,
       }),
-    [receivables, currentCompany, profile, fetchReceivables, refreshAll],
+    [receivables, currentCompany, profile, fetchReceivables, refreshAll, checkPlanLimit],
   );
 
   // Filter receivables
