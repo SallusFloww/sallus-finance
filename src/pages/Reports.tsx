@@ -16,10 +16,18 @@ import {
   SPECIALTIES,
   SPECIALTY_LABELS,
 } from "@/utils/constants";
-import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Transaction, ReceiptType, PaymentMethodParticular, Operadora, Specialty } from "@/types";
 import { excludeCancelled, isPending, isRealized } from "@/utils/statusHelpers";
+import {
+  ReportFilters,
+  ReportExecutiveSummary,
+  ReportAlerts,
+  ReportRevenueMap,
+  ReportUnitAnalysis,
+  ReportConsolidatedTables,
+  ReportExports,
+} from "@/components/reports";
 export default function Reports() {
   const { transactions, auditLog } = useApp();
   const { filterTransactions, getStats, settings } = transactions;
