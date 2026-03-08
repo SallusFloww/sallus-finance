@@ -16,7 +16,6 @@ export function useMovementAllocations() {
     async (movementId: string): Promise<UnitApportionment[]> => {
       if (!currentCompany?.id) return [];
       // Tabela movement_allocations não existe - retornar vazio
-      console.warn("useMovementAllocations: tabela movement_allocations não existe ainda");
       return [];
     },
     [currentCompany?.id]
