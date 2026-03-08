@@ -832,46 +832,53 @@ export default function Users() {
                             </TableCell>
                             {canManageUsers && (
                               <TableCell>
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button 
-                                      variant="ghost" 
-                                      size="icon"
-                                      className="opacity-0 group-hover:opacity-100 transition-opacity"
-                                    >
-                                      <MoreHorizontal className="h-4 w-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    {user.is_active ? (
-                                      <DropdownMenuItem
-                                        onClick={() => toggleActiveMutation.mutate({ userId: user.id, isActive: false })}
+                                {!isSelf ? (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <button
+                                        type="button"
+                                        className="inline-flex items-center justify-center h-8 w-8 rounded-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent hover:text-accent-foreground"
                                       >
-                                        <UserX className="h-4 w-4 mr-2" />
-                                        Desativar Usuário
-                                      </DropdownMenuItem>
-                                    ) : (
-                                      <DropdownMenuItem
-                                        onClick={() => toggleActiveMutation.mutate({ userId: user.id, isActive: true })}
-                                      >
-                                        <UserCheck className="h-4 w-4 mr-2" />
-                                        Ativar Usuário
-                                      </DropdownMenuItem>
-                                    )}
-                                    {canDeleteUsers && (
-                                      <>
-                                        <DropdownMenuSeparator />
+                                        <MoreHorizontal className="h-4 w-4" />
+                                      </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      {user.is_active ? (
                                         <DropdownMenuItem
-                                          onClick={() => removeMutation.mutate(user.id)}
-                                          className="text-destructive"
+                                          onClick={() => toggleActiveMutation.mutate({ userId: user.id, isActive: false })}
                                         >
-                                          <Trash2 className="h-4 w-4 mr-2" />
-                                          Remover da Empresa
+                                          <UserX className="h-4 w-4 mr-2" />
+                                          Desativar Usuário
                                         </DropdownMenuItem>
-                                      </>
-                                    )}
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
+                                      ) : (
+                                        <DropdownMenuItem
+                                          onClick={() => toggleActiveMutation.mutate({ userId: user.id, isActive: true })}
+                                        >
+                                          <UserCheck className="h-4 w-4 mr-2" />
+                                          Ativar Usuário
+                                        </DropdownMenuItem>
+                                      )}
+                                      {canDeleteUsers && (
+                                        <>
+                                          <DropdownMenuSeparator />
+                                          <DropdownMenuItem
+                                            onClick={() => {
+                                              if (window.confirm(`Tem certeza que deseja remover ${user.full_name || user.email} da empresa?`)) {
+                                                removeMutation.mutate(user.id);
+                                              }
+                                            }}
+                                            className="text-destructive"
+                                          >
+                                            <Trash2 className="h-4 w-4 mr-2" />
+                                            Remover da Empresa
+                                          </DropdownMenuItem>
+                                        </>
+                                      )}
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">—</span>
+                                )}
                               </TableCell>
                             )}
                           </TableRow>
