@@ -504,32 +504,91 @@ export function createReceivablesActions(deps: ReceivablesActionsDeps) {
 
   // Approve appeal
   const approveAppeal = async (id: string, recoveredAmount: number, receiptDate: string, userName: string) => {
+    if (!currentCompany?.id || !profile?.id) {
+      toast.error("Usuário não autenticado");
+      return null;
+    }
+
     const receivable = receivables.find((r) => r.id === id);
     if (!receivable || receivable.appealStatus !== "EM_RECURSO") {
       toast.error("Apenas recursos EM_RECURSO podem ser deferidos");
       return null;
     }
 
+    const now = new Date().toISOString();
     const newReceivedAmount = (receivable.receivedAmount || 0) + recoveredAmount;
     const newGlossedAmount = Math.max(0, (receivable.glossedAmount || 0) - recoveredAmount);
     const history = [...(receivable.history || [])];
-    history.push(createHistoryEntry("RECURSO_DEFERIDO", `Recurso deferido: R$ ${recoveredAmount.toFixed(2)} recuperados`, userName, recoveredAmount));
     const newStatus = newGlossedAmount <= 0 ? "RECEBIDO" : receivable.status;
+
+    // P0 FIX: Create financial entry for recovered appeal amount
+    let createdTransactionId: string | null = null;
+    if (recoveredAmount > 0) {
+      const descricao = `Recurso de glosa deferido • ${receivable.source} • ${receivable.description}`.substring(0, 200);
+
+      const { data: insertedEntry, error: insertError } = await supabase
+        .from("financial_entries")
+        .insert([{
+          company_id: currentCompany.id,
+          created_by: profile.id,
+          type: "entrada" as const,
+          status: "recebido" as const,
+          valor: recoveredAmount,
+          data_prevista: receiptDate,
+          data_recebimento: receiptDate,
+          descricao,
+          categoria: "RECEBIMENTO_FATURAMENTO",
+          unit_id: receivable.unit || null,
+          receipt_type: receivable.source === "PARTICULAR" ? "PARTICULAR" : "CONVENIO",
+          payment_method: "TRANSFER",
+          operadora: receivable.source !== "PARTICULAR" ? receivable.source : null,
+          observacao: `Origem: receivable_id=${id} | Recurso deferido: R$ ${recoveredAmount.toFixed(2)} | Competência: ${receivable.competencia || "N/A"}`,
+        }])
+        .select()
+        .single();
+
+      if (insertError) {
+        if (import.meta.env.DEV) console.error("Erro ao criar movimentação para recurso deferido:", insertError);
+        toast.error("Erro ao criar movimentação no caixa para recurso deferido");
+        return null;
+      }
+
+      createdTransactionId = insertedEntry.id;
+    }
+
+    history.push(createHistoryEntry("RECURSO_DEFERIDO",
+      `Recurso deferido: R$ ${recoveredAmount.toFixed(2)} recuperados${createdTransactionId ? ` - Movimentação ${createdTransactionId} criada` : ""}`,
+      userName, recoveredAmount, createdTransactionId || undefined));
 
     const { error: updateError } = await (supabase as any)
       .from("receivables")
       .update({
         status: newStatus, received_amount: newReceivedAmount, glossed_amount: newGlossedAmount,
         appeal_status: "DEFERIDO", appeal_recovered_amount: recoveredAmount,
-        appeal_resolved_date: new Date().toISOString(), updated_at: new Date().toISOString(),
+        appeal_resolved_date: now, updated_at: now,
+        appeal_transaction_id: createdTransactionId || receivable.appealTransactionId || null,
         history: JSON.parse(JSON.stringify(history)),
       })
       .eq("id", id);
 
-    if (updateError) { toast.error("Erro ao deferir recurso"); return null; }
+    if (updateError) {
+      // Rollback financial entry if receivable update fails
+      if (createdTransactionId) {
+        await supabase.from("financial_entries").update({
+          status: "cancelado" as const, cancelled_at: now, cancelled_by: profile.id,
+          cancel_reason: `Rollback automático: falha ao atualizar receivable ${id} após recurso deferido`,
+        }).eq("id", createdTransactionId);
+      }
+      toast.error("Erro ao deferir recurso");
+      return null;
+    }
+
     await fetchReceivables();
-    toast.success("Recurso deferido");
-    return { id, recoveredAmount };
+    refreshAll();
+    toast.success(createdTransactionId
+      ? `Recurso deferido — Movimentação de R$ ${recoveredAmount.toFixed(2)} criada no caixa`
+      : "Recurso deferido");
+    return { id, recoveredAmount, transactionId: createdTransactionId };
   };
 
   // Reject appeal
