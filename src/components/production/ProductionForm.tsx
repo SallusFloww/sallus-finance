@@ -128,7 +128,7 @@ export interface ProductionFormData {
   matmedQty?: number;
 }
 
-export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, onBulkInsertSuccess }: ProductionFormProps) {
+export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, onBulkInsertSuccess, recentDescriptions }: ProductionFormProps) {
   const currentMonth = format(new Date(), "MM/yyyy");
 
   // Use database-backed settings for suggestions
