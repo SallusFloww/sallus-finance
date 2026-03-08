@@ -781,7 +781,7 @@ export default function Users() {
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    {canManageUsers ? (
+                                    {canManageUsers && !isSelf ? (
                                       <Select
                                         value={user.role_id}
                                         onValueChange={(value) =>
