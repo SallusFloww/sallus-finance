@@ -114,8 +114,15 @@ interface PendingInvite {
   created_at: string;
 }
 
+interface PendingRegistration {
+  user_id: string;
+  email: string;
+  full_name: string | null;
+  created_at: string;
+}
+
 export default function Users() {
-  const { currentCompany, hasPermission, profile } = useAuth();
+  const { currentCompany, hasPermission, profile, isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("users");
@@ -126,6 +133,13 @@ export default function Users() {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null);
+  
+  // Approval dialog state
+  const [approvalDialog, setApprovalDialog] = useState<{ open: boolean; user: PendingRegistration | null; roleId: string }>({
+    open: false,
+    user: null,
+    roleId: "",
+  });
   
   // Filters state
   const [searchTerm, setSearchTerm] = useState("");
@@ -269,7 +283,52 @@ export default function Users() {
     enabled: !!currentCompany?.id,
   });
 
-  // Send invite mutation (via edge function with robust error handling)
+  // Fetch pending registrations (self-registered users awaiting approval)
+  const { data: pendingRegistrations = [], isLoading: isLoadingRegistrations } = useQuery({
+    queryKey: ["pending-registrations", currentCompany?.id],
+    queryFn: async () => {
+      if (!currentCompany?.id) return [];
+      
+      const { data, error } = await (supabase as any).rpc("get_pending_registrations", {
+        _company_id: currentCompany.id,
+      });
+
+      if (error) {
+        console.error("Error fetching pending registrations:", error);
+        return [];
+      }
+
+      return (data || []) as PendingRegistration[];
+    },
+    enabled: !!currentCompany?.id && isAdmin(),
+  });
+
+  // Approve registration mutation
+  const approveRegistrationMutation = useMutation({
+    mutationFn: async ({ userId, roleId }: { userId: string; roleId: string }) => {
+      if (!currentCompany?.id) throw new Error("Empresa não selecionada");
+
+      const { data, error } = await (supabase as any).rpc("approve_user_registration", {
+        _user_id: userId,
+        _company_id: currentCompany.id,
+        _role_id: roleId,
+      });
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pending-registrations"] });
+      queryClient.invalidateQueries({ queryKey: ["company-users"] });
+      setApprovalDialog({ open: false, user: null, roleId: "" });
+      toast.success("Usuário aprovado com sucesso!");
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Erro ao aprovar usuário");
+    },
+  });
+
+
   const inviteMutation = useMutation({
     mutationFn: async (data: { email: string; fullName: string; roleId: string }) => {
       if (!currentCompany?.id) throw new Error("Empresa não selecionada");
@@ -679,6 +738,12 @@ export default function Users() {
               <Mail className="h-4 w-4" />
               Convites Pendentes ({pendingInvites.filter(i => !isExpired(i.expires_at)).length})
             </TabsTrigger>
+            {isAdmin() && (
+              <TabsTrigger value="registrations" className="gap-2">
+                <UserPlus className="h-4 w-4" />
+                Solicitações {pendingRegistrations.length > 0 && `(${pendingRegistrations.length})`}
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {/* Users Tab */}
@@ -1007,7 +1072,127 @@ export default function Users() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* Registrations Tab */}
+          {isAdmin() && (
+            <TabsContent value="registrations">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Solicitações de Acesso</CardTitle>
+                  <CardDescription>
+                    Usuários que se cadastraram e aguardam aprovação para acessar a empresa
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {isLoadingRegistrations ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : pendingRegistrations.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <UserCheck className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>Nenhuma solicitação pendente</p>
+                      <p className="text-sm mt-1">Quando um usuário criar uma conta, aparecerá aqui para aprovação</p>
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Usuário</TableHead>
+                          <TableHead>Cadastrado em</TableHead>
+                          <TableHead className="w-[150px]">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pendingRegistrations.map((reg) => (
+                          <TableRow key={reg.user_id}>
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-warning/20 text-warning font-medium text-sm">
+                                  {(reg.full_name || reg.email).charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <div className="font-medium">{reg.full_name || "Sem nome"}</div>
+                                  <div className="text-sm text-muted-foreground">{reg.email}</div>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {formatDate(reg.created_at)}
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                size="sm"
+                                onClick={() => setApprovalDialog({ open: true, user: reg, roleId: "" })}
+                              >
+                                <UserCheck className="h-4 w-4 mr-1" />
+                                Aprovar
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
         </Tabs>
+
+        {/* Approval Dialog */}
+        <Dialog 
+          open={approvalDialog.open} 
+          onOpenChange={(open) => !open && setApprovalDialog({ open: false, user: null, roleId: "" })}
+        >
+          <DialogContent className="max-w-2xl max-h-[90vh]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <UserCheck className="h-5 w-5 text-primary" />
+                Aprovar Usuário
+              </DialogTitle>
+              <DialogDescription>
+                Selecione o perfil de acesso para{" "}
+                <span className="font-medium text-foreground">
+                  {approvalDialog.user?.full_name || approvalDialog.user?.email}
+                </span>
+              </DialogDescription>
+            </DialogHeader>
+
+            <ScrollArea className="max-h-[400px] pr-4">
+              <RoleSelector
+                roles={roles}
+                selectedRoleId={approvalDialog.roleId}
+                onSelect={(roleId) => setApprovalDialog(prev => ({ ...prev, roleId }))}
+                disabled={approveRegistrationMutation.isPending}
+              />
+            </ScrollArea>
+
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                variant="outline"
+                onClick={() => setApprovalDialog({ open: false, user: null, roleId: "" })}
+                disabled={approveRegistrationMutation.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => {
+                  if (approvalDialog.user && approvalDialog.roleId) {
+                    approveRegistrationMutation.mutate({
+                      userId: approvalDialog.user.user_id,
+                      roleId: approvalDialog.roleId,
+                    });
+                  }
+                }}
+                disabled={approveRegistrationMutation.isPending || !approvalDialog.roleId}
+              >
+                {approveRegistrationMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                Aprovar Acesso
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   );

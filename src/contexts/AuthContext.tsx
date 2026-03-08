@@ -172,22 +172,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const profile = await fetchProfile(user.id);
       let companies = await fetchUserCompanies(user.id);
 
-      // Auto-provision company for new users with no companies
-      if (companies.length === 0) {
-        try {
-          const { data: provisionResult } = await (supabase as any).rpc("create_default_company_for_user", {
-            _user_id: user.id,
-            _user_email: user.email || "",
-            _user_name: profile?.full_name || user.email || "",
-          });
-          if (provisionResult?.success) {
-            // Re-fetch companies after provisioning
-            companies = await fetchUserCompanies(user.id);
-          }
-        } catch {
-          // Silent - user may not have the RPC yet
-        }
-      }
+      // Self-registered users will have no companies - that's expected
+      // They'll see the "Awaiting Approval" screen until an admin approves them
 
       // Find primary company or first one with active status
       const activeCompanies = companies.filter(c => c.company?.status === 'active');
