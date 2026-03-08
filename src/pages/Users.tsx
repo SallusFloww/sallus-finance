@@ -753,6 +753,7 @@ export default function Users() {
                     <TableBody>
                       {filteredUsers.map((user) => {
                         const roleConfig = ROLE_CONFIGS[user.role_name];
+                        const isSelf = profile?.id === user.id;
                         return (
                           <TableRow key={user.id} className="group">
                             <TableCell>
@@ -764,7 +765,14 @@ export default function Users() {
                                   {(user.full_name || user.email).charAt(0).toUpperCase()}
                                 </div>
                                 <div>
-                                  <div className="font-medium">{user.full_name || "Sem nome"}</div>
+                                  <div className="font-medium flex items-center gap-2">
+                                    {user.full_name || "Sem nome"}
+                                    {isSelf && (
+                                      <Badge variant="outline" className="text-xs px-1.5 py-0 border-primary/30 text-primary">
+                                        Você
+                                      </Badge>
+                                    )}
+                                  </div>
                                   <div className="text-sm text-muted-foreground">{user.email}</div>
                                 </div>
                               </div>
