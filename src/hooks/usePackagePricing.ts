@@ -288,7 +288,7 @@ export function usePackagePricing() {
         toast.success("Regra atualizada com sucesso");
         return true;
       } catch (err: any) {
-        console.error("Error updating package pricing rule:", err);
+        if (import.meta.env.DEV) console.error("Error updating package pricing rule:", err);
         toast.error("Erro ao atualizar regra: " + err.message);
         return false;
       }

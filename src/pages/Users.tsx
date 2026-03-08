@@ -425,7 +425,7 @@ export default function Users() {
       }
     },
     onError: (error: Error) => {
-      console.error("resendInviteMutation.onError:", error);
+      if (import.meta.env.DEV) console.error("resendInviteMutation.onError:", error);
       toast.error(error.message || "Erro ao reenviar convite");
     },
   });

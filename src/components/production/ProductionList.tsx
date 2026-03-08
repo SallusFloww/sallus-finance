@@ -302,7 +302,7 @@ export function ProductionList({ productions, units, onDelete, onCancel, onEdit,
       }
       setCancelDialogOpen(false);
     } catch (err) {
-      console.error(err);
+      if (import.meta.env.DEV) console.error(err);
     } finally {
       setCancelSaving(false);
     }

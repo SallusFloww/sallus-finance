@@ -167,7 +167,7 @@ export function SettingsProductionTypes({
       setNewDescription("");
       toast.success("Tipo criado e categoria vinculada como ENTRADA");
     } catch (err) {
-      console.error("[ADD_PROD_TYPE] Exception:", err);
+      if (import.meta.env.DEV) console.error("[ADD_PROD_TYPE] Exception:", err);
       // Fallback: criar localmente sem categoria (compatibilidade)
       const newTypeObj: ProductionTypeConfig = {
         id: generateId(),

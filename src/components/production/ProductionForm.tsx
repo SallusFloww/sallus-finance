@@ -1194,7 +1194,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
       onBulkInsertSuccess?.();
       onOpenChange(false);
     } catch (err) {
-      console.error("Unexpected error:", err);
+      if (import.meta.env.DEV) console.error("Unexpected error:", err);
       toast.error("Erro inesperado ao registrar produções.");
     } finally {
       setSubmitting(false);

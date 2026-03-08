@@ -49,7 +49,7 @@ export function useMovementAllocations() {
       startDate?: string,
       endDate?: string
     ): Promise<Record<string, number>> => {
-      console.warn("useMovementAllocations: getAllocationsByUnit não disponível (tabela não existe)");
+      
       return {};
     },
     []
