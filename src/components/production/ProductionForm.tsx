@@ -2066,7 +2066,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
                   min="0"
                   placeholder="0,00"
                   value={singleTotalValue}
-                  onChange={(e) => updatePerTypeValue(selectedTypes[0], "totalValue", e.target.value)}
+                  onChange={(e) => { setUserOverrodeValue(true); updatePerTypeValue(selectedTypes[0], "totalValue", e.target.value); }}
                   className="text-lg font-bold text-center h-12 bg-background"
                 />
                 <p className="text-xs text-muted-foreground">
