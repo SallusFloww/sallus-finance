@@ -1361,7 +1361,7 @@ export function useReceivablesDB() {
         refreshAll();
         return { id, transactionIds: createdTransactionIds };
       } catch (error) {
-        console.error("Erro inesperado em markAsReceivedMultipleDates:", error);
+        if (import.meta.env.DEV) console.error("Erro inesperado em markAsReceivedMultipleDates:", error);
         for (const txId of createdTransactionIds) {
           await supabase
             .from("financial_entries")

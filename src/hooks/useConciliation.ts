@@ -887,7 +887,7 @@ export function useConciliation() {
         setDbStatuses(prev => ({ ...prev, [itemId]: status }));
         return;
       } catch (error) {
-        console.error("Failed to persist status:", error);
+        if (import.meta.env.DEV) console.error("Failed to persist status:", error);
         toast.warning("Modo offline para status", {
           description: "O status foi salvo localmente e será sincronizado.",
         });
