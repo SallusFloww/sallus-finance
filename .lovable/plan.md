@@ -1,71 +1,67 @@
 
-# Corrigir Card "Convenio Principal" Mostrando UUID
 
-## Problema
+## Plan: Auto-cadastro com Aprovação do Admin
 
-O campo `p.convenio` contem o UUID do `health_plan_id` (ex: `3bbf237b-9901-4164-bde3-70f75a6be3a9`), pois no `useProductionDB.ts` linha 112 ele e mapeado assim:
+### Overview
 
-```
-convenio: db.health_plan_id || undefined
-```
+Add a self-registration flow where users create their own account (email + password), then wait for an admin to approve and assign them a role in the company.
 
-A funcao `formatConvenioDisplayName` apenas aplica title case, nao resolve UUIDs para nomes. Isso afeta:
-- Card "Convenio Principal" nos KPIs
-- Ranking por Convenio
-- Insights e alertas de concentracao
-- Leitura executiva
+### Flow
 
-## Solucao
-
-Buscar a tabela `health_plans` no `ProductionReport.tsx` e criar um mapa UUID->nome para resolver os nomes antes de exibir.
-
-### Arquivo: `src/pages/ProductionReport.tsx`
-
-**1. Adicionar state e fetch para health plans**
-
-Apos os hooks existentes (useProductionDB, usePackagePricing), adicionar:
-
-```typescript
-const [healthPlanMap, setHealthPlanMap] = useState<Record<string, string>>({});
-
-useEffect(() => {
-  if (!companyId) return;
-  supabase
-    .from("health_plans")
-    .select("id, name")
-    .eq("company_id", companyId)
-    .then(({ data }) => {
-      if (data) {
-        const map: Record<string, string> = {};
-        data.forEach((hp) => { map[hp.id] = hp.name; });
-        setHealthPlanMap(map);
-      }
-    });
-}, [companyId]);
+```text
+User visits /auth
+    ↓
+Clicks "Criar conta"
+    ↓
+Fills: Name, Email, Password
+    ↓
+Account created (profile exists, NO company link)
+    ↓
+User logs in → sees "Aguardando aprovação" screen
+    ↓
+Admin opens Users → "Solicitações" tab
+    ↓
+Sees pending users → Approves with role
+    ↓
+User refreshes → full access
 ```
 
-**2. Criar helper de resolucao de nome**
+### Database Changes
 
-```typescript
-const resolveConvenioName = useCallback((convenioId: string | undefined): string => {
-  if (!convenioId) return "PARTICULAR";
-  return healthPlanMap[convenioId] || convenioId;
-}, [healthPlanMap]);
-```
+1. **New RPC: `get_pending_registrations`** - Security definer function that returns profiles with no `user_company_roles` entry for the admin's company. Only callable by admins. This avoids RLS issues since admins can't normally see unlinked profiles.
 
-**3. Usar o helper nos pontos que agrupam por convenio**
+2. **New RPC: `approve_user_registration`** - Takes user_id, company_id, role_id. Creates the `user_company_roles` row. Admin-only, security definer.
 
-- `strategicKPIs` (linha ~535): trocar `p.convenio` por `resolveConvenioName(p.convenio)`
-- `convenioRanking` (linha ~684): trocar `p.convenio || "PARTICULAR"` por `resolveConvenioName(p.convenio)`
+### Frontend Changes
 
-Isso corrige automaticamente todos os cards, rankings e insights que dependem desses dados.
+**1. `src/pages/Auth.tsx`**
+- Add a "signup" mode alongside login/forgot/reset/invite
+- Signup form: full name, email, password, confirm password
+- Uses existing `signUp()` from AuthContext
+- After signup, show success message: "Conta criada! Faça login e aguarde a aprovação do administrador."
+- Add "Criar conta" link below login form
 
-## O que NAO muda
+**2. `src/components/auth/ProtectedRoute.tsx`**
+- Update the "no company" screen message to say "Sua conta está aguardando aprovação do administrador" instead of generic text
+- Add a logout button
 
-- Nenhuma query de banco
-- Nenhum outro modulo (DRE, Aging, BI, Faturamento)
-- O campo `convenio` no hook continua armazenando o UUID (correto para persistencia)
+**3. `src/pages/Users.tsx`**
+- Add third tab: "Solicitações" (pending registrations)
+- Fetch pending users via `get_pending_registrations` RPC
+- Each row shows name, email, created_at
+- "Aprovar" button opens dialog to select role
+- On approve, calls `approve_user_registration` RPC then invalidates queries
+- "Rejeitar" option (optional - just ignore, or could block the profile)
 
-## Risco
+### What stays unchanged
+- Existing invite flow continues to work
+- `useProductionDB.ts` and financial flows untouched
+- Existing auth context `signUp` method already exists and works
+- Edge functions unchanged
 
-**Minimo**. Apenas adiciona uma consulta de leitura a `health_plans` e resolve nomes antes da exibicao.
+### Security
+- Signup creates an auth user + profile via existing trigger
+- No company access until admin explicitly approves
+- RPCs use `security definer` with admin role check
+- Self-registered users see the blocked screen until approved
+
