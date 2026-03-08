@@ -86,6 +86,8 @@ export default function Auth() {
   const [forgotForm, setForgotForm] = useState({ email: "" });
   const [resetForm, setResetForm] = useState({ password: "", confirmPassword: "" });
   const [inviteForm, setInviteForm] = useState({ password: "", confirmPassword: "" });
+  const [signupForm, setSignupForm] = useState({ fullName: "", email: "", password: "", confirmPassword: "" });
+  const [signupSuccess, setSignupSuccess] = useState(false);
 
   // Check for invite token or reset mode from URL
   useEffect(() => {
