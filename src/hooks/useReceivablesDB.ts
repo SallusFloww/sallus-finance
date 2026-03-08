@@ -589,7 +589,7 @@ export function useReceivablesDB() {
 
         if (updateError) {
           // ROLLBACK: Cancelar a movimentação criada se falhar ao atualizar o receivable
-          console.error("Erro ao atualizar receivable, aplicando rollback:", updateError);
+          if (import.meta.env.DEV) console.error("Erro ao atualizar receivable, aplicando rollback:", updateError);
 
           await supabase
             .from("financial_entries")
