@@ -292,7 +292,7 @@ export function useConciliation() {
         })));
       }
     } catch (e) {
-      console.error("Error loading from localStorage:", e);
+      if (import.meta.env.DEV) console.error("Error loading from localStorage:", e);
     }
   }, []);
 
