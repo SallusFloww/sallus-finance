@@ -19,7 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { ProductionType, UnitConfig, BASE_PRODUCTION_TYPES } from "@/types";
 import { toast } from "sonner";
-import { Activity, Check, ChevronsUpDown, Plus, Calculator, Package, AlertCircle, Info, Layers } from "lucide-react";
+import { Activity, Check, ChevronsUpDown, Plus, Calculator, Package, AlertCircle, Info, Layers, Copy, Trash2, Loader2, History as HistoryIcon } from "lucide-react";
 import { SPECIALTIES, DEFAULT_PAYMENT_METHODS_PARTICULAR, PAYMENT_METHOD_PARTICULAR_LABELS } from "@/utils/constants";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
