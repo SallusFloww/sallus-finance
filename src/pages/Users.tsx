@@ -392,7 +392,7 @@ export default function Users() {
         return result;
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : "Erro ao reenviar convite";
-        console.error("Erro ao reenviar convite:", err);
+        if (import.meta.env.DEV) console.error("Erro ao reenviar convite:", err);
         throw new Error(errorMessage);
       }
     },
