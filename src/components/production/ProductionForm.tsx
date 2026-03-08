@@ -291,6 +291,112 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
   const [inlineNewTherapyType, setInlineNewTherapyType] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
+  // ===================================================================
+  // BATCH MODE STATE
+  // ===================================================================
+  const [entryMode, setEntryMode] = useState<"single" | "batch">("single");
+  const [batchRows, setBatchRows] = useState<BatchRow[]>([
+    { id: crypto.randomUUID(), description: "", quantity: 1, unitValue: 0, convenio: "", patientName: "" }
+  ]);
+  const [batchSaving, setBatchSaving] = useState(false);
+
+  // Autocomplete for description
+  const [descOpen, setDescOpen] = useState(false);
+
+  const addBatchRow = () => {
+    const last = batchRows[batchRows.length - 1];
+    setBatchRows(prev => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        description: "",
+        quantity: 1,
+        unitValue: last?.unitValue ?? 0,
+        convenio: last?.convenio ?? "",
+        patientName: "",
+      }
+    ]);
+  };
+
+  const updateBatchRow = (id: string, field: keyof BatchRow, value: any) =>
+    setBatchRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value, error: undefined } : r));
+
+  const removeBatchRow = (id: string) =>
+    setBatchRows(prev => prev.filter(r => r.id !== id));
+
+  const duplicateBatchRow = (id: string) => {
+    const row = batchRows.find(r => r.id === id);
+    if (!row) return;
+    const newRow = { ...row, id: crypto.randomUUID(), patientName: "" };
+    setBatchRows(prev => {
+      const idx = prev.findIndex(r => r.id === id);
+      const next = [...prev];
+      next.splice(idx + 1, 0, newRow);
+      return next;
+    });
+  };
+
+  const handleBatchSubmit = async () => {
+    const validRows = batchRows.filter(r => r.description.trim() !== "");
+
+    if (!validRows.length) {
+      toast.error("Preencha ao menos uma linha");
+      return;
+    }
+
+    if (!formData.unit) {
+      toast.error("Selecione a unidade");
+      return;
+    }
+
+    const withError = batchRows.map(r => {
+      if (!r.description.trim()) return r;
+      if (r.unitValue <= 0) return { ...r, error: "Valor obrigatório" };
+      return r;
+    });
+
+    if (withError.some(r => r.error)) {
+      setBatchRows(withError);
+      toast.error("Corrija as linhas marcadas antes de confirmar");
+      return;
+    }
+
+    setBatchSaving(true);
+    try {
+      const productionType = selectedTypes[0] || "CONSULTA";
+      const CHUNK = 10;
+      for (let i = 0; i < validRows.length; i += CHUNK) {
+        const chunk = validRows.slice(i, i + CHUNK);
+        await Promise.all(chunk.map(row =>
+          onSubmit({
+            productionDate: formData.productionDate,
+            competencia: formData.competencia,
+            unit: formData.unit,
+            productionType: productionType as ProductionType,
+            description: row.description.trim(),
+            procedureCode: row.procedureCode?.trim() || undefined,
+            quantity: row.quantity,
+            unitValue: row.unitValue,
+            payerType: (row.convenio && row.convenio !== "PARTICULAR") ? "CONVENIO" : "PARTICULAR",
+            convenio: (row.convenio && row.convenio !== "PARTICULAR") ? row.convenio : undefined,
+            createdBy: userName,
+            ...(row.patientName?.trim() ? { pacienteNome: row.patientName.trim() } : {}),
+          })
+        ));
+      }
+
+      toast.success(`${validRows.length} produções registradas com sucesso!`);
+      onOpenChange(false);
+      setBatchRows([{ id: crypto.randomUUID(), description: "", quantity: 1, unitValue: 0, convenio: "", patientName: "" }]);
+      onBulkInsertSuccess?.(validRows.length);
+    } catch (err) {
+      toast.error("Erro ao salvar lote. Verifique os dados e tente novamente.");
+      if (import.meta.env.DEV) console.error(err);
+    } finally {
+      setBatchSaving(false);
+    }
+  };
+
   // Derived flags
   const isSinglePackage =
     selectedTypes.length === 1 && PACKAGE_PRODUCTION_TYPES.includes(selectedTypes[0]);
