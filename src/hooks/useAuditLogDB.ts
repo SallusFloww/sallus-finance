@@ -42,16 +42,6 @@ export function useAuditLogDB() {
       }
 
       try {
-        // Get IP address (optional, may not always be available)
-        let ipAddress: string | null = null;
-        try {
-          const ipResponse = await fetch("https://api.ipify.org?format=json");
-          const ipData = await ipResponse.json();
-          ipAddress = ipData.ip;
-        } catch {
-          // IP fetching is optional, don't fail the audit log
-        }
-
         const { error } = await supabase.from("audit_logs").insert([
           {
             user_id: user.id,
