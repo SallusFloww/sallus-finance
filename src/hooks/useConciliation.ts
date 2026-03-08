@@ -417,7 +417,7 @@ export function useConciliation() {
       queue.push(note);
       localStorage.setItem(LS_KEY_NOTES, JSON.stringify(queue));
     } catch (e) {
-      console.error("Error saving note to localStorage:", e);
+      if (import.meta.env.DEV) console.error("Error saving note to localStorage:", e);
     }
   }, []);
 
