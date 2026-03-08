@@ -251,7 +251,7 @@ export function ProductionList({ productions, units, onDelete, onCancel, onEdit,
       await onEdit(editingProduction.id, data);
       setEditDialogOpen(false);
     } catch (err) {
-      console.error(err);
+      if (import.meta.env.DEV) console.error(err);
     } finally {
       setEditSaving(false);
     }
