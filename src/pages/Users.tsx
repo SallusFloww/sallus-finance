@@ -114,6 +114,13 @@ interface PendingInvite {
   created_at: string;
 }
 
+interface PendingRegistration {
+  user_id: string;
+  email: string;
+  full_name: string | null;
+  created_at: string;
+}
+
 export default function Users() {
   const { currentCompany, hasPermission, profile } = useAuth();
   const queryClient = useQueryClient();
