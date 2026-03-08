@@ -388,9 +388,24 @@ export function useProductionDB() {
         return;
       }
 
+      // Only store changed fields to prevent edit_logs column bloat
+      const changedFields: Record<string, { prev: unknown; next: unknown }> = {};
+      if (data.description !== undefined && data.description !== production.description)
+        changedFields.description = { prev: production.description, next: data.description };
+      if (data.quantity !== undefined && data.quantity !== production.quantity)
+        changedFields.quantity = { prev: production.quantity, next: data.quantity };
+      if (data.unitValue !== undefined && data.unitValue !== production.unitValue)
+        changedFields.unitValue = { prev: production.unitValue, next: data.unitValue };
+      if (data.unit !== undefined && data.unit !== production.unit)
+        changedFields.unit = { prev: production.unit, next: data.unit };
+      if (data.doctorId !== undefined && data.doctorId !== production.doctorId)
+        changedFields.doctorId = { prev: production.doctorId, next: data.doctorId };
+      if (data.specialty !== undefined && data.specialty !== production.specialty)
+        changedFields.specialty = { prev: production.specialty, next: data.specialty };
+
       const editLog = {
-        field: "multiple",
-        previousValue: JSON.stringify(production),
+        field: Object.keys(changedFields).length === 1 ? Object.keys(changedFields)[0] : "multiple",
+        previousValue: JSON.stringify(changedFields),
         newValue: JSON.stringify(data),
         editedAt: new Date().toISOString(),
         editedBy: userName,
