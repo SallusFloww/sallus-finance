@@ -141,7 +141,7 @@ export function SettingsProductionTypes({
         _desired_entry_type: 'entrada',
       });
 
-      console.log('[ADD_PROD_TYPE] rpc result', { data, error });
+      if (import.meta.env.DEV) console.log('[ADD_PROD_TYPE] rpc result', { data, error });
 
       if (error) throw error;
 
