@@ -21,7 +21,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { ProductionType, UnitConfig, BASE_PRODUCTION_TYPES } from "@/types";
 import { toast } from "sonner";
-import { Activity, Check, ChevronsUpDown, Plus, Calculator, Package, AlertCircle, Info, Layers, Copy, Trash2, Loader2, History as HistoryIcon, CheckCircle } from "lucide-react";
+import { Activity, Check, ChevronsUpDown, Plus, Calculator, Package, AlertCircle, Info, Layers, Copy, Trash2, Loader2, History as HistoryIcon, CheckCircle, ClipboardPaste } from "lucide-react";
 import { SPECIALTIES, DEFAULT_PAYMENT_METHODS_PARTICULAR, PAYMENT_METHOD_PARTICULAR_LABELS } from "@/utils/constants";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -96,6 +96,7 @@ interface BatchRow {
   convenio?: string;
   patientName?: string;
   error?: string;
+  _justPasted?: boolean;
 }
 
 export interface ProductionFormData {
@@ -338,6 +339,126 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
     });
   };
 
+  // ===================================================================
+  // PASTE-TO-GRID: Smart Excel paste parser
+  // ===================================================================
+  const parseExcelPaste = (text: string): BatchRow[] => {
+    const lines = text
+      .split(/\r?\n/)
+      .map(l => l.trim())
+      .filter(Boolean);
+
+    if (!lines.length) return [];
+
+    const toNumber = (s: string): number | null => {
+      if (!s) return null;
+      const normalized = s.replace(/\./g, "").replace(",", ".");
+      const n = parseFloat(normalized);
+      return isNaN(n) ? null : n;
+    };
+
+    const isNumeric = (s: string) => toNumber(s) !== null;
+
+    return lines
+      .map(line => {
+        const parts = line.split(/\t|;(?=\s*\S)/).map(p => p.trim());
+
+        let description = "";
+        let patientName = "";
+        let quantity = 1;
+        let unitValue = 0;
+
+        if (parts.length === 1) {
+          description = parts[0];
+        } else if (parts.length === 2) {
+          description = parts[0];
+          unitValue = toNumber(parts[1]) ?? 0;
+        } else if (parts.length === 3) {
+          description = parts[0];
+          if (isNumeric(parts[1])) {
+            quantity = toNumber(parts[1]) ?? 1;
+            unitValue = toNumber(parts[2]) ?? 0;
+          } else {
+            patientName = parts[1];
+            unitValue = toNumber(parts[2]) ?? 0;
+          }
+        } else if (parts.length >= 4) {
+          description = parts[0];
+          patientName = isNumeric(parts[1]) ? "" : parts[1];
+          const qtyIdx = isNumeric(parts[1]) ? 1 : 2;
+          const valIdx = qtyIdx + 1;
+          quantity = toNumber(parts[qtyIdx]) ?? 1;
+          unitValue = toNumber(parts[valIdx]) ?? 0;
+        }
+
+        return {
+          id: crypto.randomUUID(),
+          description,
+          procedureCode: "",
+          quantity: Math.max(1, quantity),
+          unitValue: Math.max(0, unitValue),
+          convenio: batchRows[batchRows.length - 1]?.convenio ?? "",
+          patientName,
+          error: undefined,
+          _justPasted: true,
+        } as BatchRow;
+      })
+      .filter(r => r.description.trim() !== "");
+  };
+
+  const handlePasteRows = useCallback((text: string) => {
+    const parsed = parseExcelPaste(text);
+
+    if (!parsed.length) return;
+
+    if (parsed.length > 200) {
+      toast.error(`Limite de 200 linhas por colagem. Você tentou colar ${parsed.length} linhas.`);
+      return;
+    }
+
+    setBatchRows(prev => {
+      const isGridEmpty = prev.length === 1 && !prev[0].description.trim();
+      return isGridEmpty ? parsed : [...prev, ...parsed];
+    });
+
+    toast.success(`${parsed.length} linha${parsed.length > 1 ? "s" : ""} importada${parsed.length > 1 ? "s" : ""} do Excel`);
+
+    // Remove highlight after 1.5s
+    setTimeout(() => {
+      setBatchRows(prev => prev.map(r => ({ ...r, _justPasted: false })));
+    }, 1500);
+
+    // Scroll to bottom
+    setTimeout(() => {
+      const grid = document.querySelector("[data-batch-grid]");
+      if (grid) grid.scrollTop = grid.scrollHeight;
+    }, 100);
+  }, [batchRows]);
+
+  // Paste listener: only in batch mode, only when not focused on input
+  useEffect(() => {
+    if (!open || entryMode !== "batch") return;
+
+    const handler = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement;
+      const tag = target?.tagName?.toUpperCase();
+
+      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
+
+      const text = e.clipboardData?.getData("text/plain") ?? "";
+      if (!text.trim()) return;
+
+      const isTabular = text.includes("\t") || text.includes("\n");
+      if (!isTabular) return;
+
+      e.preventDefault();
+      handlePasteRows(text);
+    };
+
+    window.addEventListener("paste", handler);
+    return () => window.removeEventListener("paste", handler);
+  }, [open, entryMode, handlePasteRows]);
+
   const handleBatchSubmit = async () => {
     const validRows = batchRows.filter(r => r.description.trim() !== "");
 
@@ -369,7 +490,7 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
       const CHUNK = 10;
       for (let i = 0; i < validRows.length; i += CHUNK) {
         const chunk = validRows.slice(i, i + CHUNK);
-        await Promise.all(chunk.map(row =>
+        await Promise.all(chunk.map(({ _justPasted, error, ...row }) =>
           onSubmit({
             productionDate: formData.productionDate,
             competencia: formData.competencia,
@@ -1470,8 +1591,29 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
               </div>
             </div>
 
+            {/* Paste hint */}
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <ClipboardPaste className="h-3.5 w-3.5" />
+                Cole linhas do Excel com{" "}
+                <kbd className="px-1.5 py-0.5 rounded border bg-muted font-mono text-xs">Ctrl+V</kbd>
+                {" "}— colunas aceitas:{" "}
+                <span className="font-medium text-foreground">Procedimento · Paciente · Qtde · Valor</span>
+              </p>
+              {batchRows.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setBatchRows([{ id: crypto.randomUUID(), description: "", quantity: 1, unitValue: 0, convenio: "", patientName: "" }])}
+                  className="text-xs text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  Limpar tudo
+                </button>
+              )}
+            </div>
+
             {/* Grade de linhas */}
-            <div className="border rounded-lg overflow-hidden">
+            <div className="border rounded-lg overflow-auto max-h-[380px]" data-batch-grid>
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50">
@@ -1487,7 +1629,11 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
                 </TableHeader>
                 <TableBody>
                   {batchRows.map((row, idx) => (
-                    <TableRow key={row.id}>
+                    <TableRow key={row.id} className={cn(
+                      "transition-colors",
+                      row._justPasted && "bg-primary/5 animate-pulse",
+                      row.error && "bg-destructive/5"
+                    )}>
                       <TableCell className="p-1">
                         <Input
                           placeholder="Ex: Consulta, ECG..."
