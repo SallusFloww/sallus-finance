@@ -612,7 +612,7 @@ export function useReceivablesDB() {
         // Sucesso completo
         return { id, transactionId: createdTransactionId };
       } catch (error) {
-        console.error("Erro inesperado em markAsReceived:", error);
+        if (import.meta.env.DEV) console.error("Erro inesperado em markAsReceived:", error);
 
         // ROLLBACK em caso de erro inesperado
         if (createdTransactionId) {
