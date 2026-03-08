@@ -34,7 +34,6 @@ const BillingReport = lazy(() => import("./pages/BillingReport"));
 const AgingReport = lazy(() => import("./pages/AgingReport"));
 const ExecutiveReport = lazy(() => import("./pages/ExecutiveReport"));
 const MonthlyReport = lazy(() => import("./pages/MonthlyReport"));
-const BI = lazy(() => import("./pages/BI"));
 const BIV2 = lazy(() => import("./pages/BIV2"));
 const Users = lazy(() => import("./pages/Users"));
 const AdminDiagnostics = lazy(() => import("./pages/AdminDiagnostics"));
