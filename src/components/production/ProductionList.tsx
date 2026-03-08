@@ -137,7 +137,7 @@ export function ProductionList({ productions, units, onDelete, onCancel, onEdit,
         .order("name", { ascending: true });
 
       if (error) {
-        console.error(error);
+        if (import.meta.env.DEV) console.error(error);
         setDoctorNameById({});
         return;
       }
@@ -251,7 +251,7 @@ export function ProductionList({ productions, units, onDelete, onCancel, onEdit,
       await onEdit(editingProduction.id, data);
       setEditDialogOpen(false);
     } catch (err) {
-      console.error(err);
+      if (import.meta.env.DEV) console.error(err);
     } finally {
       setEditSaving(false);
     }
@@ -302,7 +302,7 @@ export function ProductionList({ productions, units, onDelete, onCancel, onEdit,
       }
       setCancelDialogOpen(false);
     } catch (err) {
-      console.error(err);
+      if (import.meta.env.DEV) console.error(err);
     } finally {
       setCancelSaving(false);
     }

@@ -486,7 +486,7 @@ export function useProductionDB() {
       const { error: updateError } = await supabase.from("productions").update(updateData).eq("id", id);
 
       if (updateError) {
-        console.error(updateError);
+        if (import.meta.env.DEV) console.error(updateError);
         toast.error("Erro ao atualizar produção");
         return;
       }

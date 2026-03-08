@@ -16,7 +16,6 @@ export function useMovementAllocations() {
     async (movementId: string): Promise<UnitApportionment[]> => {
       if (!currentCompany?.id) return [];
       // Tabela movement_allocations não existe - retornar vazio
-      console.warn("useMovementAllocations: tabela movement_allocations não existe ainda");
       return [];
     },
     [currentCompany?.id]
@@ -29,7 +28,7 @@ export function useMovementAllocations() {
       apportionments: UnitApportionment[],
       criterion: ApportionmentCriteria
     ): Promise<boolean> => {
-      console.warn("useMovementAllocations: saveAllocations não disponível (tabela não existe)");
+      
       return true; // Retorna sucesso para não bloquear fluxo
     },
     []
@@ -38,7 +37,7 @@ export function useMovementAllocations() {
   // Delete allocations - no-op
   const deleteAllocations = useCallback(
     async (movementId: string): Promise<boolean> => {
-      console.warn("useMovementAllocations: deleteAllocations não disponível (tabela não existe)");
+      
       return true;
     },
     []
@@ -50,7 +49,7 @@ export function useMovementAllocations() {
       startDate?: string,
       endDate?: string
     ): Promise<Record<string, number>> => {
-      console.warn("useMovementAllocations: getAllocationsByUnit não disponível (tabela não existe)");
+      
       return {};
     },
     []

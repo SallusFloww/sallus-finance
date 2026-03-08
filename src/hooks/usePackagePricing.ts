@@ -92,7 +92,7 @@ export function usePackagePricing() {
       const mapped = rows.map(mapDBToRule);
       setRules(mapped);
     } catch (err: any) {
-      console.error("Error fetching package pricing rules:", err);
+      if (import.meta.env.DEV) console.error("Error fetching package pricing rules:", err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -232,7 +232,7 @@ export function usePackagePricing() {
         toast.success("Regra de pacote criada com sucesso");
         return newRule;
       } catch (err: any) {
-        console.error("Error adding package pricing rule:", err);
+        if (import.meta.env.DEV) console.error("Error adding package pricing rule:", err);
         toast.error("Erro ao criar regra: " + err.message);
         return null;
       }
@@ -288,7 +288,7 @@ export function usePackagePricing() {
         toast.success("Regra atualizada com sucesso");
         return true;
       } catch (err: any) {
-        console.error("Error updating package pricing rule:", err);
+        if (import.meta.env.DEV) console.error("Error updating package pricing rule:", err);
         toast.error("Erro ao atualizar regra: " + err.message);
         return false;
       }

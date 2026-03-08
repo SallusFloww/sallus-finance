@@ -132,7 +132,7 @@ export function ProductionReportExport({ data, disabled = false }: ProductionRep
       toast.success("Relatório Excel exportado com sucesso!");
       setIsModalOpen(false);
     } catch (error) {
-      console.error("Export error:", error);
+      if (import.meta.env.DEV) console.error("Export error:", error);
       toast.error("Erro ao exportar relatório. Tente novamente.");
     } finally {
       setIsExporting(false);
@@ -153,7 +153,7 @@ export function ProductionReportExport({ data, disabled = false }: ProductionRep
       toast.success("Relatório PDF exportado com sucesso!");
       setIsModalOpen(false);
     } catch (error) {
-      console.error("PDF Export error:", error);
+      if (import.meta.env.DEV) console.error("PDF Export error:", error);
       toast.error("Erro ao gerar PDF. Tente novamente.");
     } finally {
       setIsExporting(false);

@@ -132,7 +132,7 @@ export function SettingsProductionTypes({
 
     setAddingType(true);
     try {
-      console.log('[ADD_PROD_TYPE] calling RPC', { companyId, name: trimmed, description: newDescription.trim() });
+      if (import.meta.env.DEV) console.log('[ADD_PROD_TYPE] calling RPC', { companyId, name: trimmed, description: newDescription.trim() });
 
       const { data, error } = await (supabase.rpc as any)('upsert_production_type_with_category', {
         _company_id: companyId,
@@ -141,7 +141,7 @@ export function SettingsProductionTypes({
         _desired_entry_type: 'entrada',
       });
 
-      console.log('[ADD_PROD_TYPE] rpc result', { data, error });
+      if (import.meta.env.DEV) console.log('[ADD_PROD_TYPE] rpc result', { data, error });
 
       if (error) throw error;
 
@@ -167,7 +167,7 @@ export function SettingsProductionTypes({
       setNewDescription("");
       toast.success("Tipo criado e categoria vinculada como ENTRADA");
     } catch (err) {
-      console.error("[ADD_PROD_TYPE] Exception:", err);
+      if (import.meta.env.DEV) console.error("[ADD_PROD_TYPE] Exception:", err);
       // Fallback: criar localmente sem categoria (compatibilidade)
       const newTypeObj: ProductionTypeConfig = {
         id: generateId(),

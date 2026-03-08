@@ -294,7 +294,7 @@ export default function Users() {
         return result;
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : "Erro ao enviar convite";
-        console.error("Erro no convite:", err);
+        if (import.meta.env.DEV) console.error("Erro no convite:", err);
         throw new Error(errorMessage);
       }
     },
@@ -338,7 +338,7 @@ export default function Users() {
       }
     },
     onError: (error: Error) => {
-      console.error("inviteMutation.onError:", error);
+      if (import.meta.env.DEV) console.error("inviteMutation.onError:", error);
       toast.error(error.message || "Erro ao enviar convite");
     },
   });
@@ -392,7 +392,7 @@ export default function Users() {
         return result;
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : "Erro ao reenviar convite";
-        console.error("Erro ao reenviar convite:", err);
+        if (import.meta.env.DEV) console.error("Erro ao reenviar convite:", err);
         throw new Error(errorMessage);
       }
     },
@@ -425,7 +425,7 @@ export default function Users() {
       }
     },
     onError: (error: Error) => {
-      console.error("resendInviteMutation.onError:", error);
+      if (import.meta.env.DEV) console.error("resendInviteMutation.onError:", error);
       toast.error(error.message || "Erro ao reenviar convite");
     },
   });
