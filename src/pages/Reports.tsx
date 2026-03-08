@@ -1,20 +1,5 @@
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
-import { Download, FileText, CalendarIcon, FileSpreadsheet, CheckCircle2, XCircle, Filter, TrendingUp, Users, CreditCard, Building2, AlertTriangle, Trophy, FileBarChart, Lightbulb, Clock, User, Eye } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { useApp } from "@/contexts/AppContext";
 import { formatCurrency, formatDate, getStartOfMonth, getEndOfMonth } from "@/utils/formatters";
@@ -31,10 +16,18 @@ import {
   SPECIALTIES,
   SPECIALTY_LABELS,
 } from "@/utils/constants";
-import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Transaction, ReceiptType, PaymentMethodParticular, Operadora, Specialty } from "@/types";
 import { excludeCancelled, isPending, isRealized } from "@/utils/statusHelpers";
+import {
+  ReportFilters,
+  ReportExecutiveSummary,
+  ReportAlerts,
+  ReportRevenueMap,
+  ReportUnitAnalysis,
+  ReportConsolidatedTables,
+  ReportExports,
+} from "@/components/reports";
 export default function Reports() {
   const { transactions, auditLog } = useApp();
   const { filterTransactions, getStats, settings } = transactions;
@@ -1782,797 +1775,65 @@ export default function Reports() {
           </p>
         </div>
 
-        {/* ============= FILTROS CUMULATIVOS ============= */}
-        <div className="rounded-xl border border-border bg-card p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <Filter className="h-4 w-4" />
-              Filtros
-            </div>
-            <div className="flex items-center gap-3">
-              {/* Toggle Modo Diretor */}
-              <button
-                onClick={() => setDirectorMode(!directorMode)}
-                className={cn(
-                  "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
-                  directorMode 
-                    ? "bg-primary text-primary-foreground" 
-                    : "bg-muted text-muted-foreground hover:bg-muted/80"
-                )}
-              >
-                <Eye className="h-3.5 w-3.5" />
-                Modo Diretor
-              </button>
-              {hasActiveFilters && (
-                <Button variant="ghost" size="sm" onClick={clearFilters} className="text-xs">
-                  Limpar filtros
-                </Button>
-              )}
-            </div>
-          </div>
-          
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-            {/* Período */}
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground">Período Inicial</label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-full justify-start text-sm">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {format(dateRange.start, "dd/MM/yyyy")}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={dateRange.start}
-                    onSelect={(d) => d && setDateRange((prev) => ({ ...prev, start: d }))}
-                    className="pointer-events-auto"
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
+        <ReportFilters
+          dateRange={dateRange}
+          setDateRange={setDateRange}
+          selectedUnit={selectedUnit}
+          setSelectedUnit={setSelectedUnit}
+          selectedType={selectedType}
+          setSelectedType={setSelectedType}
+          selectedReceiptType={selectedReceiptType}
+          setSelectedReceiptType={setSelectedReceiptType}
+          selectedCategory={selectedCategory}
+          setSelectedCategory={setSelectedCategory}
+          selectedOperadora={selectedOperadora}
+          setSelectedOperadora={setSelectedOperadora}
+          directorMode={directorMode}
+          setDirectorMode={setDirectorMode}
+          hasActiveFilters={hasActiveFilters}
+          clearFilters={clearFilters}
+          activeUnits={activeUnits}
+          incomeCategories={incomeCategories}
+          operadoras={OPERADORAS}
+          appliedFiltersText={getAppliedFiltersText()}
+        />
 
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground">Período Final</label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-full justify-start text-sm">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {format(dateRange.end, "dd/MM/yyyy")}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={dateRange.end}
-                    onSelect={(d) => d && setDateRange((prev) => ({ ...prev, end: d }))}
-                    className="pointer-events-auto"
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
+        <ReportExecutiveSummary
+          filteredStats={filteredStats}
+          executiveSummary={executiveSummary}
+        />
 
-            {/* Unidade */}
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground">Unidade</label>
-              <Select value={selectedUnit} onValueChange={setSelectedUnit}>
-                <SelectTrigger className="text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  {activeUnits.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+        <ReportAlerts
+          alerts={managementAlerts}
+          getManagementSuggestion={getManagementSuggestion}
+        />
 
-            {/* Tipo */}
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground">Tipo</label>
-              <Select value={selectedType} onValueChange={setSelectedType}>
-                <SelectTrigger className="text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="INCOME">Entrada</SelectItem>
-                  <SelectItem value="EXPENSE">Saída</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+        <ReportRevenueMap revenueMap={revenueMap} />
 
-            {/* Tipo de Recebimento */}
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground">Tipo Recebimento</label>
-              <Select value={selectedReceiptType} onValueChange={setSelectedReceiptType}>
-                <SelectTrigger className="text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="PARTICULAR">Particular</SelectItem>
-                  <SelectItem value="CONVENIO">Convênios</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+        <ReportUnitAnalysis
+          unitAnalysisDetailed={unitAnalysisDetailed}
+          directorMode={directorMode}
+          getUnitExecutiveSummary={getUnitExecutiveSummary}
+          getParticipationTag={getParticipationTag}
+        />
 
-            {/* Categoria */}
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground">Categoria</label>
-              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                <SelectTrigger className="text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  {incomeCategories.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+        <ReportConsolidatedTables
+          unitAnalysis={unitAnalysis}
+          totalIncomeAllUnits={totalIncomeAllUnits}
+          categoryAnalysis={categoryAnalysis}
+          receiptTypeAnalysis={receiptTypeAnalysis}
+          operadoraAnalysis={operadoraAnalysis}
+          paymentMethodAnalysis={paymentMethodAnalysis}
+          directorMode={directorMode}
+        />
 
-          {/* Filtro de Operadora (só aparece quando Convênio selecionado) */}
-          {selectedReceiptType === "CONVENIO" && (
-            <div className="mt-4 pt-4 border-t border-border">
-              <div className="space-y-2 max-w-xs">
-                <label className="text-xs font-medium text-muted-foreground">Operadora</label>
-                <Select value={selectedOperadora} onValueChange={setSelectedOperadora}>
-                  <SelectTrigger className="text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas</SelectItem>
-                    {OPERADORAS.map((op) => (
-                      <SelectItem key={op.id} value={op.id}>{op.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* ============= INDICADOR DE FILTROS ATIVOS ============= */}
-        {hasActiveFilters && (
-          <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-2">
-            <p className="text-sm text-foreground">
-              <span className="font-medium">Relatório filtrado por:</span>{" "}
-              <span className="text-muted-foreground">{getAppliedFiltersText()}</span>
-            </p>
-          </div>
-        )}
-
-        {/* ============= VISÃO EXECUTIVA ============= */}
-        <div className="grid gap-4 md:grid-cols-4">
-          <div className="rounded-xl border border-border bg-card p-4">
-            <p className="text-sm text-muted-foreground">Saldo Inicial</p>
-            <p className="text-xl font-bold text-foreground">
-              {formatCurrency(filteredStats.initialBalance)}
-            </p>
-          </div>
-          <div className="rounded-xl border border-success/20 bg-success/10 p-4">
-            <p className="text-sm text-success">Total Entradas</p>
-            <p className="text-xl font-bold text-success">
-              {formatCurrency(filteredStats.totalIncome)}
-            </p>
-          </div>
-          <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-4">
-            <p className="text-sm text-destructive">Total Saídas</p>
-            <p className="text-xl font-bold text-destructive">
-              {formatCurrency(filteredStats.totalExpense)}
-            </p>
-          </div>
-          <div className="rounded-xl border border-primary/20 bg-primary/10 p-4">
-            <p className="text-sm text-primary">Saldo Atual</p>
-            <p className="text-xl font-bold text-primary">
-              {formatCurrency(filteredStats.currentBalance)}
-            </p>
-          </div>
-        </div>
-
-        {/* ============= STATUS DO RELATÓRIO ============= */}
-        <div className="rounded-xl border border-border bg-muted/30 p-4">
-          <h4 className="mb-3 text-sm font-semibold text-foreground">Status do Relatório</h4>
-          <div className="flex flex-wrap gap-4 text-sm">
-            <div className="flex items-center gap-2 text-success">
-              <CheckCircle2 className="h-4 w-4" />
-              <span>Caixa conferido</span>
-            </div>
-            <div className="flex items-center gap-2 text-success">
-              <CheckCircle2 className="h-4 w-4" />
-              <span>Valores realizados</span>
-            </div>
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <XCircle className="h-4 w-4" />
-              <span>Não inclui previsões ou contas a receber</span>
-            </div>
-          </div>
-        </div>
-
-        {/* ============= LEITURA EXECUTIVA DO PERÍODO ============= */}
-        {executiveSummary.length > 0 && (
-          <div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-5">
-            <div className="mb-4 flex items-center gap-2">
-              <Lightbulb className="h-5 w-5 text-primary" />
-              <h3 className="font-semibold text-foreground">Leitura Executiva do Período</h3>
-            </div>
-            <div className="space-y-2">
-              {executiveSummary.map((insight, index) => (
-                <p key={index} className="text-sm text-foreground leading-relaxed">
-                  {insight}
-                </p>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ============= ALERTAS GERENCIAIS COM TIPOS DE RISCO ============= */}
-        {managementAlerts.length > 0 && (
-          <div className="rounded-xl border border-warning/30 bg-warning/5 p-4">
-            <div className="mb-4 flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-warning" />
-              <h3 className="font-semibold text-foreground">Alertas Gerenciais</h3>
-              <span className="text-xs text-muted-foreground ml-auto">{managementAlerts.length} alerta(s)</span>
-            </div>
-            <div className="space-y-3">
-              {managementAlerts.map((alert, index) => (
-                <div
-                  key={index}
-                  className={cn(
-                    "rounded-lg border p-3",
-                    alert.type === "danger" && "border-destructive/30 bg-destructive/10",
-                    alert.type === "warning" && "border-warning/30 bg-warning/10",
-                    alert.type === "info" && "border-primary/30 bg-primary/5"
-                  )}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-lg">{alert.riskIcon}</span>
-                    <span className={cn(
-                      "text-xs font-semibold px-2 py-0.5 rounded",
-                      alert.type === "danger" && "bg-destructive/20 text-destructive",
-                      alert.type === "warning" && "bg-warning/20 text-warning",
-                      alert.type === "info" && "bg-primary/20 text-primary"
-                    )}>
-                      {alert.riskType}
-                    </span>
-                    {alert.unit && (
-                      <span className="text-xs text-muted-foreground">— {alert.unit}</span>
-                    )}
-                    {alert.specialty && (
-                      <span className="text-xs text-muted-foreground">› {alert.specialty}</span>
-                    )}
-                  </div>
-                  <p className={cn(
-                    "font-medium text-sm",
-                    alert.type === "danger" && "text-destructive",
-                    alert.type === "warning" && "text-warning",
-                    alert.type === "info" && "text-primary"
-                  )}>
-                    {alert.title}
-                  </p>
-                  <div className="flex items-center justify-between mt-1">
-                    <p className="text-xs text-muted-foreground">{alert.description}</p>
-                    {alert.value && (
-                      <span className={cn(
-                        "text-xs font-semibold",
-                        alert.type === "danger" && "text-destructive",
-                        alert.type === "warning" && "text-warning",
-                        alert.type === "info" && "text-primary"
-                      )}>
-                        {alert.value}
-                      </span>
-                    )}
-                  </div>
-                  {/* SUGESTÃO GERENCIAL */}
-                  <div className="mt-2 pt-2 border-t border-border/50">
-                    <p className="text-xs text-foreground">
-                      <span className="font-medium text-primary">💡 Sugestão Gerencial:</span>{" "}
-                      <span className="text-muted-foreground italic">{getManagementSuggestion(alert)}</span>
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ============= MAPA DE RECEITA (TOP 3) ============= */}
-        {revenueMap.length > 0 && (
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="mb-4 flex items-center gap-2">
-              <Trophy className="h-5 w-5 text-warning" />
-              <h3 className="font-semibold text-foreground">Mapa de Receita do Período</h3>
-              <span className="text-xs text-muted-foreground ml-auto">Top 3 categorias geradoras de caixa</span>
-            </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              {revenueMap.map((item) => (
-                <div
-                  key={`${item.unit}_${item.category}`}
-                  className={cn(
-                    "rounded-lg border p-4 relative overflow-hidden",
-                    item.rank === 1 && "border-warning bg-warning/10",
-                    item.rank === 2 && "border-muted-foreground/30 bg-muted/30",
-                    item.rank === 3 && "border-orange-500/30 bg-orange-50 dark:bg-orange-950/20"
-                  )}
-                >
-                  <div className="absolute top-2 right-2 text-2xl font-bold text-muted-foreground/20">
-                    {item.rank}º
-                  </div>
-                  <p className="text-sm font-medium text-foreground">{item.categoryName}</p>
-                  <p className="text-xs text-muted-foreground">{item.unitName}</p>
-                  <p className="text-xl font-bold text-foreground mt-2">{formatCurrency(item.value)}</p>
-                  <p className="text-xs text-muted-foreground">{item.percentage.toFixed(1)}% do total</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ============= ANÁLISE POR UNIDADE (DETALHADA) - OCULTO NO MODO DIRETOR ============= */}
-        {!directorMode && (
-        <div className="rounded-xl border border-border bg-card p-4">
-          <div className="mb-4 flex items-center gap-2">
-            <FileBarChart className="h-5 w-5 text-primary" />
-            <h3 className="font-semibold text-foreground">Análise por Unidade (Detalhada)</h3>
-          </div>
-          <div className="space-y-6">
-            {unitAnalysisDetailed.map((u) => (
-              <div key={u.unit} className="rounded-lg border border-border p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-semibold text-lg text-foreground">{u.name}</h4>
-                  <span className={cn(
-                    "text-sm font-semibold px-2 py-1 rounded",
-                    u.netBalance >= 0 ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"
-                  )}>
-                    Saldo: {formatCurrency(u.netBalance)}
-                  </span>
-                </div>
-
-                {/* MICRO-RESUMO EXECUTIVO DA UNIDADE */}
-                <div className="mb-4 p-2 rounded bg-primary/5 border-l-2 border-primary">
-                  <p className="text-xs text-foreground italic">
-                    {getUnitExecutiveSummary(u)}
-                  </p>
-                </div>
-                
-                {/* Resumo da unidade */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                  <div className="text-center p-2 rounded bg-success/10">
-                    <p className="text-xs text-muted-foreground">Entradas</p>
-                    <p className="text-sm font-bold text-success">{formatCurrency(u.totalIncome)}</p>
-                  </div>
-                  <div className="text-center p-2 rounded bg-destructive/10">
-                    <p className="text-xs text-muted-foreground">Saídas</p>
-                    <p className="text-sm font-bold text-destructive">{formatCurrency(u.totalExpense)}</p>
-                  </div>
-                  <div className="text-center p-2 rounded bg-muted/50">
-                    <p className="text-xs text-muted-foreground">Particular</p>
-                    <p className="text-sm font-bold text-foreground">{u.particular.percentage.toFixed(1)}%</p>
-                  </div>
-                  <div className="text-center p-2 rounded bg-muted/50">
-                    <p className="text-xs text-muted-foreground">Convênios</p>
-                    <p className="text-sm font-bold text-foreground">{u.convenio.percentage.toFixed(1)}%</p>
-                  </div>
-                </div>
-
-                {/* ESPECIALIDADES DO CENTRO CLÍNICO - SEMPRE MOSTRA TODAS AS 6 */}
-                {u.unit === "CENTRO_CLINICO" && u.specialties && (
-                  <div className="mb-4 p-3 rounded-lg bg-muted/30 border border-border">
-                    <p className="text-xs font-semibold text-primary mb-3">📋 Detalhamento por Especialidade</p>
-                    <div className="space-y-3">
-                      {u.specialties.map((spec) => (
-                        <div 
-                          key={spec.specialty} 
-                          className={cn(
-                            "p-3 rounded border",
-                            spec.hasMovement 
-                              ? "bg-card border-border/50" 
-                              : "bg-muted/20 border-dashed border-muted-foreground/30"
-                          )}
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <span className={cn(
-                                "font-medium text-sm",
-                                spec.hasMovement ? "text-foreground" : "text-muted-foreground"
-                              )}>
-                                {spec.name}
-                              </span>
-                              {/* TAG DE PARTICIPAÇÃO NA UNIDADE */}
-                              {(() => {
-                                const tag = getParticipationTag(spec.percentage);
-                                return (
-                                  <span className={cn(
-                                    "text-[10px] px-1.5 py-0.5 rounded font-medium",
-                                    tag.color
-                                  )}>
-                                    {tag.label}
-                                  </span>
-                                );
-                              })()}
-                              {!spec.hasMovement && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                                  Sem movimentação no período
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex flex-col items-end gap-0.5">
-                              <span className={cn(
-                                "text-xs font-semibold px-2 py-0.5 rounded",
-                                !spec.hasMovement 
-                                  ? "bg-muted text-muted-foreground"
-                                  : spec.netBalance >= 0 
-                                    ? "bg-success/10 text-success" 
-                                    : "bg-destructive/10 text-destructive"
-                              )}>
-                                {spec.hasMovement ? (spec.netBalance < 0 ? "Saldo negativo: " : "") : ""}
-                                {formatCurrency(spec.netBalance)}
-                              </span>
-                              {/* Indicação de saldo negativo compensado */}
-                              {spec.netBalance < 0 && u.netBalance >= 0 && spec.hasMovement && (
-                                <span className="text-[9px] text-muted-foreground italic">
-                                  Compensado por outras especialidades
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          
-                          {spec.hasMovement ? (
-                            <>
-                              <div className="grid grid-cols-4 gap-2 text-xs">
-                                <div>
-                                  <p className="text-muted-foreground">Entradas</p>
-                                  <p className="font-semibold text-success">{formatCurrency(spec.totalIncome)}</p>
-                                </div>
-                                <div>
-                                  <p className="text-muted-foreground">Saídas</p>
-                                  <p className="font-semibold text-destructive">{formatCurrency(spec.totalExpense)}</p>
-                                </div>
-                                <div>
-                                  <p className="text-muted-foreground">Ticket Médio</p>
-                                  <p className="font-semibold text-foreground">{formatCurrency(spec.avgTicket)}</p>
-                                </div>
-                                <div>
-                                  <p className="text-muted-foreground">% da Unidade</p>
-                                  <p className="font-semibold text-foreground">{spec.percentage.toFixed(1)}%</p>
-                                </div>
-                              </div>
-                              {/* Categorias da especialidade */}
-                              {spec.categories.length > 0 && (
-                                <div className="mt-2 pt-2 border-t border-border/50">
-                                  <p className="text-xs text-muted-foreground mb-1">Categorias:</p>
-                                  <div className="flex flex-wrap gap-1">
-                                    {spec.categories.slice(0, 3).map((cat) => (
-                                      <span key={cat.category} className="text-xs bg-muted px-2 py-0.5 rounded">
-                                        {cat.categoryName}: {formatCurrency(cat.value)} ({cat.percentage.toFixed(0)}%)
-                                      </span>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </>
-                          ) : (
-                            <div className="grid grid-cols-4 gap-2 text-xs text-muted-foreground">
-                              <div>
-                                <p>Entradas</p>
-                                <p className="font-semibold">R$ 0,00</p>
-                              </div>
-                              <div>
-                                <p>Saídas</p>
-                                <p className="font-semibold">R$ 0,00</p>
-                              </div>
-                              <div>
-                                <p>Ticket Médio</p>
-                                <p className="font-semibold">R$ 0,00</p>
-                              </div>
-                              <div>
-                                <p>% da Unidade</p>
-                                <p className="font-semibold">0%</p>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Quebra por categoria */}
-                {u.categories.length > 0 && (
-                  <div className="mt-3">
-                    <p className="text-xs font-medium text-muted-foreground mb-2">Entradas por Categoria:</p>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b border-border">
-                            <th className="pb-2 text-left text-xs font-medium text-muted-foreground">Categoria</th>
-                            <th className="pb-2 text-right text-xs font-medium text-muted-foreground">Valor</th>
-                            <th className="pb-2 text-right text-xs font-medium text-muted-foreground">%</th>
-                            <th className="pb-2 text-right text-xs font-medium text-muted-foreground">Ticket Médio</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {u.categories.slice(0, 5).map((cat) => (
-                            <tr key={cat.category} className="border-b border-border/50 last:border-0">
-                              <td className="py-2 text-foreground">{cat.categoryName}</td>
-                              <td className="py-2 text-right text-success">{formatCurrency(cat.value)}</td>
-                              <td className="py-2 text-right text-muted-foreground">{cat.percentage.toFixed(1)}%</td>
-                              <td className="py-2 text-right text-foreground">{formatCurrency(cat.avgTicket)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-        )}
-        {/* ============= ENTRADAS POR UNIDADE (OCULTO NO MODO DIRETOR) ============= */}
-        {!directorMode && (
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="mb-4 flex items-center gap-2">
-              <Building2 className="h-5 w-5 text-primary" />
-              <h3 className="font-semibold text-foreground">Entradas por Unidade</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border text-left">
-                    <th className="pb-3 text-sm font-medium text-muted-foreground">Unidade</th>
-                    <th className="pb-3 text-right text-sm font-medium text-muted-foreground">Total Entradas</th>
-                    <th className="pb-3 text-right text-sm font-medium text-muted-foreground">Qtd. Mov.</th>
-                    <th className="pb-3 text-right text-sm font-medium text-muted-foreground">Ticket Médio</th>
-                    <th className="pb-3 text-right text-sm font-medium text-muted-foreground">% do Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {unitAnalysis.map((u) => (
-                    <tr key={u.unit} className="border-b border-border last:border-0">
-                      <td className="py-3 font-medium text-foreground">{u.name}</td>
-                      <td className="py-3 text-right text-success">{formatCurrency(u.totalIncome)}</td>
-                      <td className="py-3 text-right text-muted-foreground">{u.count}</td>
-                      <td className="py-3 text-right text-foreground">{formatCurrency(u.avgTicket)}</td>
-                      <td className="py-3 text-right text-muted-foreground">
-                        {totalIncomeAllUnits > 0 ? ((u.totalIncome / totalIncomeAllUnits) * 100).toFixed(1) : 0}%
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* ============= ANÁLISE POR CATEGORIA (OCULTO NO MODO DIRETOR) ============= */}
-        {!directorMode && categoryAnalysis.length > 0 && (
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="mb-4 flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-primary" />
-              <h3 className="font-semibold text-foreground">Análise por Categoria</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border text-left">
-                    <th className="pb-3 text-sm font-medium text-muted-foreground">Categoria</th>
-                    <th className="pb-3 text-right text-sm font-medium text-muted-foreground">Valor Total</th>
-                    <th className="pb-3 text-right text-sm font-medium text-muted-foreground">Qtd.</th>
-                    <th className="pb-3 text-right text-sm font-medium text-muted-foreground">% do Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {categoryAnalysis.map((c) => (
-                    <tr key={c.category} className="border-b border-border last:border-0">
-                      <td className="py-3 font-medium text-foreground">{c.categoryName}</td>
-                      <td className="py-3 text-right text-success">{formatCurrency(c.value)}</td>
-                      <td className="py-3 text-right text-muted-foreground">{c.count}</td>
-                      <td className="py-3 text-right text-muted-foreground">{c.percentage.toFixed(1)}%</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* ============= PARTICULAR x CONVÊNIOS ============= */}
-        <div className="rounded-xl border border-border bg-card p-4">
-          <div className="mb-4 flex items-center gap-2">
-            <Users className="h-5 w-5 text-primary" />
-            <h3 className="font-semibold text-foreground">Distribuição das Entradas</h3>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-lg border border-border bg-muted/30 p-4">
-              <p className="text-sm text-muted-foreground">Particular</p>
-              <p className="text-2xl font-bold text-foreground">{formatCurrency(receiptTypeAnalysis.particular.value)}</p>
-              <p className="text-sm text-muted-foreground">{receiptTypeAnalysis.particular.percentage.toFixed(1)}% das entradas</p>
-            </div>
-            <div className="rounded-lg border border-border bg-muted/30 p-4">
-              <p className="text-sm text-muted-foreground">Convênios</p>
-              <p className="text-2xl font-bold text-foreground">{formatCurrency(receiptTypeAnalysis.convenio.value)}</p>
-              <p className="text-sm text-muted-foreground">{receiptTypeAnalysis.convenio.percentage.toFixed(1)}% das entradas</p>
-            </div>
-          </div>
-        </div>
-
-        {/* ============= OPERADORAS (OCULTO NO MODO DIRETOR) ============= */}
-        {!directorMode && operadoraAnalysis.length > 0 && (
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="mb-4 flex items-center gap-2">
-              <CreditCard className="h-5 w-5 text-primary" />
-              <h3 className="font-semibold text-foreground">Recebimentos por Operadora</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border text-left">
-                    <th className="pb-3 text-sm font-medium text-muted-foreground">Operadora</th>
-                    <th className="pb-3 text-right text-sm font-medium text-muted-foreground">Valor Recebido</th>
-                    <th className="pb-3 text-right text-sm font-medium text-muted-foreground">% Convênios</th>
-                    <th className="pb-3 text-right text-sm font-medium text-muted-foreground">% Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {operadoraAnalysis.map((op) => (
-                    <tr key={op.id} className="border-b border-border last:border-0">
-                      <td className="py-3 font-medium text-foreground">{op.name}</td>
-                      <td className="py-3 text-right text-success">{formatCurrency(op.value)}</td>
-                      <td className="py-3 text-right text-muted-foreground">{op.percentageOfConvenio.toFixed(1)}%</td>
-                      <td className="py-3 text-right text-muted-foreground">{op.percentageOfTotal.toFixed(1)}%</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* ============= MEIOS DE PAGAMENTO (OCULTO NO MODO DIRETOR) ============= */}
-        {!directorMode && paymentMethodAnalysis.length > 0 && (
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="mb-4 flex items-center gap-2">
-              <CreditCard className="h-5 w-5 text-primary" />
-              <h3 className="font-semibold text-foreground">Meios de Pagamento (Particular)</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border text-left">
-                    <th className="pb-3 text-sm font-medium text-muted-foreground">Ranking</th>
-                    <th className="pb-3 text-sm font-medium text-muted-foreground">Meio de Pagamento</th>
-                    <th className="pb-3 text-right text-sm font-medium text-muted-foreground">Valor</th>
-                    <th className="pb-3 text-right text-sm font-medium text-muted-foreground">Qtd</th>
-                    <th className="pb-3 text-right text-sm font-medium text-muted-foreground">Ticket Médio</th>
-                    <th className="pb-3 text-right text-sm font-medium text-muted-foreground">%</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paymentMethodAnalysis.map((pm, index) => (
-                    <tr key={pm.id} className="border-b border-border last:border-0">
-                      <td className="py-3 text-muted-foreground">{index + 1}º</td>
-                      <td className="py-3 font-medium text-foreground">{pm.name}</td>
-                      <td className="py-3 text-right text-success">{formatCurrency(pm.value)}</td>
-                      <td className="py-3 text-right text-muted-foreground">{pm.count}</td>
-                      <td className="py-3 text-right text-foreground">{formatCurrency(pm.avgTicket)}</td>
-                      <td className="py-3 text-right text-muted-foreground">{pm.percentage.toFixed(1)}%</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* ============= RESUMO POR UNIDADE (CONSOLIDADO) ============= */}
-        <div className="rounded-xl border border-border bg-card p-4">
-          <h3 className="mb-4 font-semibold text-foreground">Resumo por Unidade (Consolidado)</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border text-left">
-                  <th className="pb-3 text-sm font-medium text-muted-foreground">Unidade</th>
-                  <th className="pb-3 text-right text-sm font-medium text-muted-foreground">Entradas</th>
-                  <th className="pb-3 text-right text-sm font-medium text-muted-foreground">Saídas</th>
-                  <th className="pb-3 text-right text-sm font-medium text-muted-foreground">Saldo Líquido</th>
-                  <th className="pb-3 text-right text-sm font-medium text-muted-foreground">Ticket Médio</th>
-                  <th className="pb-3 text-right text-sm font-medium text-muted-foreground">% Caixa Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {unitAnalysis.map((u) => (
-                  <tr key={u.unit} className="border-b border-border last:border-0">
-                    <td className="py-3 font-medium text-foreground">{u.name}</td>
-                    <td className="py-3 text-right text-success">{formatCurrency(u.totalIncome)}</td>
-                    <td className="py-3 text-right text-destructive">{formatCurrency(u.totalExpense)}</td>
-                    <td className={cn("py-3 text-right font-semibold", u.netBalance >= 0 ? "text-success" : "text-destructive")}>
-                      {formatCurrency(u.netBalance)}
-                    </td>
-                    <td className="py-3 text-right text-foreground">{formatCurrency(u.avgTicket)}</td>
-                    <td className="py-3 text-right text-muted-foreground">
-                      {totalIncomeAllUnits > 0 ? ((u.totalIncome / totalIncomeAllUnits) * 100).toFixed(1) : 0}%
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* ============= FECHAMENTO DO RELATÓRIO ============= */}
-        <div className="rounded-xl border border-border bg-muted/30 p-4">
-          <h4 className="mb-3 text-sm font-semibold text-foreground flex items-center gap-2">
-            <FileText className="h-4 w-4 text-primary" />
-            Fechamento do Relatório
-          </h4>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-foreground">Status do Relatório</p>
-              <div className="flex flex-col gap-1 text-xs">
-                <div className="flex items-center gap-2 text-success">
-                  <CheckCircle2 className="h-3 w-3" />
-                  <span>Caixa conciliado</span>
-                </div>
-                <div className="flex items-center gap-2 text-success">
-                  <CheckCircle2 className="h-3 w-3" />
-                  <span>Valores realizados</span>
-                </div>
-                <div className="flex items-center gap-2 text-success">
-                  <CheckCircle2 className="h-3 w-3" />
-                  <span>Sem previsões</span>
-                </div>
-              </div>
-            </div>
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <CalendarIcon className="h-4 w-4" />
-                <span>Período: {formatDate(dateRange.start.toISOString())} a {formatDate(dateRange.end.toISOString())}</span>
-              </div>
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <User className="h-4 w-4" />
-                <span>Usuário: {auth.user?.name || "Sistema"}</span>
-              </div>
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Clock className="h-4 w-4" />
-                <span>Gerado em: {format(new Date(), "dd/MM/yyyy 'às' HH:mm")}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ============= EXPORTAÇÕES ============= */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <Button variant="outline" onClick={exportCSV} className="h-auto flex-col gap-2 p-6">
-            <FileSpreadsheet className="h-8 w-8 text-success" />
-            <span className="font-semibold">Exportar CSV</span>
-            <span className="text-xs text-muted-foreground">
-              Dados brutos para análise contábil
-            </span>
-          </Button>
-
-          <Button variant="outline" onClick={exportPDF} className="h-auto flex-col gap-2 p-6">
-            <FileText className="h-8 w-8 text-primary" />
-            <span className="font-semibold">Gerar Relatório PDF</span>
-            <span className="text-xs text-muted-foreground">
-              Relatório gerencial completo
-            </span>
-          </Button>
-
-          <Button variant="outline" onClick={exportBackup} className="h-auto flex-col gap-2 p-6">
-            <Download className="h-8 w-8 text-warning" />
-            <span className="font-semibold">Backup Completo</span>
-            <span className="text-xs text-muted-foreground">
-              Arquivo JSON com todos os dados
-            </span>
-          </Button>
-        </div>
+        <ReportExports
+          exportCSV={exportCSV}
+          exportPDF={exportPDF}
+          exportBackup={exportBackup}
+          dateRange={dateRange}
+          userName={auth.user?.name || "Sistema"}
+        />
       </div>
     </DashboardLayout>
   );
