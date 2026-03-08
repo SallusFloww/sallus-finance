@@ -2148,15 +2148,25 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
             />
           </div>
         </div>
+        )}
 
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button onClick={handleSubmit} className="gradient-primary" disabled={submitting}>
-            {submitting ? "Registrando..." : isMultiType ? `Registrar ${selectedTypes.length} produções` : "Registrar"}
-          </Button>
+        {/* Footer for single mode */}
+        {entryMode === "single" && (
+        <DialogFooter className="gap-2 sm:gap-0 flex-col">
+          <div className="flex items-center gap-2 w-full sm:justify-end">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSubmit} className="gradient-primary" disabled={submitting}>
+              {submitting ? "Registrando..." : isMultiType ? `Registrar ${selectedTypes.length} produções` : "Registrar"}
+            </Button>
+          </div>
+          <p className="text-[10px] text-muted-foreground text-center sm:text-right w-full">
+            <kbd className="px-1 py-0.5 rounded border bg-muted text-[10px]">Shift + Enter</kbd>
+            {" "}salva e abre novo mantendo data, unidade e convênio
+          </p>
         </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );
