@@ -130,11 +130,7 @@ export function useFinancialEntries() {
         from += pageSize;
       }
 
-      const data = allData;
-
-      if (fetchError) throw fetchError;
-
-      setEntries(data || []);
+      setEntries(allData);
     } catch (err) {
       setError("Erro ao carregar movimentações financeiras");
       toast.error("Erro ao carregar movimentações");
