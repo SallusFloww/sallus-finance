@@ -42,7 +42,7 @@ const PACKAGE_PRODUCTION_TYPES = ["PACOTE_BOX", "PACOTE_GTA"];
 // ✅ Tipo Mat/Med (lançamento manual)
 const MATMED_PRODUCTION_TYPE = "MAT_MED";
 
-const CONVENIOS = ["IPASGO", "UNIMED", "BRADESCO", "GEAP", "SUS"];
+// Health plans are now loaded from the database (see healthPlans state below)
 
 // Sugestões padrão de exames com valores padrão
 const DEFAULT_EXAM_TYPES = [
