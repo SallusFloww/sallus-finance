@@ -175,6 +175,9 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
   const { currentCompany, profile } = useAuth();
   const companyId = (currentCompany as any)?.id || (profile as any)?.company_id;
 
+  // Health plans from DB
+  const [healthPlans, setHealthPlans] = useState<{ id: string; name: string }[]>([]);
+
   const [doctorOptions, setDoctorOptions] = useState<{ id: string; name: string; specialty_id?: string | null }[]>([]);
   const [doctorsLoading, setDoctorsLoading] = useState(false);
   // Track if user manually changed the value (to prevent auto-fill overwrite)
