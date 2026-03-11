@@ -1,71 +1,47 @@
 
-# Corrigir Card "Convenio Principal" Mostrando UUID
 
-## Problema
+## Plano: Limpeza total de dados de teste (todas as empresas)
 
-O campo `p.convenio` contem o UUID do `health_plan_id` (ex: `3bbf237b-9901-4164-bde3-70f75a6be3a9`), pois no `useProductionDB.ts` linha 112 ele e mapeado assim:
+### O que será limpo
 
-```
-convenio: db.health_plan_id || undefined
-```
+Tabelas transacionais na ordem correta (respeitando dependências):
 
-A funcao `formatConvenioDisplayName` apenas aplica title case, nao resolve UUIDs para nomes. Isso afeta:
-- Card "Convenio Principal" nos KPIs
-- Ranking por Convenio
-- Insights e alertas de concentracao
-- Leitura executiva
+1. `conciliation_notes` — notas de conciliação
+2. `conciliation_status` — status de conciliação
+3. `productions` — produções
+4. `financial_entries` — lançamentos financeiros
+5. `receivables` — recebíveis
 
-## Solucao
+Tabelas que **não** serão tocadas: `companies`, `profiles`, `roles`, `user_company_roles`, `company_settings`, `company_financial_settings`, `doctors`, `health_plans`, `permissions`, `role_permissions`, `user_invites`, `package_pricing_rules`.
 
-Buscar a tabela `health_plans` no `ProductionReport.tsx` e criar um mapa UUID->nome para resolver os nomes antes de exibir.
+### Como será executado
 
-### Arquivo: `src/pages/ProductionReport.tsx`
+Um script SQL direto via `psql` (usando service role, sem restrição de RLS):
 
-**1. Adicionar state e fetch para health plans**
-
-Apos os hooks existentes (useProductionDB, usePackagePricing), adicionar:
-
-```typescript
-const [healthPlanMap, setHealthPlanMap] = useState<Record<string, string>>({});
-
-useEffect(() => {
-  if (!companyId) return;
-  supabase
-    .from("health_plans")
-    .select("id, name")
-    .eq("company_id", companyId)
-    .then(({ data }) => {
-      if (data) {
-        const map: Record<string, string> = {};
-        data.forEach((hp) => { map[hp.id] = hp.name; });
-        setHealthPlanMap(map);
-      }
-    });
-}, [companyId]);
+```sql
+DELETE FROM conciliation_notes;
+DELETE FROM conciliation_status;
+DELETE FROM productions;
+DELETE FROM financial_entries;
+DELETE FROM receivables;
+DELETE FROM production_import_batches;
 ```
 
-**2. Criar helper de resolucao de nome**
+Também resetar saldo inicial de todas as empresas:
 
-```typescript
-const resolveConvenioName = useCallback((convenioId: string | undefined): string => {
-  if (!convenioId) return "PARTICULAR";
-  return healthPlanMap[convenioId] || convenioId;
-}, [healthPlanMap]);
+```sql
+UPDATE company_financial_settings 
+SET initial_balance = 0, initial_balance_adjustments = '[]'::jsonb;
 ```
 
-**3. Usar o helper nos pontos que agrupam por convenio**
+### Segurança
 
-- `strategicKPIs` (linha ~535): trocar `p.convenio` por `resolveConvenioName(p.convenio)`
-- `convenioRanking` (linha ~684): trocar `p.convenio || "PARTICULAR"` por `resolveConvenioName(p.convenio)`
+- Estrutura do banco (tabelas, colunas, RLS, funções) permanece intacta
+- Configurações da empresa (categorias, unidades, tipos de produção) preservadas
+- Usuários, perfis e permissões preservados
+- Apenas dados transacionais são removidos
 
-Isso corrige automaticamente todos os cards, rankings e insights que dependem desses dados.
+### Resultado
 
-## O que NAO muda
+Todas as tabelas de lançamentos voltam a zero. O sistema continua funcionando normalmente, pronto para novos dados reais.
 
-- Nenhuma query de banco
-- Nenhum outro modulo (DRE, Aging, BI, Faturamento)
-- O campo `convenio` no hook continua armazenando o UUID (correto para persistencia)
-
-## Risco
-
-**Minimo**. Apenas adiciona uma consulta de leitura a `health_plans` e resolve nomes antes da exibicao.
