@@ -42,7 +42,7 @@ const PACKAGE_PRODUCTION_TYPES = ["PACOTE_BOX", "PACOTE_GTA"];
 // ✅ Tipo Mat/Med (lançamento manual)
 const MATMED_PRODUCTION_TYPE = "MAT_MED";
 
-const CONVENIOS = ["IPASGO", "UNIMED", "BRADESCO", "GEAP", "SUS"];
+// Health plans are now loaded from the database (see healthPlans state below)
 
 // Sugestões padrão de exames com valores padrão
 const DEFAULT_EXAM_TYPES = [
@@ -175,6 +175,9 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
   const { currentCompany, profile } = useAuth();
   const companyId = (currentCompany as any)?.id || (profile as any)?.company_id;
 
+  // Health plans from DB
+  const [healthPlans, setHealthPlans] = useState<{ id: string; name: string }[]>([]);
+
   const [doctorOptions, setDoctorOptions] = useState<{ id: string; name: string; specialty_id?: string | null }[]>([]);
   const [doctorsLoading, setDoctorsLoading] = useState(false);
   // Track if user manually changed the value (to prevent auto-fill overwrite)
@@ -218,6 +221,23 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
 
     // Só busca quando o modal abre, pra evitar fetch desnecessário
     if (open) fetchDoctors();
+  }, [companyId, open]);
+
+  // Fetch health plans from DB
+  useEffect(() => {
+    const fetchHealthPlans = async () => {
+      if (!companyId) return;
+      const { data, error } = await supabase
+        .from("health_plans")
+        .select("id, name")
+        .eq("company_id", companyId)
+        .eq("is_active", true)
+        .order("name");
+      if (!error && data) {
+        setHealthPlans(data.map((hp: any) => ({ id: String(hp.id), name: String(hp.name) })));
+      }
+    };
+    if (open) fetchHealthPlans();
   }, [companyId, open]);
 
   // Combinar sugestões padrão com salvas do banco
@@ -2323,11 +2343,13 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
                     <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
                   <SelectContent>
-                    {CONVENIOS.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
+                    {healthPlans.length > 0 ? healthPlans.map((hp) => (
+                      <SelectItem key={hp.id} value={hp.id}>
+                        {hp.name}
                       </SelectItem>
-                    ))}
+                    )) : (
+                      <SelectItem value="_none" disabled>Nenhum convênio cadastrado</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
