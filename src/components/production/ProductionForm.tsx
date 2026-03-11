@@ -223,6 +223,23 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
     if (open) fetchDoctors();
   }, [companyId, open]);
 
+  // Fetch health plans from DB
+  useEffect(() => {
+    const fetchHealthPlans = async () => {
+      if (!companyId) return;
+      const { data, error } = await supabase
+        .from("health_plans")
+        .select("id, name")
+        .eq("company_id", companyId)
+        .eq("is_active", true)
+        .order("name");
+      if (!error && data) {
+        setHealthPlans(data.map((hp: any) => ({ id: String(hp.id), name: String(hp.name) })));
+      }
+    };
+    if (open) fetchHealthPlans();
+  }, [companyId, open]);
+
   // Combinar sugestões padrão com salvas do banco
   const savedExamTypes = getSavedExamTypes();
   const savedTherapyTypes = getSavedTherapyTypes();
