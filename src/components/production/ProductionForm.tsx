@@ -2343,11 +2343,13 @@ export function ProductionForm({ open, onOpenChange, onSubmit, units, userName, 
                     <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
                   <SelectContent>
-                    {CONVENIOS.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
+                    {healthPlans.length > 0 ? healthPlans.map((hp) => (
+                      <SelectItem key={hp.id} value={hp.id}>
+                        {hp.name}
                       </SelectItem>
-                    ))}
+                    )) : (
+                      <SelectItem value="_none" disabled>Nenhum convênio cadastrado</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
