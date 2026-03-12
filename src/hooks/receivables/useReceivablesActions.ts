@@ -298,6 +298,9 @@ export function createReceivablesActions(deps: ReceivablesActionsDeps) {
         }
       }
 
+      // Validate category exists in company settings
+      inferredCategory = await ensureCategoryExists(inferredCategory);
+
       const { PRODUCTION_TYPE_LABELS: PROD_LABELS } = await import("@/utils/constants");
 
       let readableTypePrefix = "";
