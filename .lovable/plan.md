@@ -1,71 +1,22 @@
 
-# Corrigir Card "Convenio Principal" Mostrando UUID
 
-## Problema
+## Diagnóstico
 
-O campo `p.convenio` contem o UUID do `health_plan_id` (ex: `3bbf237b-9901-4164-bde3-70f75a6be3a9`), pois no `useProductionDB.ts` linha 112 ele e mapeado assim:
+O erro ao receber Mat/Med na aba de Faturamento é causado pelo trigger `financial_entries_category_guard` no banco de dados. Quando o sistema tenta criar a movimentação financeira, ele usa o `production_type` da produção (ex: `MAT_MED`) como `categoria`. O trigger valida se essa categoria existe em `company_financial_settings.categories` -- se `MAT_MED` não foi cadastrado como categoria (via `upsert_production_type_with_category` ou manualmente), o INSERT é rejeitado.
 
-```
-convenio: db.health_plan_id || undefined
-```
+O mesmo problema afeta tanto `markAsReceived` quanto `markAsReceivedMultipleDates`.
 
-A funcao `formatConvenioDisplayName` apenas aplica title case, nao resolve UUIDs para nomes. Isso afeta:
-- Card "Convenio Principal" nos KPIs
-- Ranking por Convenio
-- Insights e alertas de concentracao
-- Leitura executiva
+## Solução
 
-## Solucao
+Adicionar validação preventiva em ambas as funções: antes de inserir a `financial_entry`, verificar se a `inferredCategory` existe nas categorias da empresa. Se não existir, fazer fallback para `RECEBIMENTO_FATURAMENTO` (que é uma categoria padrão que sempre existe).
 
-Buscar a tabela `health_plans` no `ProductionReport.tsx` e criar um mapa UUID->nome para resolver os nomes antes de exibir.
+### Alteração em `src/hooks/receivables/useReceivablesActions.ts`
 
-### Arquivo: `src/pages/ProductionReport.tsx`
+1. **Criar função auxiliar `ensureCategoryExists`** que consulta `company_financial_settings.categories` e verifica se o code existe. Se não existir, retorna `RECEBIMENTO_FATURAMENTO`.
 
-**1. Adicionar state e fetch para health plans**
+2. **Aplicar em `markAsReceived`** (linha ~272-277): após inferir a categoria, chamar `ensureCategoryExists(inferredCategory)` antes de usá-la no insert.
 
-Apos os hooks existentes (useProductionDB, usePackagePricing), adicionar:
+3. **Aplicar em `markAsReceivedMultipleDates`** (linha ~793-800): mesma validação.
 
-```typescript
-const [healthPlanMap, setHealthPlanMap] = useState<Record<string, string>>({});
+Isso resolve o problema sem alterar o banco de dados -- a lógica simplesmente faz fallback para uma categoria segura quando o tipo de produção não tem categoria financeira correspondente.
 
-useEffect(() => {
-  if (!companyId) return;
-  supabase
-    .from("health_plans")
-    .select("id, name")
-    .eq("company_id", companyId)
-    .then(({ data }) => {
-      if (data) {
-        const map: Record<string, string> = {};
-        data.forEach((hp) => { map[hp.id] = hp.name; });
-        setHealthPlanMap(map);
-      }
-    });
-}, [companyId]);
-```
-
-**2. Criar helper de resolucao de nome**
-
-```typescript
-const resolveConvenioName = useCallback((convenioId: string | undefined): string => {
-  if (!convenioId) return "PARTICULAR";
-  return healthPlanMap[convenioId] || convenioId;
-}, [healthPlanMap]);
-```
-
-**3. Usar o helper nos pontos que agrupam por convenio**
-
-- `strategicKPIs` (linha ~535): trocar `p.convenio` por `resolveConvenioName(p.convenio)`
-- `convenioRanking` (linha ~684): trocar `p.convenio || "PARTICULAR"` por `resolveConvenioName(p.convenio)`
-
-Isso corrige automaticamente todos os cards, rankings e insights que dependem desses dados.
-
-## O que NAO muda
-
-- Nenhuma query de banco
-- Nenhum outro modulo (DRE, Aging, BI, Faturamento)
-- O campo `convenio` no hook continua armazenando o UUID (correto para persistencia)
-
-## Risco
-
-**Minimo**. Apenas adiciona uma consulta de leitura a `health_plans` e resolve nomes antes da exibicao.
