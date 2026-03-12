@@ -16,7 +16,7 @@ export interface ReceivablesActionsDeps {
 export function createReceivablesActions(deps: ReceivablesActionsDeps) {
   const { receivables, currentCompany, profile, fetchReceivables, refreshAll, processingIdsRef, checkPlanLimit } = deps;
 
-  // Helper: verify category exists in company settings, fallback to RECEBIMENTO_FATURAMENTO
+  // Helper: ensure category exists in company settings, auto-create via RPC if missing
   const ensureCategoryExists = async (categoryCode: string): Promise<string> => {
     if (!currentCompany?.id || !categoryCode) return "RECEBIMENTO_FATURAMENTO";
     try {
@@ -31,7 +31,15 @@ export function createReceivablesActions(deps: ReceivablesActionsDeps) {
         );
         if (exists) return categoryCode;
       }
-      return "RECEBIMENTO_FATURAMENTO";
+      // Category missing — auto-create it via RPC so the trigger accepts it
+      const { PRODUCTION_TYPE_LABELS } = await import("@/utils/constants");
+      const friendlyName = PRODUCTION_TYPE_LABELS[categoryCode] || categoryCode;
+      await supabase.rpc("upsert_production_type_with_category", {
+        _company_id: currentCompany.id,
+        _name: friendlyName,
+        _desired_entry_type: "entrada",
+      });
+      return categoryCode;
     } catch {
       return "RECEBIMENTO_FATURAMENTO";
     }
