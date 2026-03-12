@@ -16,6 +16,27 @@ export interface ReceivablesActionsDeps {
 export function createReceivablesActions(deps: ReceivablesActionsDeps) {
   const { receivables, currentCompany, profile, fetchReceivables, refreshAll, processingIdsRef, checkPlanLimit } = deps;
 
+  // Helper: verify category exists in company settings, fallback to RECEBIMENTO_FATURAMENTO
+  const ensureCategoryExists = async (categoryCode: string): Promise<string> => {
+    if (!currentCompany?.id || !categoryCode) return "RECEBIMENTO_FATURAMENTO";
+    try {
+      const { data } = await supabase
+        .from("company_financial_settings")
+        .select("categories")
+        .eq("company_id", currentCompany.id)
+        .maybeSingle();
+      if (data && Array.isArray(data.categories)) {
+        const exists = (data.categories as any[]).some(
+          (c: any) => c && typeof c === "object" && c.code && c.code.toUpperCase() === categoryCode.toUpperCase()
+        );
+        if (exists) return categoryCode;
+      }
+      return "RECEBIMENTO_FATURAMENTO";
+    } catch {
+      return "RECEBIMENTO_FATURAMENTO";
+    }
+  };
+
   // Add receivable
   const addReceivable = async (
     data: Omit<Receivable, "id" | "createdAt" | "receivedAmount" | "glossedAmount"> & {
