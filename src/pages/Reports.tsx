@@ -250,7 +250,7 @@ export default function Reports() {
         const categoriesAnalysis = Object.entries(categoryBreakdown)
           .map(([cat, data]) => ({
             category: cat,
-            categoryName: settings.categories.find((c) => c.id === cat)?.name || cat,
+            categoryName: settings.categories.find((c) => c.id === cat || c.code === cat)?.name || PRODUCTION_TYPE_LABELS[cat] || cat,
             value: data.value,
             count: data.count,
             percentage: totalValue > 0 ? (data.value / totalValue) * 100 : 0,
