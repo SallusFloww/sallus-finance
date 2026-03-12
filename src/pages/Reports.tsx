@@ -15,6 +15,7 @@ import {
   PAYMENT_METHODS_PARTICULAR,
   SPECIALTIES,
   SPECIALTY_LABELS,
+  PRODUCTION_TYPE_LABELS,
 } from "@/utils/constants";
 import { toast } from "sonner";
 import { Transaction, ReceiptType, PaymentMethodParticular, Operadora, Specialty } from "@/types";
@@ -249,7 +250,7 @@ export default function Reports() {
         const categoriesAnalysis = Object.entries(categoryBreakdown)
           .map(([cat, data]) => ({
             category: cat,
-            categoryName: settings.categories.find((c) => c.id === cat)?.name || cat,
+            categoryName: settings.categories.find((c) => c.id === cat || c.code === cat)?.name || PRODUCTION_TYPE_LABELS[cat] || cat,
             value: data.value,
             count: data.count,
             percentage: totalValue > 0 ? (data.value / totalValue) * 100 : 0,
@@ -317,7 +318,7 @@ export default function Reports() {
             const specCategories = Object.entries(specCategoryBreakdown)
               .map(([cat, data]) => ({
                 category: cat,
-                categoryName: settings.categories.find((c) => c.id === cat)?.name || cat,
+                categoryName: settings.categories.find((c) => c.id === cat || c.code === cat)?.name || PRODUCTION_TYPE_LABELS[cat] || cat,
                 value: data.value,
                 count: data.count,
                 percentage: specIncome > 0 ? (data.value / specIncome) * 100 : 0,
@@ -462,7 +463,7 @@ export default function Reports() {
     return Object.entries(categoryMap)
       .map(([cat, data]) => ({
         category: cat,
-        categoryName: settings.categories.find((c) => c.id === cat)?.name || cat,
+        categoryName: settings.categories.find((c) => c.id === cat || c.code === cat)?.name || PRODUCTION_TYPE_LABELS[cat] || cat,
         value: data.value,
         count: data.count,
         percentage: totalValue > 0 ? (data.value / totalValue) * 100 : 0,
@@ -570,7 +571,7 @@ export default function Reports() {
           unit: t.unit,
           unitName: unitConfig?.name || t.unit,
           category: t.category || "sem_categoria",
-          categoryName: categoryConfig?.name || t.category || "Sem categoria",
+          categoryName: categoryConfig?.name || PRODUCTION_TYPE_LABELS[t.category || ""] || t.category || "Sem categoria",
           value: 0,
         };
       }
