@@ -16,6 +16,27 @@ export interface ReceivablesActionsDeps {
 export function createReceivablesActions(deps: ReceivablesActionsDeps) {
   const { receivables, currentCompany, profile, fetchReceivables, refreshAll, processingIdsRef, checkPlanLimit } = deps;
 
+  // Helper: verify category exists in company settings, fallback to RECEBIMENTO_FATURAMENTO
+  const ensureCategoryExists = async (categoryCode: string): Promise<string> => {
+    if (!currentCompany?.id || !categoryCode) return "RECEBIMENTO_FATURAMENTO";
+    try {
+      const { data } = await supabase
+        .from("company_financial_settings")
+        .select("categories")
+        .eq("company_id", currentCompany.id)
+        .maybeSingle();
+      if (data && Array.isArray(data.categories)) {
+        const exists = (data.categories as any[]).some(
+          (c: any) => c && typeof c === "object" && c.code && c.code.toUpperCase() === categoryCode.toUpperCase()
+        );
+        if (exists) return categoryCode;
+      }
+      return "RECEBIMENTO_FATURAMENTO";
+    } catch {
+      return "RECEBIMENTO_FATURAMENTO";
+    }
+  };
+
   // Add receivable
   const addReceivable = async (
     data: Omit<Receivable, "id" | "createdAt" | "receivedAmount" | "glossedAmount"> & {
@@ -276,6 +297,9 @@ export function createReceivablesActions(deps: ReceivablesActionsDeps) {
           typeNote = ` | Tipos: múltiplos (${uniqueTypes.join(", ").substring(0, 120)})`;
         }
       }
+
+      // Validate category exists in company settings
+      inferredCategory = await ensureCategoryExists(inferredCategory);
 
       const { PRODUCTION_TYPE_LABELS: PROD_LABELS } = await import("@/utils/constants");
 
@@ -799,6 +823,9 @@ export function createReceivablesActions(deps: ReceivablesActionsDeps) {
         if (uniqueTypes.length === 1) inferredCategory = uniqueTypes[0];
         else if (uniqueTypes.length > 1) typeNote = ` | Tipos: múltiplos (${uniqueTypes.join(", ").substring(0, 120)})`;
       }
+
+      // Validate category exists in company settings
+      inferredCategory = await ensureCategoryExists(inferredCategory);
 
       const { PRODUCTION_TYPE_LABELS: PROD_LABELS } = await import("@/utils/constants");
       let readableTypePrefix = "";
