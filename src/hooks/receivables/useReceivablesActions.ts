@@ -824,6 +824,9 @@ export function createReceivablesActions(deps: ReceivablesActionsDeps) {
         else if (uniqueTypes.length > 1) typeNote = ` | Tipos: múltiplos (${uniqueTypes.join(", ").substring(0, 120)})`;
       }
 
+      // Validate category exists in company settings
+      inferredCategory = await ensureCategoryExists(inferredCategory);
+
       const { PRODUCTION_TYPE_LABELS: PROD_LABELS } = await import("@/utils/constants");
       let readableTypePrefix = "";
       if (inferredCategory === "RECEBIMENTO_FATURAMENTO") {
