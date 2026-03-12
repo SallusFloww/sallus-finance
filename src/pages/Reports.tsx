@@ -15,6 +15,7 @@ import {
   PAYMENT_METHODS_PARTICULAR,
   SPECIALTIES,
   SPECIALTY_LABELS,
+  PRODUCTION_TYPE_LABELS,
 } from "@/utils/constants";
 import { toast } from "sonner";
 import { Transaction, ReceiptType, PaymentMethodParticular, Operadora, Specialty } from "@/types";
