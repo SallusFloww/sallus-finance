@@ -571,7 +571,7 @@ export default function Reports() {
           unit: t.unit,
           unitName: unitConfig?.name || t.unit,
           category: t.category || "sem_categoria",
-          categoryName: categoryConfig?.name || t.category || "Sem categoria",
+          categoryName: categoryConfig?.name || PRODUCTION_TYPE_LABELS[t.category || ""] || t.category || "Sem categoria",
           value: 0,
         };
       }
