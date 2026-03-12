@@ -762,7 +762,7 @@ export type Database = {
           edit_logs: Json | null
           fee_amount: number | null
           glossed_value: number | null
-          health_plan_id: string
+          health_plan_id: string | null
           history: Json | null
           id: string
           import_batch_id: string | null
@@ -800,7 +800,7 @@ export type Database = {
           edit_logs?: Json | null
           fee_amount?: number | null
           glossed_value?: number | null
-          health_plan_id: string
+          health_plan_id?: string | null
           history?: Json | null
           id?: string
           import_batch_id?: string | null
@@ -838,7 +838,7 @@ export type Database = {
           edit_logs?: Json | null
           fee_amount?: number | null
           glossed_value?: number | null
-          health_plan_id?: string
+          health_plan_id?: string | null
           history?: Json | null
           id?: string
           import_batch_id?: string | null
