@@ -571,7 +571,22 @@ export function createReceivablesActions(deps: ReceivablesActionsDeps) {
     // P0 FIX: Create financial entry for recovered appeal amount
     let createdTransactionId: string | null = null;
     if (recoveredAmount > 0) {
-      const descricao = `Recurso de glosa deferido • ${receivable.source} • ${receivable.description}`.substring(0, 200);
+      // Infer category from linked productions
+      let appealCategory = "RECEBIMENTO_FATURAMENTO";
+      const { data: linkedProds } = await supabase
+        .from("productions")
+        .select("production_type")
+        .eq("company_id", currentCompany.id)
+        .eq("linked_receivable_id", id);
+      if (Array.isArray(linkedProds)) {
+        const uniqueTypes = Array.from(new Set(linkedProds.map((p: any) => p.production_type).filter(Boolean)));
+        if (uniqueTypes.length === 1) appealCategory = uniqueTypes[0];
+      }
+      appealCategory = await ensureCategoryExists(appealCategory);
+
+      const { PRODUCTION_TYPE_LABELS: PROD_LABELS } = await import("@/utils/constants");
+      const typeLabel = PROD_LABELS[appealCategory] || appealCategory;
+      const descricao = `${typeLabel} • Recurso de glosa deferido • ${receivable.source} • ${receivable.description}`.substring(0, 200);
 
       const { data: insertedEntry, error: insertError } = await supabase
         .from("financial_entries")
@@ -584,7 +599,7 @@ export function createReceivablesActions(deps: ReceivablesActionsDeps) {
           data_prevista: receiptDate,
           data_recebimento: receiptDate,
           descricao,
-          categoria: "RECEBIMENTO_FATURAMENTO",
+          categoria: appealCategory,
           unit_id: receivable.unit || null,
           receipt_type: receivable.source === "PARTICULAR" ? "PARTICULAR" : "CONVENIO",
           payment_method: "TRANSFER",
