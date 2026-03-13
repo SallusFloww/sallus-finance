@@ -1,71 +1,46 @@
 
-# Corrigir Card "Convenio Principal" Mostrando UUID
 
-## Problema
+## Diagnóstico
 
-O campo `p.convenio` contem o UUID do `health_plan_id` (ex: `3bbf237b-9901-4164-bde3-70f75a6be3a9`), pois no `useProductionDB.ts` linha 112 ele e mapeado assim:
+O problema tem duas causas:
 
-```
-convenio: db.health_plan_id || undefined
-```
+1. **Registros existentes no banco** — os lançamentos já criados têm `categoria = 'RECEBIMENTO_FATURAMENTO'` no banco de dados. Mesmo com o código novo, esses registros antigos não foram corrigidos.
 
-A funcao `formatConvenioDisplayName` apenas aplica title case, nao resolve UUIDs para nomes. Isso afeta:
-- Card "Convenio Principal" nos KPIs
-- Ranking por Convenio
-- Insights e alertas de concentracao
-- Leitura executiva
+2. **Caminhos de código que ainda usam hardcoded `RECEBIMENTO_FATURAMENTO`** — as funções de glosa parcial (linha ~456) e recurso de glosa deferido (linha ~572) inserem entries com categoria fixa em vez de inferir do tipo de produção.
 
-## Solucao
+## Solução
 
-Buscar a tabela `health_plans` no `ProductionReport.tsx` e criar um mapa UUID->nome para resolver os nomes antes de exibir.
+### 1. Migração SQL para corrigir registros existentes
 
-### Arquivo: `src/pages/ProductionReport.tsx`
+Rodar um script que atualiza `financial_entries` onde `categoria = 'RECEBIMENTO_FATURAMENTO'` e existe um `receivable_id` na observação que pode ser cruzado com `productions.linked_receivable_id` para obter o `production_type` real:
 
-**1. Adicionar state e fetch para health plans**
-
-Apos os hooks existentes (useProductionDB, usePackagePricing), adicionar:
-
-```typescript
-const [healthPlanMap, setHealthPlanMap] = useState<Record<string, string>>({});
-
-useEffect(() => {
-  if (!companyId) return;
-  supabase
-    .from("health_plans")
-    .select("id, name")
-    .eq("company_id", companyId)
-    .then(({ data }) => {
-      if (data) {
-        const map: Record<string, string> = {};
-        data.forEach((hp) => { map[hp.id] = hp.name; });
-        setHealthPlanMap(map);
-      }
-    });
-}, [companyId]);
+```sql
+UPDATE financial_entries fe
+SET categoria = sub.production_type
+FROM (
+  SELECT DISTINCT ON (fe2.id) fe2.id AS fe_id, p.production_type
+  FROM financial_entries fe2
+  JOIN productions p ON p.linked_receivable_id = (
+    regexp_match(fe2.observacao, 'receivable_id=([a-f0-9-]+)')
+  )[1]::uuid
+  WHERE fe2.categoria = 'RECEBIMENTO_FATURAMENTO'
+    AND fe2.observacao LIKE '%receivable_id=%'
+    AND p.production_type IS NOT NULL
+  -- Only update when there's a single unique production_type per receivable
+  GROUP BY fe2.id, p.production_type
+  HAVING COUNT(DISTINCT p.production_type) = 1
+) sub
+WHERE fe.id = sub.fe_id;
 ```
 
-**2. Criar helper de resolucao de nome**
+### 2. Corrigir caminhos de código restantes em `useReceivablesActions.ts`
 
-```typescript
-const resolveConvenioName = useCallback((convenioId: string | undefined): string => {
-  if (!convenioId) return "PARTICULAR";
-  return healthPlanMap[convenioId] || convenioId;
-}, [healthPlanMap]);
-```
+- **`markAsReceivedWithGloss`** (~linha 456): adicionar a mesma lógica de inferência de categoria (`inferredCategory` via produções vinculadas + `ensureCategoryExists`) em vez do hardcoded.
+- **`resolveAppeal`** (~linha 572): mesma correção.
 
-**3. Usar o helper nos pontos que agrupam por convenio**
+### Resultado
 
-- `strategicKPIs` (linha ~535): trocar `p.convenio` por `resolveConvenioName(p.convenio)`
-- `convenioRanking` (linha ~684): trocar `p.convenio || "PARTICULAR"` por `resolveConvenioName(p.convenio)`
+- Registros antigos terão a categoria correta (ex: `MAT_MED`)
+- O `resolveCategoryLabel` já existente em `useTransactionsDB.ts` traduzirá `MAT_MED` → "Mat/Med" na UI
+- Novos recebimentos de glosa/recurso também usarão a categoria correta
 
-Isso corrige automaticamente todos os cards, rankings e insights que dependem desses dados.
-
-## O que NAO muda
-
-- Nenhuma query de banco
-- Nenhum outro modulo (DRE, Aging, BI, Faturamento)
-- O campo `convenio` no hook continua armazenando o UUID (correto para persistencia)
-
-## Risco
-
-**Minimo**. Apenas adiciona uma consulta de leitura a `health_plans` e resolve nomes antes da exibicao.
